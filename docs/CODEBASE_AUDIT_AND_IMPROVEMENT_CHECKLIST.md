@@ -92,7 +92,7 @@ Fondasi P0 pertama sudah mulai dikerjakan: package manager distandarkan ke pnpm,
 - [x] Payment status: unpaid/partial/paid.
 - [x] Payment methods: cash/card/ewallet/other.
 - [ ] True transaction-safe create+pay. _(frontend now uses the consolidated endpoint; backend DB-level transaction remains open)_
-- [ ] Idempotency key for payment retry.
+- [x] Idempotency key support added on `POST /api/orders/create-and-pay` (request field: `idempotency_key`, tenant-scoped replay lookup via payment reference).
 - [ ] Refund/void flow.
 
 #### Kitchen Display

@@ -7,6 +7,8 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
+import { and, eq } from 'drizzle-orm';
+import { orderPayments, orders } from '@shared/schema';
 
 /**
  * POST /api/orders
@@ -571,11 +573,44 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
     payment_method: z.enum(['cash', 'card', 'ewallet', 'other']),
     transaction_ref: z.string().optional(),
     payment_notes: z.string().optional(),
+    idempotency_key: z.string().min(8).max(128).optional(),
   });
 
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+  }
+
+  // Idempotency support: if key already used for this tenant, return prior result
+  const idempotencyKey = parsed.data.idempotency_key?.trim();
+
+  if (idempotencyKey) {
+    const existing = await container.db
+      .select({ orderId: orderPayments.orderId })
+      .from(orderPayments)
+      .innerJoin(orders, eq(orderPayments.orderId, orders.id))
+      .where(
+        and(
+          eq(orders.tenantId, tenantId),
+          eq(orderPayments.referenceNumber, idempotencyKey)
+        )
+      )
+      .limit(1);
+
+    if (existing[0]?.orderId) {
+      const existingOrder = await container.orderRepository.findById(existing[0].orderId, tenantId);
+      if (existingOrder) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            order: existingOrder,
+            pricing: null,
+            payment: null,
+            idempotent_replay: true,
+          },
+        });
+      }
+    }
   }
 
   // Execute atomic create + pay transaction
@@ -597,7 +632,7 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
       tenant_id: tenantId,
       amount: parsed.data.amount,
       payment_method: parsed.data.payment_method,
-      transaction_ref: parsed.data.transaction_ref,
+      transaction_ref: parsed.data.transaction_ref ?? idempotencyKey,
       notes: parsed.data.payment_notes,
     });
 
