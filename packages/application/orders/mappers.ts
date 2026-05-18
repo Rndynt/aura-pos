@@ -19,7 +19,8 @@ export function toInsertOrderDb(
   totalAmount: number,
   customerName?: string,
   tableNumber?: string,
-  notes?: string
+  notes?: string,
+  idempotencyKey?: string
 ): InsertOrder {
   return {
     tenantId,
@@ -36,6 +37,7 @@ export function toInsertOrderDb(
     customerName,
     tableNumber,
     notes,
+    idempotencyKey,
   };
 }
 

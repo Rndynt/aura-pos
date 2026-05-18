@@ -91,7 +91,7 @@ Fondasi P0 pertama sudah mulai dikerjakan: package manager distandarkan ke pnpm,
 - [x] Partial payment support.
 - [x] Payment status: unpaid/partial/paid.
 - [x] Payment methods: cash/card/ewallet/other.
-- [ ] True transaction-safe create+pay. _(frontend now uses the consolidated endpoint; backend DB-level transaction remains open)_
+- [ ] True transaction-safe create+pay. _(partial hardening shipped: compensating rollback deletes newly created order when payment step fails; full single-transaction implementation still pending)_
 - [x] Idempotency key support added on `POST /api/orders/create-and-pay` (request field: `idempotency_key`, tenant-scoped replay lookup via payment reference).
 - [ ] Refund/void flow.
 
@@ -272,7 +272,7 @@ Karena itu rekomendasi teknisnya:
 - [ ] Buat `tsconfig` per app/package yang authoritative.
 - [ ] Pastikan `turbo` ter-install di CI dan local workflow.
 - [ ] Jalankan `pnpm type-check` atau `npm run type-check` sampai hijau.
-- [ ] Tambahkan CI minimal: type-check, build, lint, test.
+- [x] Tambahkan CI minimal: type-check, build, test. _(implemented in `.github/workflows/ci.yml`; lint remains follow-up)_
 
 ---
 
@@ -311,7 +311,7 @@ Karena itu rekomendasi teknisnya:
 **Checklist perbaikan:**
 
 - [ ] Buat use case `TransitionOrderFulfillmentStatus`.
-- [ ] Endpoint status wajib memakai validator domain.
+- [x] Endpoint status wajib memakai validator domain/use case transisi.
 - [ ] Kitchen display hanya boleh mengubah fulfillment status.
 - [ ] Tambahkan permission/role: kitchen tidak boleh melakukan `CloseOrder` finansial.
 - [ ] Tambahkan status `served`/`fulfilled` atau konsep `closed_at` agar dine-in pay-later valid.
@@ -330,10 +330,10 @@ Karena itu rekomendasi teknisnya:
 
 **Checklist perbaikan:**
 
-- [ ] Ubah tables route agar menggunakan `req.tenantId`.
-- [ ] Ubah `TableRepository.updateStatus` menjadi filter `id + tenantId`.
-- [ ] Ubah `TableRepository.findById` menjadi tenant-aware.
-- [ ] Validasi `currentOrderId` harus milik tenant yang sama.
+- [x] Ubah tables route agar menggunakan `req.tenantId`.
+- [x] Ubah `TableRepository.updateStatus` menjadi filter `id + tenantId`.
+- [x] Ubah `TableRepository.findById` menjadi tenant-aware.
+- [x] Validasi `currentOrderId` harus milik tenant yang sama.
 - [ ] Tambahkan automated test cross-tenant table update.
 
 ---
@@ -634,7 +634,7 @@ Untuk settlement type non-normal, butuh permission dan audit reason.
 - [ ] Redesign lifecycle for pay-later.
 - [ ] Add served/closed semantics.
 - [ ] Replace direct status endpoint with transition use case.
-- [ ] Implement true atomic create-and-pay.
+- [ ] Implement true atomic create-and-pay. _(in progress: idempotency replay shipped; DB transaction unification pending)_
 - [ ] Implement transaction-safe record payment.
 - [ ] Add idempotency key.
 

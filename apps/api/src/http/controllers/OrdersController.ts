@@ -613,9 +613,10 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
     }
   }
 
-  // Execute atomic create + pay transaction
+  // Execute create + pay flow with compensating rollback to avoid orphan orders
+  let createdOrderId: string | null = null;
+
   try {
-    // Create order
     const orderResult = await container.createOrder.execute({
       tenant_id: tenantId,
       items: parsed.data.items,
@@ -624,9 +625,11 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
       table_number: parsed.data.table_number,
       tax_rate: parsed.data.tax_rate,
       service_charge_rate: parsed.data.service_charge_rate,
+      idempotency_key: idempotencyKey,
     });
 
-    // Record payment for the created order
+    createdOrderId = orderResult.order.id;
+
     const paymentResult = await container.recordPayment.execute({
       order_id: orderResult.order.id,
       tenant_id: tenantId,
@@ -636,7 +639,6 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
       notes: parsed.data.payment_notes,
     });
 
-    // Return both order and payment data
     res.status(201).json({
       success: true,
       data: {
@@ -646,8 +648,16 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
       },
     });
   } catch (error) {
-    // If payment fails, the order is already created - app should handle cleanup
-    // In a real system with DB transactions, this would roll back automatically
+    if (createdOrderId) {
+      try {
+        await container.db
+          .delete(orders)
+          .where(and(eq(orders.id, createdOrderId), eq(orders.tenantId, tenantId)));
+      } catch (cleanupError) {
+        console.error('Create-and-pay rollback cleanup failed:', cleanupError);
+      }
+    }
+
     throw error;
   }
 });

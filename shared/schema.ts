@@ -269,6 +269,7 @@ export const orders = pgTable("orders", {
   customerName: text("customer_name"),
   tableNumber: text("table_number"),
   notes: text("notes"),
+  idempotencyKey: varchar("idempotency_key", { length: 128 }),
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({
@@ -278,6 +279,7 @@ export const orders = pgTable("orders", {
   orderNumberIdx: index("orders_order_number_idx").on(table.orderNumber),
   statusIdx: index("orders_status_idx").on(table.status),
   orderDateIdx: index("orders_order_date_idx").on(table.orderDate),
+  tenantIdempotencyUnique: uniqueIndex("orders_tenant_idempotency_unique").on(table.tenantId, table.idempotencyKey),
 }));
 
 export const insertOrderSchema = createInsertSchema(orders).omit({
@@ -355,6 +357,7 @@ export const orderPayments = pgTable("order_payments", {
   paymentDate: timestamp("payment_date").notNull().default(sql`CURRENT_TIMESTAMP`),
   referenceNumber: text("reference_number"),
   notes: text("notes"),
+  idempotencyKey: varchar("idempotency_key", { length: 128 }),
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({
   orderIdx: index("order_payments_order_idx").on(table.orderId),
