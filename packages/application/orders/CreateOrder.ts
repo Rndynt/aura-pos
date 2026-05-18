@@ -36,6 +36,7 @@ export interface CreateOrderInput {
   notes?: string;
   tax_rate?: number;
   service_charge_rate?: number;
+  idempotency_key?: string;
 }
 
 export interface CreateOrderOutput {
@@ -183,7 +184,8 @@ export class CreateOrder {
         totalAmount,
         input.customer_name,
         input.table_number,
-        input.notes
+        input.notes,
+        input.idempotency_key
       );
 
       const orderItemsForDb: OrderItemInput[] = orderItems.map(item => ({

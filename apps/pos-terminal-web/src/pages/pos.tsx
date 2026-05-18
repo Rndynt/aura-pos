@@ -12,7 +12,7 @@ import { PaymentMethodDialog } from "@/components/pos/PaymentMethodDialog";
 import type { PaymentMethod } from "@/hooks/useCart";
 import { useCart } from "@/hooks/useCart";
 import { useFeatures } from "@/hooks/useFeatures";
-import { useProducts, useCreateOrder, useUpdateOrder, useCreateKitchenTicket, useOrderTypes, useRecordPayment, useOrders } from "@/lib/api/hooks";
+import { useProducts, useCreateOrder, useUpdateOrder, useCreateKitchenTicket, useOrderTypes, useRecordPayment, useOrders, useCreateAndPay } from "@/lib/api/hooks";
 import type { Product, ProductVariant } from "@pos/domain/catalog/types";
 import type { SelectedOption, Order } from "@pos/domain/orders/types";
 import { Button } from "@/components/ui/button";
@@ -131,6 +131,7 @@ export default function POSPage() {
   const updateOrderMutation = useUpdateOrder();
   const createKitchenTicketMutation = useCreateKitchenTicket();
   const recordPaymentMutation = useRecordPayment();
+  const createAndPayMutation = useCreateAndPay();
 
   const hasPartialPayment = hasFeature("partial_payment");
   const hasKitchenTicket = hasFeature("kitchen_ticket");
@@ -336,27 +337,18 @@ export default function POSPage() {
     
     setIsProcessingQuickCharge(true);
     try {
-      // Step 1: Create the order
-      const orderPayload = {
+      const totalAmount = cart.total;
+      const orderResult = await createAndPayMutation.mutateAsync({
         items: cart.toBackendOrderItems(),
         tax_rate: cart.taxRate,
         service_charge_rate: cart.serviceChargeRate,
         order_type_id: cart.selectedOrderTypeId,
         customer_name: cart.customerName || undefined,
         table_number: cart.tableNumber || undefined,
-      };
-      
-      const orderResult = await createOrderMutation.mutateAsync(orderPayload);
-      const totalAmount = orderResult.pricing.total_amount;
-      const orderId = orderResult.order?.id;
-      const orderNumber = orderResult.order?.order_number || orderResult.order?.id;
-      
-      // Step 2: Record payment
-      await recordPaymentMutation.mutateAsync({
-        orderId,
         amount: totalAmount,
         payment_method: paymentMethod,
       });
+      const orderNumber = orderResult.order?.order_number || orderResult.order?.id;
       
       toast({
         title: "Pesanan berhasil dibuat & dibayar",

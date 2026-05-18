@@ -64,9 +64,17 @@ export default function CartPanelExample() {
         total={total}
         onCharge={() => console.log("Charge!")}
         onPartialPayment={() => console.log("Partial payment")}
-        onKitchenTicket={() => console.log("Kitchen ticket")}
+        onSaveDraft={() => console.log("Save draft")}
         hasPartialPayment={true}
-        hasKitchenTicket={true}
+        customerName="Walk-in Guest"
+        setCustomerName={() => undefined}
+        orderNumber="#123456"
+        tableNumber=""
+        setTableNumber={() => undefined}
+        paymentMethod="cash"
+        setPaymentMethod={() => undefined}
+        orderType="dine-in"
+        setOrderType={() => undefined}
       />
     </div>
   );

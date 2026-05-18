@@ -10,9 +10,9 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@pos/application": "*",
-    "@pos/core": "*",
-    "@pos/domain": "*",
+    "@pos/application": "workspace:*",
+    "@pos/core": "workspace:*",
+    "@pos/domain": "workspace:*",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.7",

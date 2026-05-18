@@ -57,7 +57,8 @@ export function useTables(status?: string, floor?: string) {
         }
       );
       if (!response.ok) throw new Error("Failed to fetch tables");
-      return response.json();
+      const json = await response.json();
+      return json.data ?? json;
     },
     enabled: !!tenantId,
   });

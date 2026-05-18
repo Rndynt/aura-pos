@@ -4,5 +4,8 @@
   "private": true,
   "type": "module",
   "main": "schema.ts",
-  "types": "schema.ts"
+  "types": "schema.ts",
+  "scripts": {
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  }
 }

@@ -24,11 +24,11 @@ export class TableRepository {
       .execute();
   }
 
-  async findById(id: string): Promise<Table | null> {
+  async findById(id: string, tenantId: string): Promise<Table | null> {
     const result = await this.db
       .select()
       .from(tables)
-      .where(eq(tables.id, id))
+      .where(and(eq(tables.id, id), eq(tables.tenantId, tenantId)))
       .execute();
     
     return result[0] || null;
@@ -44,7 +44,7 @@ export class TableRepository {
     return result[0];
   }
 
-  async updateStatus(id: string, status: string, orderId?: string): Promise<Table> {
+  async updateStatus(tenantId: string, id: string, status: string, orderId?: string): Promise<Table> {
     const result = await this.db
       .update(tables)
       .set({
@@ -52,10 +52,14 @@ export class TableRepository {
         currentOrderId: orderId || null,
         updatedAt: new Date(),
       })
-      .where(eq(tables.id, id))
+      .where(and(eq(tables.id, id), eq(tables.tenantId, tenantId)))
       .returning()
       .execute();
-    
+
+    if (!result[0]) {
+      throw new Error("Table not found or access denied");
+    }
+
     return result[0];
   }
 

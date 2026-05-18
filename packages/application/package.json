@@ -15,11 +15,17 @@
     "./tenants": "./tenants/index.ts",
     "./tenants/*": "./tenants/*.ts"
   },
-  "scripts": {},
-  "keywords": ["application", "use-cases", "pos"],
+  "scripts": {
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "application",
+    "use-cases",
+    "pos"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@pos/domain": "*"
+    "@pos/domain": "workspace:*"
   }
 }

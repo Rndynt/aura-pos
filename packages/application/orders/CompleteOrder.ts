@@ -16,8 +16,8 @@ export interface CompleteOrderOutput {
 }
 
 export interface IOrderRepository {
-  findById(orderId: string): Promise<Order | null>;
-  update(orderId: string, updates: Partial<Order>): Promise<Order>;
+  findById(orderId: string, tenantId: string): Promise<any | null>;
+  update(orderId: string, updates: Record<string, any>, tenantId: string): Promise<any>;
 }
 
 export interface ITenantRepository {
@@ -40,12 +40,12 @@ export class CompleteOrder {
         throw new Error('Tenant is not active');
       }
 
-      const order = await this.orderRepository.findById(input.order_id);
+      const order = await this.orderRepository.findById(input.order_id, input.tenant_id);
       if (!order) {
         throw new Error('Order not found');
       }
 
-      if (order.tenant_id !== input.tenant_id) {
+      if ((order.tenant_id || order.tenantId) !== input.tenant_id) {
         throw new Error('Order does not belong to the specified tenant');
       }
 
@@ -55,9 +55,12 @@ export class CompleteOrder {
         );
       }
 
-      if (order.total_amount > 0 && order.payment_status !== 'paid') {
+      const totalAmount = Number(order.total_amount ?? order.total ?? 0);
+      const paymentStatus = order.payment_status ?? order.paymentStatus;
+
+      if (totalAmount > 0 && paymentStatus !== 'paid') {
         throw new Error(
-          `Cannot complete order with payment status '${order.payment_status}'. Payment must be completed first`
+          `Cannot close order with payment status '${paymentStatus}'. Use served/ready status for pay-later orders and close after payment.`
         );
       }
 
@@ -65,8 +68,7 @@ export class CompleteOrder {
 
       const updatedOrder = await this.orderRepository.update(input.order_id, {
         status: 'completed',
-        completed_at: new Date(),
-      });
+      }, input.tenant_id);
 
       return {
         order: updatedOrder,

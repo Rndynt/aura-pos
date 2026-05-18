@@ -15,7 +15,7 @@
     "build": "turbo run build",
     "build:legacy": "vite build && esbuild apps/api/src/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
-    "check": "tsc",
+    "check": "turbo run type-check",
     "type-check": "turbo run type-check",
     "lint": "turbo run lint",
     "test": "turbo run test",
@@ -62,8 +62,8 @@
     "@types/express-session": "^1.18.2",
     "@types/passport": "^1.0.17",
     "@types/passport-local": "^1.0.38",
-    "@types/react": "^19.2.5",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.1.1",
     "class-variance-authority": "^0.7.1",
@@ -80,8 +80,8 @@
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
     "postgres": "^3.4.7",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "react-hook-form": "^7.66.1",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
@@ -91,5 +91,6 @@
     "ws": "^8.18.3",
     "zod": "^3.24.2",
     "zod-validation-error": "^5.0.0"
-  }
+  },
+  "packageManager": "pnpm@10.28.1"
 }

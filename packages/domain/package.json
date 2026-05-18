@@ -16,8 +16,14 @@
     "./tenants": "./tenants/index.ts",
     "./tenants/*": "./tenants/*.ts"
   },
-  "scripts": {},
-  "keywords": ["domain", "ddd", "pos"],
+  "scripts": {
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "domain",
+    "ddd",
+    "pos"
+  ],
   "author": "",
   "license": "ISC"
 }

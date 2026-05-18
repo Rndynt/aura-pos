@@ -55,18 +55,16 @@ export async function tenantMiddleware(
           return;
         }
       }
-      // If tenant not found in database, log warning but continue
-      // This allows API to work even if database is not fully set up
-      else if (process.env.NODE_ENV === 'development') {
-        console.warn(`[DEV] Tenant ${tenantId} not found in database - continuing anyway`);
+      // Tenant must exist in every environment so local/dev catches isolation bugs early.
+      else {
+        res.status(404).json({
+          error: 'Tenant not found',
+          message: `Tenant ${tenantId} does not exist`,
+        });
+        return;
       }
     } catch (dbError) {
-      // If database query fails, log error but continue in development
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('[DEV] Database validation failed - continuing anyway:', dbError);
-      } else {
-        throw dbError;
-      }
+      throw dbError;
     }
 
     // Inject tenant_id into request context

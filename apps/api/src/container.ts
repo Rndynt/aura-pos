@@ -35,6 +35,7 @@ import { CompleteOrder } from '@pos/application/orders/CompleteOrder';
 import { CancelOrder } from '@pos/application/orders/CancelOrder';
 import { ListOpenOrders } from '@pos/application/orders/ListOpenOrders';
 import { ListOrderHistory } from '@pos/application/orders/ListOrderHistory';
+import { TransitionOrderStatus } from '@pos/application/orders/TransitionOrderStatus';
 
 // Use Cases - Tenants
 import { GetActiveFeaturesForTenant } from '@pos/application/tenants/GetActiveFeaturesForTenant';
@@ -83,6 +84,7 @@ class Container {
   public readonly cancelOrder: CancelOrder;
   public readonly listOpenOrders: ListOpenOrders;
   public readonly listOrderHistory: ListOrderHistory;
+  public readonly transitionOrderStatus: TransitionOrderStatus;
 
   // Tenant Use Cases
   public readonly getActiveFeaturesForTenant: GetActiveFeaturesForTenant;
@@ -154,6 +156,10 @@ class Container {
       this.orderRepository as any,
       this.tenantRepository as any
     );
+    this.transitionOrderStatus = new TransitionOrderStatus(
+      this.orderRepository
+    );
+
     this.listOrderHistory = new ListOrderHistory(
       this.orderRepository as any,
       this.tenantRepository as any

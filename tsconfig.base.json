@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "ESNext",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -15,19 +19,54 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@pos/ui": ["./packages/ui/src"],
-      "@pos/ui/*": ["./packages/ui/src/*"],
-      "@pos/core": ["./packages/core"],
-      "@pos/core/*": ["./packages/core/*"],
-      "@pos/domain": ["./packages/domain"],
-      "@pos/domain/*": ["./packages/domain/*"],
-      "@pos/application": ["./packages/application"],
-      "@pos/application/*": ["./packages/application/*"],
-      "@pos/infrastructure": ["./packages/infrastructure"],
-      "@pos/infrastructure/*": ["./packages/infrastructure/*"],
-      "@pos/features": ["./packages/features"],
-      "@pos/features/*": ["./packages/features/*"]
+      "@pos/ui": [
+        "./packages/ui/src"
+      ],
+      "@pos/ui/*": [
+        "./packages/ui/src/*"
+      ],
+      "@pos/core": [
+        "./packages/core"
+      ],
+      "@pos/core/*": [
+        "./packages/core/*"
+      ],
+      "@pos/domain": [
+        "./packages/domain"
+      ],
+      "@pos/domain/*": [
+        "./packages/domain/*"
+      ],
+      "@pos/application": [
+        "./packages/application"
+      ],
+      "@pos/application/*": [
+        "./packages/application/*"
+      ],
+      "@pos/infrastructure": [
+        "./packages/infrastructure"
+      ],
+      "@pos/infrastructure/*": [
+        "./packages/infrastructure/*"
+      ],
+      "@pos/features": [
+        "./packages/features"
+      ],
+      "@pos/features/*": [
+        "./packages/features/*"
+      ],
+      "@shared": [
+        "./shared"
+      ],
+      "@shared/*": [
+        "./shared/*"
+      ]
     }
   },
-  "exclude": ["node_modules", "dist", "build", ".next"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    ".next"
+  ]
 }

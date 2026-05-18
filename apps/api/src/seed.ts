@@ -1098,10 +1098,10 @@ async function seedOpenOrders(tenantId: string) {
         paymentStatus: 'unpaid',
         tableNumber: queueOrder.tableNumber,
         customerName: queueOrder.customerName,
-        subtotal,
-        taxAmount: tax,
-        serviceCharge,
-        total,
+        subtotal: subtotal.toString(),
+        taxAmount: tax.toString(),
+        serviceCharge: serviceCharge.toString(),
+        total: total.toString(),
         notes: null,
       }).returning();
 

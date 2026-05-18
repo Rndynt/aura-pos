@@ -17,8 +17,8 @@ export interface CancelOrderOutput {
 }
 
 export interface IOrderRepository {
-  findById(orderId: string): Promise<Order | null>;
-  update(orderId: string, updates: Partial<Order>): Promise<Order>;
+  findById(orderId: string, tenantId: string): Promise<any | null>;
+  update(orderId: string, updates: Record<string, any>, tenantId: string): Promise<any>;
 }
 
 export interface ITenantRepository {
@@ -43,13 +43,13 @@ export class CancelOrder {
       }
 
       // Validate order exists
-      const order = await this.orderRepository.findById(input.order_id);
+      const order = await this.orderRepository.findById(input.order_id, input.tenant_id);
       if (!order) {
         throw new Error('Order not found');
       }
 
       // Validate order belongs to tenant
-      if (order.tenant_id !== input.tenant_id) {
+      if ((order.tenant_id || order.tenantId) !== input.tenant_id) {
         throw new Error('Order does not belong to the specified tenant');
       }
 
@@ -65,8 +65,9 @@ export class CancelOrder {
       let updatedNotes = order.notes || '';
       
       // Add refund warning if order has payments
-      if (order.paid_amount > 0) {
-        const refundWarning = `[WARNING] Order has payments totaling Rp ${order.paid_amount}. Refund may be required.`;
+      const paidAmount = Number(order.paid_amount ?? order.paidAmount ?? 0);
+      if (paidAmount > 0) {
+        const refundWarning = `[WARNING] Order has payments totaling Rp ${paidAmount}. Refund may be required.`;
         updatedNotes = updatedNotes 
           ? `${updatedNotes}\n${refundWarning}`
           : refundWarning;
@@ -84,7 +85,7 @@ export class CancelOrder {
       const updatedOrder = await this.orderRepository.update(input.order_id, {
         status: 'cancelled',
         notes: updatedNotes || undefined,
-      });
+      }, input.tenant_id);
 
       return {
         order: updatedOrder,

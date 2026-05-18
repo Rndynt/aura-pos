@@ -7,6 +7,8 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
+import { and, eq } from 'drizzle-orm';
+import { orderPayments, orders } from '@shared/schema';
 
 /**
  * POST /api/orders
@@ -152,7 +154,7 @@ export const createKitchenTicket = asyncHandler(async (req: Request, res: Respon
 export const listOrders = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.tenantId!;
 
-  const orderStatusSchema = z.enum(['draft', 'confirmed', 'completed', 'cancelled']);
+  const orderStatusSchema = z.enum(['draft', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled']);
 
   // Validate query params
   const querySchema = z.object({
@@ -379,12 +381,16 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
 
   const { status } = parsed.data;
 
-  const updatedOrder = await container.orderRepository.update(id, { status }, tenantId);
+  const result = await container.transitionOrderStatus.execute({
+    order_id: id,
+    tenant_id: tenantId,
+    status,
+  });
 
   res.status(200).json({
     success: true,
     data: {
-      order: updatedOrder,
+      order: result.order,
     },
   });
 });
@@ -567,6 +573,7 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
     payment_method: z.enum(['cash', 'card', 'ewallet', 'other']),
     transaction_ref: z.string().optional(),
     payment_notes: z.string().optional(),
+    idempotency_key: z.string().min(8).max(128).optional(),
   });
 
   const parsed = bodySchema.safeParse(req.body);
@@ -574,9 +581,42 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
-  // Execute atomic create + pay transaction
+  // Idempotency support: if key already used for this tenant, return prior result
+  const idempotencyKey = parsed.data.idempotency_key?.trim();
+
+  if (idempotencyKey) {
+    const existing = await container.db
+      .select({ orderId: orderPayments.orderId })
+      .from(orderPayments)
+      .innerJoin(orders, eq(orderPayments.orderId, orders.id))
+      .where(
+        and(
+          eq(orders.tenantId, tenantId),
+          eq(orderPayments.referenceNumber, idempotencyKey)
+        )
+      )
+      .limit(1);
+
+    if (existing[0]?.orderId) {
+      const existingOrder = await container.orderRepository.findById(existing[0].orderId, tenantId);
+      if (existingOrder) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            order: existingOrder,
+            pricing: null,
+            payment: null,
+            idempotent_replay: true,
+          },
+        });
+      }
+    }
+  }
+
+  // Execute create + pay flow with compensating rollback to avoid orphan orders
+  let createdOrderId: string | null = null;
+
   try {
-    // Create order
     const orderResult = await container.createOrder.execute({
       tenant_id: tenantId,
       items: parsed.data.items,
@@ -585,19 +625,20 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
       table_number: parsed.data.table_number,
       tax_rate: parsed.data.tax_rate,
       service_charge_rate: parsed.data.service_charge_rate,
+      idempotency_key: idempotencyKey,
     });
 
-    // Record payment for the created order
+    createdOrderId = orderResult.order.id;
+
     const paymentResult = await container.recordPayment.execute({
       order_id: orderResult.order.id,
       tenant_id: tenantId,
       amount: parsed.data.amount,
       payment_method: parsed.data.payment_method,
-      transaction_ref: parsed.data.transaction_ref,
+      transaction_ref: parsed.data.transaction_ref ?? idempotencyKey,
       notes: parsed.data.payment_notes,
     });
 
-    // Return both order and payment data
     res.status(201).json({
       success: true,
       data: {
@@ -607,8 +648,16 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
       },
     });
   } catch (error) {
-    // If payment fails, the order is already created - app should handle cleanup
-    // In a real system with DB transactions, this would roll back automatically
+    if (createdOrderId) {
+      try {
+        await container.db
+          .delete(orders)
+          .where(and(eq(orders.id, createdOrderId), eq(orders.tenantId, tenantId)));
+      } catch (cleanupError) {
+        console.error('Create-and-pay rollback cleanup failed:', cleanupError);
+      }
+    }
+
     throw error;
   }
 });

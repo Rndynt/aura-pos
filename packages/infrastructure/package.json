@@ -17,11 +17,17 @@
     "./seeders": "./seeders/index.ts",
     "./seeders/*": "./seeders/*.ts"
   },
-  "scripts": {},
-  "keywords": ["infrastructure", "repositories", "pos"],
+  "scripts": {
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "infrastructure",
+    "repositories",
+    "pos"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@pos/domain": "*"
+    "@pos/domain": "workspace:*"
   }
 }

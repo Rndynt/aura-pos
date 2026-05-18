@@ -4,5 +4,8 @@
   "private": true,
   "main": "./index.ts",
   "types": "./index.ts",
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  }
 }

@@ -76,3 +76,4 @@ export type {
   IOrderRepository as IOrderRepositoryForListOrderHistory,
   ITenantRepository as ITenantRepositoryForListOrderHistory
 } from './ListOrderHistory';
+export * from './TransitionOrderStatus';
