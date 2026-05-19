@@ -12,7 +12,7 @@ if (!DATABASE_URL) {
   throw new Error('[auth] DATABASE_URL is not set');
 }
 const authSql = postgres(DATABASE_URL);
-const authDb = drizzle(authSql, { schema: authSchema });
+export const authDb = drizzle(authSql, { schema: authSchema });
 
 export const auth = betterAuth({
   database: drizzleAdapter(authDb, {

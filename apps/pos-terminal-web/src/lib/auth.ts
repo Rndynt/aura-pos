@@ -1,3 +1,5 @@
+import { setActiveTenantId } from './tenant';
+
 export type AuthResult = {
   ok: boolean;
   message?: string;
@@ -23,6 +25,23 @@ async function postAuth(path: string, payload: Record<string, unknown>): Promise
   return { ok: true };
 }
 
+/**
+ * Setelah login berhasil, fetch tenantId dari session dan set sebagai active tenant.
+ */
+async function applyTenantFromSession(): Promise<void> {
+  try {
+    const res = await fetch('/api/auth/me', { credentials: 'include' });
+    if (!res.ok) return;
+    const body = await res.json();
+    const tenantId: string | null = body?.data?.tenantId ?? null;
+    if (tenantId) {
+      setActiveTenantId(tenantId);
+    }
+  } catch {
+    // non-fatal — user stays on demo-tenant fallback
+  }
+}
+
 export async function registerWithEmailAndUsername(input: {
   name: string;
   email: string;
@@ -36,15 +55,26 @@ export async function loginWithEmailOrUsername(input: {
   identifier: string;
   password: string;
 }): Promise<AuthResult> {
-  const maybeUsername = await postAuth('sign-in/username', {
+  // Coba username dulu
+  const byUsername = await postAuth('sign-in/username', {
     username: input.identifier,
     password: input.password,
   });
 
-  if (maybeUsername.ok) return maybeUsername;
+  if (byUsername.ok) {
+    await applyTenantFromSession();
+    return byUsername;
+  }
 
-  return postAuth('sign-in/email', {
+  // Fallback ke email
+  const byEmail = await postAuth('sign-in/email', {
     email: input.identifier,
     password: input.password,
   });
+
+  if (byEmail.ok) {
+    await applyTenantFromSession();
+  }
+
+  return byEmail;
 }

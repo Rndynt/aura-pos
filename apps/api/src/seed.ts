@@ -83,7 +83,7 @@ async function seedOrderTypes() {
 
 // ─── OWNER ACCOUNTS ───────────────────────────────────────────────────────────
 async function createOwnerAccount(opts: {
-  name: string; email: string; username: string; password: string;
+  name: string; email: string; username: string; password: string; tenantId: string;
 }) {
   console.log(`   👤 Creating owner: ${opts.username} <${opts.email}>`);
   try {
@@ -95,7 +95,11 @@ async function createOwnerAccount(opts: {
         password: opts.password,
       },
     });
-    console.log(`   ✅ Account created: ${opts.username}`);
+    // Link user to their tenant via direct DB update
+    if (res?.user?.id) {
+      await db.execute(sql`UPDATE "user" SET tenant_id = ${opts.tenantId} WHERE id = ${res.user.id}`);
+      console.log(`   ✅ Account created & linked: ${opts.username} → tenant ${opts.tenantId}`);
+    }
     return res;
   } catch (err: any) {
     console.log(`   ⚠️  Could not create account (${err?.message ?? err}) — skipping`);
@@ -112,17 +116,7 @@ async function seedThamada(createdOrderTypes: any[]) {
   console.log('☕  TENANT 1 — Thamada Coffee Shop (Jakarta)');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-  // Owner account
-  console.log('👤 Owner account...');
-  await createOwnerAccount({
-    name: 'Ahmad Thamada',
-    email: 'ahmad@thamadacoffee.id',
-    username: 'thamada_owner',
-    password: 'Thamada2024!',
-  });
-  console.log('');
-
-  // Tenant
+  // Tenant dulu, baru owner account agar tenantId sudah tersedia
   const [tenant] = await db.insert(tenants).values({
     id: 'thamada-coffee',
     name: 'Thamada Coffee Shop',
@@ -140,6 +134,17 @@ async function seedThamada(createdOrderTypes: any[]) {
     isActive: true,
   } as InsertTenant).returning();
   console.log(`✅ Tenant: ${tenant.name} (${tenant.id})\n`);
+
+  // Owner account — dibuat setelah tenant agar bisa langsung di-link
+  console.log('👤 Owner account...');
+  await createOwnerAccount({
+    name: 'Ahmad Thamada',
+    email: 'ahmad@thamadacoffee.id',
+    username: 'thamada_owner',
+    password: 'Thamada2024!',
+    tenantId: tenant.id,
+  });
+  console.log('');
 
   // Order types
   const tenantOTs = createdOrderTypes.map(ot => ({ tenantId: tenant.id, orderTypeId: ot.id, isEnabled: true }));
@@ -345,17 +350,7 @@ async function seedNusantara(createdOrderTypes: any[]) {
   console.log('🏮  TENANT 2 — Warung Kopi Nusantara (Bandung)');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-  // Owner account
-  console.log('👤 Owner account...');
-  await createOwnerAccount({
-    name: 'Dewi Rahayu',
-    email: 'dewi@kopinusantara.id',
-    username: 'nusantara_owner',
-    password: 'Nusantara2024!',
-  });
-  console.log('');
-
-  // Tenant
+  // Tenant dulu, baru owner account
   const [tenant] = await db.insert(tenants).values({
     id: 'kopi-nusantara',
     name: 'Warung Kopi Nusantara',
@@ -373,6 +368,17 @@ async function seedNusantara(createdOrderTypes: any[]) {
     isActive: true,
   } as InsertTenant).returning();
   console.log(`✅ Tenant: ${tenant.name} (${tenant.id})\n`);
+
+  // Owner account — dibuat setelah tenant agar bisa langsung di-link
+  console.log('👤 Owner account...');
+  await createOwnerAccount({
+    name: 'Dewi Rahayu',
+    email: 'dewi@kopinusantara.id',
+    username: 'nusantara_owner',
+    password: 'Nusantara2024!',
+    tenantId: tenant.id,
+  });
+  console.log('');
 
   // Only Dine In + Take Away (no delivery — traditional warung)
   const allowedCodes = ['DINE_IN', 'TAKE_AWAY'];

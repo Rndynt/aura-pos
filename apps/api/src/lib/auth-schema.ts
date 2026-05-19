@@ -14,6 +14,8 @@ export const user = pgTable('user', {
   banned: boolean('banned'),
   banReason: text('ban_reason'),
   banExpires: timestamp('ban_expires'),
+  // Link user to their tenant
+  tenantId: text('tenant_id'),
 });
 
 export const session = pgTable('session', {
