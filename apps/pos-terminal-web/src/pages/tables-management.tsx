@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useTables, useOpenOrders } from "@/lib/api/tableHooks";
 import { useCart } from "@/hooks/useCart";
+import { getActiveTenantId } from "@/lib/tenant";
 import { Button } from "@/components/ui/button";
 import { 
   Search, 
@@ -89,7 +90,7 @@ export default function TablesManagementPage() {
     try {
       const response = await fetch(`/api/orders/${order.id}`, {
         headers: {
-          "x-tenant-id": localStorage.getItem("tenantId") || "demo-tenant",
+          "x-tenant-id": getActiveTenantId(),
         },
       });
       if (!response.ok) throw new Error("Failed to fetch order details");

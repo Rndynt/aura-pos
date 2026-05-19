@@ -76,7 +76,7 @@ export default function POSPage() {
       
       const loadOrderIntoCart = async () => {
         try {
-          const tenantId = localStorage.getItem("tenantId") || "demo-tenant";
+          const tenantId = getActiveTenantId();
           const response = await fetch(`/api/orders/${continueOrderId}`, {
             headers: {
               "x-tenant-id": tenantId,

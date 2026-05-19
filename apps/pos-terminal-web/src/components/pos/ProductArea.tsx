@@ -112,13 +112,24 @@ export function ProductArea({
       {/* Product Grid */}
       <div className="flex-1 overflow-y-auto px-4 md:px-8 pb-32 md:pb-8">
         {error ? (
-          <div className="py-16 text-center">
-            <p className="text-red-600 mb-2" data-testid="text-error">
-              Failed to load products
+          <div className="flex flex-col items-center justify-center py-20 px-6 text-center" data-testid="text-error">
+            <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4">
+              <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+            </div>
+            <p className="font-semibold text-slate-700 mb-1">Gagal memuat produk</p>
+            <p className="text-sm text-slate-400 max-w-xs">
+              {error.message?.includes("Tenant")
+                ? "Sesi login Anda tidak valid. Silakan keluar lalu masuk kembali."
+                : "Terjadi kesalahan saat memuat menu. Periksa koneksi internet Anda."}
             </p>
-            <p className="text-sm text-slate-500">
-              {error.message}
-            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-5 px-5 py-2 bg-slate-800 text-white text-sm font-medium rounded-xl hover:bg-slate-700 transition-colors"
+            >
+              Coba Lagi
+            </button>
           </div>
         ) : isLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -127,9 +138,15 @@ export function ProductArea({
             ))}
           </div>
         ) : filteredProducts.length === 0 ? (
-          <div className="py-16 text-center">
-            <p className="text-slate-400" data-testid="text-no-products">
-              No products found
+          <div className="flex flex-col items-center justify-center py-20 px-6 text-center" data-testid="text-no-products">
+            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+              <svg className="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+            </div>
+            <p className="font-semibold text-slate-600 mb-1">Produk tidak ditemukan</p>
+            <p className="text-sm text-slate-400">
+              {searchQuery ? `Tidak ada produk yang cocok dengan "${searchQuery}"` : "Belum ada produk di kategori ini"}
             </p>
           </div>
         ) : (

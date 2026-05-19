@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { 
   BarChart3, 
@@ -11,10 +12,56 @@ import {
 } from "lucide-react";
 import { UnifiedBottomNav } from "@/components/navigation/UnifiedBottomNav";
 import { useToast } from "@/hooks/use-toast";
+import { useTenant } from "@/context/TenantContext";
+import { useTenantProfile } from "@/hooks/api/useTenantProfile";
+import { Skeleton } from "@/components/ui/skeleton";
+
+type CurrentUser = {
+  id: string;
+  name: string;
+  email: string;
+  username?: string;
+  role?: string;
+};
+
+function useCurrentUser() {
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (body?.success && body?.data) setUser(body.data);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return { user, loading };
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
 
 export default function HomePage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { tenantId } = useTenant();
+  const { data: profile, isLoading: profileLoading } = useTenantProfile(tenantId);
+  const { user, loading: userLoading } = useCurrentUser();
+
+  const storeName = profile?.tenant?.name ?? "—";
+  const storeInitials = storeName !== "—" ? getInitials(storeName) : "..";
+  const userRole = user?.role
+    ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
+    : "Owner";
 
   const MENU_ITEMS = [
     {
@@ -22,36 +69,42 @@ export default function HomePage() {
       title: 'Dashboard',
       icon: BarChart3,
       color: 'bg-blue-100 text-blue-600',
+      subtitle: 'Lihat ringkasan',
     },
     {
       id: 'products',
       title: 'Produk',
       icon: Box,
       color: 'bg-orange-100 text-orange-600',
+      subtitle: 'Kelola menu produk',
     },
     {
       id: 'stock',
       title: 'Stok',
       icon: Package,
       color: 'bg-purple-100 text-purple-600',
+      subtitle: 'Kelola stok barang',
     },
     {
       id: 'employees',
       title: 'Karyawan',
       icon: Users2,
       color: 'bg-green-100 text-green-600',
+      subtitle: 'Kelola karyawan',
     },
     {
       id: 'reports',
       title: 'Laporan',
       icon: FileText,
       color: 'bg-pink-100 text-pink-600',
+      subtitle: 'Lihat laporan penjualan',
     },
     {
       id: 'store',
       title: 'Profil Toko',
       icon: Store,
       color: 'bg-slate-100 text-slate-600',
+      subtitle: 'Pengaturan toko',
     },
   ];
 
@@ -78,12 +131,24 @@ export default function HomePage() {
     });
   };
 
-  const handleLogout = () => {
-    toast({
-      title: "Logout",
-      description: "Fungsi logout akan segera ditambahkan",
-    });
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/sign-out", {
+        method: "POST",
+        credentials: "include",
+      });
+      localStorage.clear();
+      setLocation("/login");
+    } catch {
+      toast({
+        title: "Gagal logout",
+        description: "Terjadi kesalahan saat keluar. Coba lagi.",
+        variant: "destructive",
+      });
+    }
   };
+
+  const isLoading = profileLoading || userLoading;
 
   return (
     <div className="flex-1 h-full bg-slate-50 overflow-y-auto pb-20">
@@ -99,21 +164,34 @@ export default function HomePage() {
       {/* Profile Card */}
       <div className="p-4">
         <div className="bg-slate-800 text-white p-5 rounded-2xl flex items-center gap-4 shadow-lg shadow-slate-300" data-testid="card-profile">
-          <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-lg font-bold" data-testid="text-avatar">
-            AP
-          </div>
-          <div className="flex-1">
-            <h3 className="font-bold text-lg" data-testid="text-store-name">
-              Aura Pos Resto
-            </h3>
-            <p className="text-xs text-slate-300" data-testid="text-branch-info">
-              Cabang Pusat • Owner
-            </p>
+          {isLoading ? (
+            <Skeleton className="w-12 h-12 rounded-full bg-white/20" />
+          ) : (
+            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0" data-testid="text-avatar">
+              {storeInitials}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            {isLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-5 w-36 bg-white/20 rounded" />
+                <Skeleton className="h-3 w-24 bg-white/10 rounded" />
+              </div>
+            ) : (
+              <>
+                <h3 className="font-bold text-lg truncate" data-testid="text-store-name">
+                  {storeName}
+                </h3>
+                <p className="text-xs text-slate-300" data-testid="text-branch-info">
+                  {user?.name ? `${user.name} • ` : ""}{userRole}
+                </p>
+              </>
+            )}
           </div>
           <button 
-            className="p-2 bg-white/10 rounded-lg hover:bg-white/20"
+            className="p-2 bg-white/10 rounded-lg hover:bg-white/20 flex-shrink-0"
             data-testid="button-edit-profile"
-            onClick={() => toast({ title: "Edit Profile", description: "Fitur edit profile akan segera ditambahkan" })}
+            onClick={() => setLocation("/store-profile")}
           >
             <Edit2 size={16} />
           </button>
@@ -139,7 +217,7 @@ export default function HomePage() {
                 {item.title}
               </h4>
               <p className="text-[10px] text-slate-400" data-testid={`text-menu-subtitle-${item.id}`}>
-                Kelola {item.title.toLowerCase()}
+                {item.subtitle}
               </p>
             </div>
           </button>

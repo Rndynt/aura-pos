@@ -1,8 +1,26 @@
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { resolveInitialTenantId, setActiveTenantId } from "@/lib/tenant";
 import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import type { BusinessType } from "@pos/core";
 import type { TenantModuleConfig } from "@pos/domain/tenants/types";
+
+const DEMO_TENANT_ID = "demo-tenant";
+
+/**
+ * On initial load (or page refresh), resolve the tenantId from the active
+ * session. This handles the case where the user is already logged in but the
+ * localStorage still holds the "demo-tenant" fallback.
+ */
+async function syncTenantFromSession(): Promise<string | null> {
+  try {
+    const res = await fetch("/api/auth/me", { credentials: "include" });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return body?.data?.tenantId ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export type TenantContextValue = {
   tenantId: string;
@@ -22,6 +40,18 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const setTenantId = useCallback((nextTenantId: string) => {
     updateTenantId(nextTenantId);
     setActiveTenantId(nextTenantId);
+  }, []);
+
+  // On every page load, if we're still on the demo fallback, try to resolve
+  // the real tenant from the active session cookie.
+  useEffect(() => {
+    if (tenantId !== DEMO_TENANT_ID) return;
+    syncTenantFromSession().then((sessionTenantId) => {
+      if (sessionTenantId && sessionTenantId !== tenantId) {
+        setTenantId(sessionTenantId);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const { data: profile, isLoading, error } = useTenantProfile(tenantId);
