@@ -136,9 +136,8 @@ export function MobileCartDrawer({
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 bg-black/40 z-[55]" />
           <Drawer.Content
-            className={`fixed top-0 bottom-0 right-0 z-[60] bg-white border-l border-slate-200 flex flex-col shadow-2xl transition-transform duration-300 w-full h-[95vh] mt-[5vh] ${
-              open ? 'translate-y-0' : 'translate-y-full'
-            } rounded-t-[2rem]`}
+            className={`fixed top-0 bottom-0 right-0 z-[60] bg-white border-l border-slate-200 flex flex-col shadow-2xl transition-transform duration-300 w-full rounded-t-[2rem]`}
+            style={{ height: '95dvh', marginTop: '5dvh' }}
             data-testid="drawer-mobile-cart"
           >
           {/* Header */}
@@ -286,16 +285,14 @@ export function MobileCartDrawer({
 
           {/* Footer with totals and actions */}
           {items.length > 0 && (
-            <div className="fixed bottom-0 left-0 right-0 z-30 w-full">
-              {/* Expandable Summary Section - Slides UP from bottom */}
+            <div className="flex-shrink-0 relative z-30 w-full">
+              {/* Expandable Summary Section - Slides in above footer */}
               <div
-                className={`absolute bottom-full left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 p-5 rounded-t-2xl shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] transition-all duration-300 ease-out -z-10 ${
-                  isSummaryExpanded
-                    ? 'translate-y-4 opacity-100 visible pb-6'
-                    : 'translate-y-full opacity-0 invisible'
+                className={`overflow-hidden transition-all duration-300 ease-out bg-white/95 backdrop-blur-md border-t border-slate-200 ${
+                  isSummaryExpanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'
                 }`}
               >
-                <div className="space-y-3 pb-2">
+                <div className="space-y-3 px-5 py-4">
                   <div className="flex justify-between text-sm text-slate-500">
                     <span>Subtotal</span>
                     <span data-testid="text-subtotal">{formatPrice(subtotal)}</span>
@@ -312,10 +309,11 @@ export function MobileCartDrawer({
                   )}
                 </div>
               </div>
-              
+
               {/* Main Footer - ALWAYS VISIBLE */}
-              <div 
-                className="bg-white border-t border-slate-200 p-5 pb-6 shadow-[0_-5px_25px_rgba(0,0,0,0.1)] relative z-20"
+              <div
+                className="bg-white border-t border-slate-200 p-5 shadow-[0_-5px_25px_rgba(0,0,0,0.1)] relative"
+                style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 1.25rem))' }}
               >
                 {/* Toggle Button */}
                 <div
@@ -330,7 +328,7 @@ export function MobileCartDrawer({
                     }`}
                   />
                 </div>
-                
+
                 {/* Total Section */}
                 <div className="flex items-center justify-between mb-4">
                   <div
@@ -350,10 +348,10 @@ export function MobileCartDrawer({
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Action Buttons - Always 2 columns: Simpan + Bayar */}
                 <div className='grid grid-cols-2 gap-3'>
-                  {/* Save Draft Button - Always visible, NO kitchen dependency */}
+                  {/* Save Draft Button */}
                   <button
                     onClick={onSaveDraft}
                     disabled={isProcessing || items.length === 0}
@@ -368,7 +366,7 @@ export function MobileCartDrawer({
                       Simpan Draft
                     </span>
                   </button>
-                  {/* Pay Button - Always visible */}
+                  {/* Pay Button */}
                   <button
                     onClick={onCharge}
                     disabled={isProcessing || items.length === 0}
