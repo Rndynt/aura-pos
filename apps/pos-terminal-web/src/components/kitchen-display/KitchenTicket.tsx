@@ -1,4 +1,4 @@
-import { Clock, PlayCircle, CheckCircle, CheckSquare, Utensils } from "lucide-react";
+import { Clock, PlayCircle, CheckCircle, Utensils, ConciergeBell } from "lucide-react";
 import type { Order } from "@pos/domain/orders/types";
 
 interface KitchenTicketProps {
@@ -28,6 +28,13 @@ const STATUS_CONFIG = {
     badge: "bg-green-100 text-green-700 border-green-200",
     label: "Siap Saji",
     dot: "bg-green-500",
+  },
+  served: {
+    border: "border-purple-400",
+    headerBg: "bg-purple-400",
+    badge: "bg-purple-100 text-purple-700 border-purple-200",
+    label: "Disajikan",
+    dot: "bg-purple-400",
   },
 };
 
@@ -60,13 +67,15 @@ export function KitchenTicket({
 }: KitchenTicketProps) {
   const cfg = STATUS_CONFIG[order.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.confirmed;
   const elapsedMins = getElapsedMinutes(order.created_at);
-  const isUrgent = elapsedMins >= 15 && order.status !== "ready";
+  const isUrgent = elapsedMins >= 15 && order.status !== "ready" && order.status !== "served";
 
+  // Fulfillment progression — kitchen hanya sampai 'served'.
+  // 'completed' adalah financial close milik kasir, BUKAN kitchen.
   const handleNext = () => {
     const next: Record<string, string> = {
       confirmed: "preparing",
       preparing: "ready",
-      ready: "completed",
+      ready:     "served",   // ✅ kitchen selesai saat makanan disajikan
     };
     const nextStatus = next[order.status];
     if (nextStatus) onUpdateStatus(order.id, nextStatus);
@@ -195,11 +204,16 @@ export function KitchenTicket({
           <button
             onClick={handleNext}
             disabled={isLoading}
-            className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-800 active:bg-slate-900 disabled:opacity-60 text-white font-bold text-sm h-10 rounded-lg transition-colors"
-            data-testid={`button-complete-${order.id}`}
+            className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 disabled:opacity-60 text-white font-bold text-sm h-10 rounded-lg transition-colors"
+            data-testid={`button-serve-${order.id}`}
           >
-            <CheckSquare size={16} /> Selesai
+            <ConciergeBell size={16} /> Sajikan ke Meja
           </button>
+        )}
+        {order.status === "served" && (
+          <div className="w-full flex items-center justify-center gap-2 bg-purple-50 text-purple-600 border border-purple-200 font-semibold text-sm h-10 rounded-lg">
+            <ConciergeBell size={14} /> Sudah Disajikan
+          </div>
         )}
       </div>
     </div>

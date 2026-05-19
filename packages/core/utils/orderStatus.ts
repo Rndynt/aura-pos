@@ -1,133 +1,126 @@
 /**
  * Order Status Helper Utilities
- * 
- * Provides type-safe helpers for determining order state and available actions
- * Used throughout the application to enforce proper state transitions
+ *
+ * Provides type-safe helpers for determining order state and available actions.
+ * Two-dimension lifecycle model:
+ *   Fulfillment: draft → confirmed → preparing → ready → served → completed | cancelled
+ *   Payment:     unpaid → partial → paid
+ *
+ * `served`    = makanan sudah disajikan ke meja; tagihan masih bisa belum dibayar (dine-in pay-later)
+ * `completed` = financial close; hanya boleh setelah payment_status = 'paid'
  */
 
-export type OrderStatus = "draft" | "confirmed" | "preparing" | "ready" | "completed" | "cancelled";
+export type OrderStatus =
+  | "draft"
+  | "confirmed"
+  | "preparing"
+  | "ready"
+  | "served"
+  | "completed"
+  | "cancelled";
+
 export type PaymentStatus = "unpaid" | "partial" | "paid";
 
-/**
- * Check if order is in draft state (not yet confirmed)
- */
 export function isDraft(status: OrderStatus): boolean {
   return status === "draft";
 }
 
 /**
- * Check if order is open/active (confirmed but not completed)
+ * Order masih aktif secara operasional — belum closed (completed/cancelled).
+ * Termasuk `served` karena tagihan bisa masih open.
  */
 export function isOpen(status: OrderStatus): boolean {
-  return ["confirmed", "preparing", "ready"].includes(status);
+  return ["confirmed", "preparing", "ready", "served"].includes(status);
 }
 
 /**
- * Check if order is currently in kitchen (preparing or ready)
+ * Order sedang di kitchen (preparing atau ready).
  */
 export function isInProgress(status: OrderStatus): boolean {
   return ["preparing", "ready"].includes(status);
 }
 
 /**
- * Check if order is completed (lifecycle finished)
+ * Makanan sudah disajikan ke meja (dine-in pay-later).
+ * Kitchen selesai; cashier masih bisa tagih pembayaran.
+ */
+export function isServed(status: OrderStatus): boolean {
+  return status === "served";
+}
+
+/**
+ * Financial close — order selesai secara operasional DAN finansial.
  */
 export function isCompleted(status: OrderStatus): boolean {
   return status === "completed";
 }
 
-/**
- * Check if order is cancelled
- */
 export function isCancelled(status: OrderStatus): boolean {
   return status === "cancelled";
 }
 
-/**
- * Check if order can be sent to kitchen
- * (Only CONFIRMED orders should be sent to kitchen)
- */
 export function canSendToKitchen(status: OrderStatus): boolean {
   return status === "confirmed";
 }
 
 /**
- * Check if payment can be recorded for this order
- * (Any open/active order can receive payment)
+ * Pembayaran bisa direkam selama order belum closed (completed/cancelled).
+ * `served + unpaid` adalah valid untuk dine-in pay-later.
  */
 export function canRecordPayment(status: OrderStatus, paymentStatus: PaymentStatus): boolean {
-  // Cannot record payment on completed orders (already closed)
-  // Can record on any other state
   return !isCompleted(status) && !isCancelled(status);
 }
 
-/**
- * Check if order is fully paid
- */
 export function isPaid(paymentStatus: PaymentStatus): boolean {
   return paymentStatus === "paid";
 }
 
-/**
- * Check if order has partial payment
- */
 export function isPartiallyPaid(paymentStatus: PaymentStatus): boolean {
   return paymentStatus === "partial";
 }
 
-/**
- * Check if order is unpaid
- */
 export function isUnpaid(paymentStatus: PaymentStatus): boolean {
   return paymentStatus === "unpaid";
 }
 
 /**
- * Check if order can be completed
- * (Only allowed when order is PAID and in kitchen or ready state)
+ * Financial close hanya boleh dari status operasional yang sudah selesai fulfillment:
+ * served, ready, atau preparing (kasir bisa skip served jika langsung bayar).
+ * Harus sudah paid.
  */
-export function canComplete(
-  status: OrderStatus,
-  paymentStatus: PaymentStatus
-): boolean {
-  // Must be paid AND in a state that can be completed
+export function canComplete(status: OrderStatus, paymentStatus: PaymentStatus): boolean {
   if (!isPaid(paymentStatus)) return false;
-  
-  // Can complete from preparing, ready, or already prepared
-  return ["preparing", "ready", "completed"].includes(status);
+  return ["preparing", "ready", "served"].includes(status);
 }
 
 /**
- * Get human-readable order status label
+ * Label bahasa Indonesia untuk order status.
  */
 export function getStatusLabel(status: OrderStatus): string {
   const labels: Record<OrderStatus, string> = {
-    draft: "Draft",
-    confirmed: "Confirmed",
-    preparing: "Preparing",
-    ready: "Ready",
-    completed: "Completed",
-    cancelled: "Cancelled",
+    draft:     "Draft",
+    confirmed: "Dikonfirmasi",
+    preparing: "Diproses",
+    ready:     "Siap Saji",
+    served:    "Sudah Disajikan",
+    completed: "Selesai",
+    cancelled: "Dibatalkan",
   };
-  return labels[status] || status;
+  return labels[status] ?? status;
 }
 
-/**
- * Get human-readable payment status label
- */
 export function getPaymentStatusLabel(status: PaymentStatus): string {
   const labels: Record<PaymentStatus, string> = {
-    unpaid: "Unpaid",
-    partial: "Partially Paid",
-    paid: "Paid",
+    unpaid:  "Belum Bayar",
+    partial: "Sebagian",
+    paid:    "Lunas",
   };
-  return labels[status] || status;
+  return labels[status] ?? status;
 }
 
-/**
- * Get badge color for order status (for UI)
- */
-export function getStatusBadgeColor(status: OrderStatus): "default" | "secondary" | "destructive" | "outline" {
+export function getStatusBadgeColor(
+  status: OrderStatus
+): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
     case "draft":
       return "secondary";
@@ -136,6 +129,8 @@ export function getStatusBadgeColor(status: OrderStatus): "default" | "secondary
     case "preparing":
     case "ready":
       return "default";
+    case "served":
+      return "outline";
     case "completed":
       return "secondary";
     case "cancelled":
@@ -145,10 +140,9 @@ export function getStatusBadgeColor(status: OrderStatus): "default" | "secondary
   }
 }
 
-/**
- * Get badge color for payment status (for UI)
- */
-export function getPaymentBadgeColor(status: PaymentStatus): "default" | "secondary" | "destructive" | "outline" {
+export function getPaymentBadgeColor(
+  status: PaymentStatus
+): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
     case "unpaid":
       return "destructive";
@@ -162,27 +156,10 @@ export function getPaymentBadgeColor(status: PaymentStatus): "default" | "second
 }
 
 /**
- * Determine if user needs to take action
- * Returns true if order is incomplete and action is needed
+ * Apakah order perlu perhatian kasir?
+ * Served + unpaid = perlu ditagih. Preparing/ready + unpaid = perlu diikuti.
  */
-export function needsAttention(
-  status: OrderStatus,
-  paymentStatus: PaymentStatus
-): boolean {
-  // Draft orders don't need attention (customer still deciding)
-  if (isDraft(status)) return false;
-  
-  // Completed orders don't need attention
-  if (isCompleted(status)) return false;
-  
-  // Cancelled orders don't need attention
-  if (isCancelled(status)) return false;
-  
-  // Open orders that are unpaid need attention
-  if (isOpen(status) && !isPaid(paymentStatus)) return true;
-  
-  // In-progress orders without full payment need attention
-  if (isInProgress(status) && !isPaid(paymentStatus)) return true;
-  
-  return false;
+export function needsAttention(status: OrderStatus, paymentStatus: PaymentStatus): boolean {
+  if (isDraft(status) || isCompleted(status) || isCancelled(status)) return false;
+  return !isPaid(paymentStatus);
 }

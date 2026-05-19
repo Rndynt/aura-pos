@@ -429,11 +429,18 @@ Karena itu rekomendasi teknisnya:
 
 **Checklist perbaikan:**
 
-- [ ] Jadikan enum status satu sumber kebenaran di `packages/core` atau `packages/domain`.
-- [ ] Update schema validation API agar menerima semua status valid.
-- [ ] Definisikan apakah `IN_PROGRESS` hanya label UI untuk `preparing`.
-- [ ] Update docs lifecycle agar memakai istilah yang sama dengan code.
-- [ ] Tambahkan OpenAPI/API contract untuk order status.
+- [x] Jadikan enum status satu sumber kebenaran di `packages/core` atau `packages/domain`. _(done: `packages/core/enums.ts` adalah satu-satunya source of truth; `packages/core/utils/orderStatus.ts` re-export type yang sinkron termasuk `served`)_
+- [x] Update schema validation API agar menerima semua status valid. _(done: `OrdersController.ts` menerima `draft|confirmed|preparing|ready|served|completed|cancelled`; kitchen mode dibatasi ke `confirmed|preparing|ready|served`)_
+- [x] Definisikan apakah `IN_PROGRESS` hanya label UI untuk `preparing`. _(done: `isInProgress()` di `orderStatus.ts` hanya cover `preparing` dan `ready` — label UI; `IN_PROGRESS` tidak dipakai di DB)_
+- [x] Update docs lifecycle agar memakai istilah yang sama dengan code. _(done: `orderStatus.ts` memakai label Bahasa Indonesia konsisten; KitchenTicket, OrderQueue, orders.tsx semua sudah sinkron)_
+- [ ] Tambahkan OpenAPI/API contract untuk order status. _(pending)_
+
+**Progress Update - 2026-05-19 (3 bug fixes):**
+
+- [x] **Bug 1** `packages/core/utils/orderStatus.ts`: Type `OrderStatus` tidak include `"served"`, `isOpen()` tidak cover `served`, `getStatusLabel/BadgeColor` tidak handle `served`, `canComplete()` salah include `"completed"` dalam allowed array. **Fixed**: semua helper diupdate ke lifecycle 2-dimensi yang benar.
+- [x] **Bug 2** `KitchenTicket.tsx` + `OrderQueue.tsx`: KDS memetakan `ready → completed` (financial close milik kasir). **Fixed**: `ready → served`; status `served` tampil sebagai "Sudah Disajikan" terminal state di KDS; tombol aksi sesuai domain rule.
+- [x] **Bug 3** `design-tokens.ts` + `orders.tsx`: `served` tidak ada di `ORDER_STATUS_COLORS` dan filter status orders. **Fixed**: `served` ditambahkan dengan warna purple; filter "Disajikan" tersedia di halaman orders.
+- [x] **Bug 4** `kitchen-display.tsx`: `handleUpdateStatus` tidak pakai `?mode=kitchen`. **Fixed**: API call sekarang pakai `?mode=kitchen` sehingga backend menolak transisi ke `completed` dari KDS.
 
 ---
 

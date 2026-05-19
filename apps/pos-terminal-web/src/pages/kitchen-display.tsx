@@ -59,7 +59,9 @@ export default function KitchenDisplayPage() {
     setIsUpdating(true);
     try {
       const tenantId = getActiveTenantId();
-      const res = await fetch(`/api/orders/${orderId}/status`, {
+      // ?mode=kitchen memastikan API hanya mengizinkan transisi fulfillment
+      // sampai 'served' — kitchen tidak bisa trigger financial close ('completed').
+      const res = await fetch(`/api/orders/${orderId}/status?mode=kitchen`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -73,8 +75,8 @@ export default function KitchenDisplayPage() {
 
       const labels: Record<string, string> = {
         preparing: "Sedang Diproses",
-        ready: "Siap Saji",
-        completed: "Selesai",
+        ready:     "Siap Saji",
+        served:    "Sudah Disajikan",
       };
 
       toast({

@@ -10,40 +10,31 @@ interface OrderQueueProps {
 
 const getStatusBgColor = (status: string) => {
   switch (status) {
-    case "confirmed":
-      return "bg-orange-50";
-    case "preparing":
-      return "bg-yellow-50";
-    case "ready":
-      return "bg-green-50";
-    default:
-      return "bg-slate-50";
+    case "confirmed": return "bg-orange-50";
+    case "preparing": return "bg-yellow-50";
+    case "ready":     return "bg-green-50";
+    case "served":    return "bg-purple-50";
+    default:          return "bg-slate-50";
   }
 };
 
 const getStatusTextColor = (status: string) => {
   switch (status) {
-    case "confirmed":
-      return "text-orange-600";
-    case "preparing":
-      return "text-yellow-600";
-    case "ready":
-      return "text-green-600";
-    default:
-      return "text-slate-600";
+    case "confirmed": return "text-orange-600";
+    case "preparing": return "text-yellow-600";
+    case "ready":     return "text-green-600";
+    case "served":    return "text-purple-600";
+    default:          return "text-slate-600";
   }
 };
 
 const getStatusLabel = (status: string) => {
   switch (status) {
-    case "confirmed":
-      return "Waiting";
-    case "preparing":
-      return "Preparing";
-    case "ready":
-      return "Ready";
-    default:
-      return status;
+    case "confirmed": return "Menunggu";
+    case "preparing": return "Diproses";
+    case "ready":     return "Siap Saji";
+    case "served":    return "Disajikan";
+    default:          return status;
   }
 };
 
@@ -57,18 +48,17 @@ export function OrderQueue({ orders, onUpdateStatus, onExpandChange }: OrderQueu
   const [isVisible, setIsVisible] = useState(false);
 
   const activeOrders = orders.filter((o) =>
-    ["confirmed", "preparing", "ready"].includes(o.status)
+    ["confirmed", "preparing", "ready", "served"].includes(o.status)
   );
 
   const handleQuickAction = (orderId: string, currentStatus: string) => {
-    let nextStatus = "";
-    if (currentStatus === "confirmed") nextStatus = "preparing";
-    else if (currentStatus === "preparing") nextStatus = "ready";
-    else if (currentStatus === "ready") nextStatus = "completed";
-
-    if (nextStatus) {
-      onUpdateStatus(orderId, nextStatus);
-    }
+    const next: Record<string, string> = {
+      confirmed: "preparing",
+      preparing: "ready",
+      ready:     "served",   // kitchen selesai di served; completed = financial close (kasir)
+    };
+    const nextStatus = next[currentStatus];
+    if (nextStatus) onUpdateStatus(orderId, nextStatus);
   };
 
   if (!isVisible) {

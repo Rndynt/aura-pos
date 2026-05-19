@@ -89,7 +89,12 @@ export const ORDER_STATUS_COLORS = {
   ready: {
     bg: "bg-green-50",
     text: "text-green-600",
-    label: "Siap",
+    label: "Siap Saji",
+  },
+  served: {
+    bg: "bg-purple-50",
+    text: "text-purple-600",
+    label: "Sudah Disajikan",
   },
   completed: {
     bg: "bg-slate-50",

@@ -32,7 +32,7 @@ const PAYMENT_STATUS_CONFIG = {
   unpaid: { label: "UNPAID", color: "bg-gray-100 text-gray-700" },
 };
 
-type OrderStatusFilter = "all" | "confirmed" | "preparing" | "ready" | "completed";
+type OrderStatusFilter = "all" | "confirmed" | "preparing" | "ready" | "served" | "completed";
 
 type NormalizedMoneyFields = {
   subtotal: number;
@@ -173,15 +173,16 @@ export default function OrdersPage() {
     }).format(parsedDate);
   };
 
-  const activeOrders = normalizedOrders.filter(o => 
-    ["draft", "confirmed", "preparing", "ready"].includes(o.status)
+  const activeOrders = normalizedOrders.filter(o =>
+    ["draft", "confirmed", "preparing", "ready", "served"].includes(o.status)
   );
-  
+
   const filterCounts = {
-    all: activeOrders.length,
+    all:       activeOrders.length,
     confirmed: activeOrders.filter(o => o.status === "confirmed").length,
     preparing: activeOrders.filter(o => o.status === "preparing").length,
-    ready: activeOrders.filter(o => o.status === "ready").length,
+    ready:     activeOrders.filter(o => o.status === "ready").length,
+    served:    normalizedOrders.filter(o => o.status === "served").length,
     completed: normalizedOrders.filter(o => o.status === "completed").length,
   };
 
@@ -256,21 +257,31 @@ export default function OrdersPage() {
             </div>
 
             <div className="flex gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto no-scrollbar">
-              {(["all", "confirmed", "preparing", "ready", "completed"] as const).map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setFilterStatus(status)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize transition-all whitespace-nowrap ${
-                    filterStatus === status
-                      ? "bg-white text-slate-800 shadow-sm"
-                      : "text-slate-500 hover:text-slate-700"
-                  }`}
-                  data-testid={`filter-${status}`}
-                >
-                  {status === "all" ? "Semua" : status}
-                  {` (${filterCounts[status]})`}
-                </button>
-              ))}
+              {(["all", "confirmed", "preparing", "ready", "served", "completed"] as const).map((status) => {
+                const labels: Record<string, string> = {
+                  all:       "Semua",
+                  confirmed: "Dikonfirmasi",
+                  preparing: "Diproses",
+                  ready:     "Siap Saji",
+                  served:    "Disajikan",
+                  completed: "Selesai",
+                };
+                return (
+                  <button
+                    key={status}
+                    onClick={() => setFilterStatus(status)}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-bold capitalize transition-all whitespace-nowrap ${
+                      filterStatus === status
+                        ? "bg-white text-slate-800 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                    data-testid={`filter-${status}`}
+                  >
+                    {labels[status] ?? status}
+                    {` (${filterCounts[status]})`}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
