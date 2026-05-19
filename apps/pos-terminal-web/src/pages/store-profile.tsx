@@ -1,21 +1,39 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { ChevronLeft, Store } from "lucide-react";
 import { InputField } from "@/components/design/InputField";
+import { useTenant } from "@/context/TenantContext";
+import { useTenantProfile } from "@/hooks/api/useTenantProfile";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function StoreProfilePage() {
   const [, setLocation] = useLocation();
+  const { tenantId } = useTenant();
+  const { data: profile, isLoading } = useTenantProfile(tenantId);
+
   const [formData, setFormData] = useState({
-    businessName: "Aura Pos Resto",
-    phone: "+62 812-3456-7890",
-    address: "Jl. Sudirman No. 45",
+    businessName: "",
+    phone: "",
+    address: "",
   });
+
+  // Sync form with real tenant data once loaded
+  useEffect(() => {
+    if (profile?.tenant) {
+      setFormData({
+        businessName: profile.tenant.business_name || profile.tenant.name || "",
+        phone: profile.tenant.business_phone || "",
+        address: profile.tenant.business_address || "",
+      });
+    }
+  }, [profile]);
 
   const handleBack = () => {
     setLocation("/hub");
   };
 
   const handleSave = () => {
+    // TODO: wire up save API
     console.log("Saving store profile:", formData);
   };
 
@@ -54,12 +72,21 @@ export default function StoreProfilePage() {
           >
             <Store size={32} className="text-slate-400" />
           </div>
-          <h2 className="text-xl font-black text-slate-800" data-testid="text-store-name">
-            Aura Pos Resto
-          </h2>
-          <p className="text-sm text-slate-500" data-testid="text-tenant-id">
-            ID: TENANT-88291
-          </p>
+          {isLoading ? (
+            <>
+              <Skeleton className="h-6 w-48 mb-2" />
+              <Skeleton className="h-4 w-32" />
+            </>
+          ) : (
+            <>
+              <h2 className="text-xl font-black text-slate-800" data-testid="text-store-name">
+                {profile?.tenant?.name || "—"}
+              </h2>
+              <p className="text-sm text-slate-500" data-testid="text-tenant-id">
+                ID: {tenantId}
+              </p>
+            </>
+          )}
         </div>
 
         {/* Information Form */}
@@ -68,40 +95,50 @@ export default function StoreProfilePage() {
             Informasi
           </h3>
 
-          <InputField
-            label="Nama Usaha"
-            value={formData.businessName}
-            onChange={(e) =>
-              setFormData({ ...formData, businessName: e.target.value })
-            }
-            placeholder="Masukkan nama usaha"
-            data-testid="input-business-name"
-          />
+          {isLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-20 w-full rounded-xl" />
+            </div>
+          ) : (
+            <>
+              <InputField
+                label="Nama Usaha"
+                value={formData.businessName}
+                onChange={(e) =>
+                  setFormData({ ...formData, businessName: e.target.value })
+                }
+                placeholder="Masukkan nama usaha"
+                data-testid="input-business-name"
+              />
 
-          <InputField
-            label="Telepon"
-            value={formData.phone}
-            onChange={(e) =>
-              setFormData({ ...formData, phone: e.target.value })
-            }
-            placeholder="Masukkan nomor telepon"
-            type="tel"
-            data-testid="input-phone"
-          />
+              <InputField
+                label="Telepon"
+                value={formData.phone}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
+                placeholder="Masukkan nomor telepon"
+                type="tel"
+                data-testid="input-phone"
+              />
 
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-500">Alamat</label>
-            <textarea
-              className="w-full border border-slate-200 rounded-xl p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              value={formData.address}
-              onChange={(e) =>
-                setFormData({ ...formData, address: e.target.value })
-              }
-              placeholder="Masukkan alamat usaha"
-              rows={3}
-              data-testid="textarea-address"
-            />
-          </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500">Alamat</label>
+                <textarea
+                  className="w-full border border-slate-200 rounded-xl p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  value={formData.address}
+                  onChange={(e) =>
+                    setFormData({ ...formData, address: e.target.value })
+                  }
+                  placeholder="Masukkan alamat usaha"
+                  rows={3}
+                  data-testid="textarea-address"
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

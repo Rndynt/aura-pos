@@ -1,8 +1,9 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useEffect, useState } from "react";
 import HomePage from "@/pages/home";
 import POSPage from "@/pages/pos";
 import OrdersPage from "@/pages/orders";
@@ -102,23 +103,113 @@ function ProtectedTablesRoute() {
   return hasModule("enable_table_management") ? <TablesManagementPageWithLayout /> : <NotFoundWithLayout />;
 }
 
+type AuthStatus = "loading" | "authenticated" | "unauthenticated";
+
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const [status, setStatus] = useState<AuthStatus>("loading");
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => {
+        if (r.ok) {
+          setStatus("authenticated");
+        } else {
+          setStatus("unauthenticated");
+        }
+      })
+      .catch(() => setStatus("unauthenticated"));
+  }, []);
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      setLocation("/login");
+    }
+  }, [status, setLocation]);
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-600 animate-pulse" />
+          <p className="text-sm text-slate-400 font-medium">Memuat...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return null;
+  }
+
+  return <>{children}</>;
+}
+
 function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
       <Route path="/register" component={RegisterPage} />
-      <Route path="/" component={POSPageWithLayout} />
-      <Route path="/hub" component={HomePageWithLayout} />
-      <Route path="/pos" component={POSPageWithLayout} />
-      <Route path="/orders" component={OrdersPageWithLayout} />
-      <Route path="/kitchen" component={ProtectedKitchenRoute} />
-      <Route path="/tables" component={ProtectedTablesRoute} />
-      <Route path="/dashboard" component={DashboardPageWithLayout} />
-      <Route path="/products" component={ProductsPageWithLayout} />
-      <Route path="/stock" component={StockPageWithLayout} />
-      <Route path="/employees" component={EmployeesPageWithLayout} />
-      <Route path="/reports" component={ReportsPageWithLayout} />
-      <Route path="/store-profile" component={StoreProfilePageWithLayout} />
+      <Route path="/">
+        <RequireAuth>
+          <POSPageWithLayout />
+        </RequireAuth>
+      </Route>
+      <Route path="/hub">
+        <RequireAuth>
+          <HomePageWithLayout />
+        </RequireAuth>
+      </Route>
+      <Route path="/pos">
+        <RequireAuth>
+          <POSPageWithLayout />
+        </RequireAuth>
+      </Route>
+      <Route path="/orders">
+        <RequireAuth>
+          <OrdersPageWithLayout />
+        </RequireAuth>
+      </Route>
+      <Route path="/kitchen">
+        <RequireAuth>
+          <ProtectedKitchenRoute />
+        </RequireAuth>
+      </Route>
+      <Route path="/tables">
+        <RequireAuth>
+          <ProtectedTablesRoute />
+        </RequireAuth>
+      </Route>
+      <Route path="/dashboard">
+        <RequireAuth>
+          <DashboardPageWithLayout />
+        </RequireAuth>
+      </Route>
+      <Route path="/products">
+        <RequireAuth>
+          <ProductsPageWithLayout />
+        </RequireAuth>
+      </Route>
+      <Route path="/stock">
+        <RequireAuth>
+          <StockPageWithLayout />
+        </RequireAuth>
+      </Route>
+      <Route path="/employees">
+        <RequireAuth>
+          <EmployeesPageWithLayout />
+        </RequireAuth>
+      </Route>
+      <Route path="/reports">
+        <RequireAuth>
+          <ReportsPageWithLayout />
+        </RequireAuth>
+      </Route>
+      <Route path="/store-profile">
+        <RequireAuth>
+          <StoreProfilePageWithLayout />
+        </RequireAuth>
+      </Route>
       <Route component={NotFoundWithLayout} />
     </Switch>
   );

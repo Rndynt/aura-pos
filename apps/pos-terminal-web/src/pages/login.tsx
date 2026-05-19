@@ -34,7 +34,8 @@ export default function LoginPage() {
       return;
     }
 
-    setLocation('/');
+    // Full reload so TenantProvider reinitializes with the correct tenant from localStorage
+    window.location.href = '/';
   };
 
   return (
