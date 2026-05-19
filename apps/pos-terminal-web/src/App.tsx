@@ -15,6 +15,8 @@ import EmployeesPage from "@/pages/employees";
 import StoreProfilePage from "@/pages/store-profile";
 import KitchenDisplayPage from "@/pages/kitchen-display";
 import NotFound from "@/pages/not-found";
+import LoginPage from "@/pages/login";
+import RegisterPage from "@/pages/register";
 import { TenantProvider, useTenant } from "@/context/TenantContext";
 import { MainLayout } from "@/components/layout/MainLayout";
 
@@ -103,6 +105,8 @@ function ProtectedTablesRoute() {
 function Router() {
   return (
     <Switch>
+      <Route path="/login" component={LoginPage} />
+      <Route path="/register" component={RegisterPage} />
       <Route path="/" component={POSPageWithLayout} />
       <Route path="/hub" component={HomePageWithLayout} />
       <Route path="/pos" component={POSPageWithLayout} />

@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import '../register-paths.ts';
 import express, { type Request, Response, NextFunction } from "express";
+import { toNodeHandler } from "better-auth/node";
+import { auth } from "./lib/auth";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
@@ -11,6 +13,9 @@ if (!databaseUrl) {
   log("DATABASE_URL environment variable is not set. Exiting.", "fatal");
   process.exit(1);
 }
+
+
+app.all("/api/auth/*", toNodeHandler(auth));
 
 declare module 'http' {
   interface IncomingMessage {

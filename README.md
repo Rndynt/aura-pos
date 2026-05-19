@@ -40,3 +40,8 @@ AuraPoS adalah monorepo aplikasi Point of Sale (POS) untuk UMKM yang mencakup fr
 - Pedoman UI/UX: `design_guidelines.md`
 - Aturan kontribusi agen: `agents.md`
 - Migrasi/DB: konfigurasi ada di `drizzle.config.ts` dan folder `migrations/`.
+
+
+## Environment Variables Tambahan (Auth)
+- `BETTER_AUTH_SECRET`: secret minimal 32 karakter untuk better-auth.
+- `BETTER_AUTH_URL`: base URL aplikasi (contoh `http://localhost:5000`).
