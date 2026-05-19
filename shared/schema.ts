@@ -270,6 +270,10 @@ export const orders = pgTable("orders", {
   tableNumber: text("table_number"),
   notes: text("notes"),
   idempotencyKey: varchar("idempotency_key", { length: 128 }),
+  // Explicit settlement/close tracking (P0.3: pay-later lifecycle)
+  closedAt: timestamp("closed_at"),
+  // Cancellation reason (for audit trail)
+  cancellationReason: text("cancellation_reason"),
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({
@@ -280,6 +284,8 @@ export const orders = pgTable("orders", {
   statusIdx: index("orders_status_idx").on(table.status),
   orderDateIdx: index("orders_order_date_idx").on(table.orderDate),
   tenantIdempotencyUnique: uniqueIndex("orders_tenant_idempotency_unique").on(table.tenantId, table.idempotencyKey),
+  // P1.3: unique order number per tenant to prevent race condition duplicates
+  tenantOrderNumberUnique: uniqueIndex("orders_tenant_order_number_unique").on(table.tenantId, table.orderNumber),
 }));
 
 export const insertOrderSchema = createInsertSchema(orders).omit({
@@ -287,7 +293,7 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
   createdAt: true,
   updatedAt: true,
 }).extend({
-  status: z.enum(["draft", "confirmed", "preparing", "ready", "completed", "cancelled"]).default("draft"),
+  status: z.enum(["draft", "confirmed", "preparing", "ready", "served", "completed", "cancelled"]).default("draft"),
   paymentStatus: z.enum(["paid", "partial", "unpaid"]).default("unpaid"),
   salesChannel: z.enum(["POS", "WHATSAPP", "WEBSITE", "MARKETPLACE", "GOFOOD", "GRABFOOD", "PHONE", "OTHER"]).optional(),
 });

@@ -60,7 +60,7 @@ export class ListOpenOrders {
     const orders = await this.orderRepository.findByTenant(
       input.tenant_id,
       {
-        status: ["draft", "confirmed", "preparing", "ready"],
+        status: ["draft", "confirmed", "preparing", "ready", "served"],
         limit,
         offset,
       }

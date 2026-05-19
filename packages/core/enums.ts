@@ -38,6 +38,18 @@ export const OrderStatus = {
   CONFIRMED: 'confirmed',
   PREPARING: 'preparing',
   READY: 'ready',
+  /**
+   * SERVED: Fulfillment milestone for dine-in pay-later flow.
+   * Food has been delivered to the table; payment may still be pending.
+   * Valid: served + unpaid (customer eating, will pay later).
+   * Kitchen/KDS transitions stop here; cashier handles closing.
+   */
+  SERVED: 'served',
+  /**
+   * COMPLETED: Financial close - order is fully settled.
+   * Requires payment_status = 'paid' (or manager override).
+   * Sets closed_at timestamp.
+   */
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',
 } as const;

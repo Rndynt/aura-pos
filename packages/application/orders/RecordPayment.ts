@@ -1,10 +1,27 @@
 /**
- * RecordPayment Use Case
- * Records a payment for an order, supports partial payments
+ * RecordPayment Use Case (P1.2 hardening)
+ *
+ * Records a payment for an existing order.
+ * Supports partial payments.
+ *
+ * Transaction safety (P1.2):
+ *  - All reads and writes run inside a single DB transaction.
+ *  - The order row is locked (SELECT … FOR UPDATE) before computing remaining balance,
+ *    preventing concurrent payment race conditions.
+ *
+ * Idempotency:
+ *  - Caller can supply a unique `transaction_ref`; the controller layer handles
+ *    replay detection before calling this use case.
  */
 
-import type { Order, OrderPayment } from '@pos/domain/orders/types';
-import type { InsertOrderPayment } from '../../../shared/schema';
+import type { Database } from '@pos/infrastructure/database';
+import {
+  orders,
+  orderPayments,
+  type InsertOrderPayment,
+} from '../../../shared/schema';
+import { eq, and, sql } from 'drizzle-orm';
+import type { OrderPayment } from '@pos/domain/orders/types';
 
 export interface RecordPaymentInput {
   order_id: string;
@@ -16,95 +33,113 @@ export interface RecordPaymentInput {
 }
 
 export interface RecordPaymentOutput {
-  payment: OrderPayment;
-  order: Order;
+  payment: any;
+  order: any;
   remainingAmount: number;
 }
 
-export interface IOrderRepository {
-  findById(orderId: string, tenantId: string): Promise<any | null>;
-  update(orderId: string, updates: Record<string, any>, tenantId: string): Promise<Order>;
-}
-
-export interface IPaymentRepository {
-  create(payment: InsertOrderPayment, tenantId: string): Promise<OrderPayment>;
-}
-
 export class RecordPayment {
-  constructor(
-    private readonly orderRepository: IOrderRepository,
-    private readonly paymentRepository: IPaymentRepository
-  ) {}
+  constructor(private readonly db: Database) {}
 
   async execute(input: RecordPaymentInput): Promise<RecordPaymentOutput> {
-    try {
-      if (input.amount <= 0) {
-        throw new Error('Payment amount must be greater than zero');
+    if (input.amount <= 0) {
+      throw new Error('Payment amount must be greater than zero');
+    }
+
+    // --------------------------------------------------------------------------
+    // Run everything inside a transaction with row lock on the order (P1.2)
+    // --------------------------------------------------------------------------
+    const result = await this.db.transaction(async (tx) => {
+      // Lock the order row for this tenant to prevent concurrent payment race
+      const lockedOrders = await tx.execute(sql`
+        SELECT id, tenant_id, status, payment_status, total, paid_amount
+        FROM orders
+        WHERE id = ${input.order_id}
+          AND tenant_id = ${input.tenant_id}
+        FOR UPDATE
+      `);
+
+      const orderRow = (lockedOrders as any).rows?.[0] ?? (lockedOrders as any)[0];
+
+      if (!orderRow) {
+        throw new Error('Order not found or access denied');
       }
 
-      const order = await this.orderRepository.findById(input.order_id, input.tenant_id);
-      if (!order) {
-        throw new Error('Order not found');
-      }
-
-      if ((order.tenant_id || order.tenantId) !== input.tenant_id) {
-        throw new Error('Order does not belong to the specified tenant');
-      }
-
-      if ((order.status as string) === 'cancelled') {
+      if (orderRow.status === 'cancelled') {
         throw new Error('Cannot record payment for cancelled order');
       }
 
-      const orderTotal = parseFloat(order.total_amount ?? order.total ?? '0');
-      const orderPaid = parseFloat(order.paid_amount ?? order.paidAmount ?? '0');
+      const orderTotal = parseFloat(orderRow.total ?? '0');
+      const orderPaid = parseFloat(orderRow.paid_amount ?? '0');
+      const remaining = orderTotal - orderPaid;
 
-      const remainingAmount = orderTotal - orderPaid;
-
-      if (input.amount > remainingAmount) {
+      if (input.amount > remaining + 0.001) {
         throw new Error(
-          `Payment amount (Rp ${input.amount}) exceeds remaining balance (Rp ${remainingAmount})`
+          `Payment amount (${input.amount}) exceeds remaining balance (${remaining.toFixed(2)})`
         );
       }
 
-      const payment: InsertOrderPayment = {
+      // Insert payment record
+      const paymentData: InsertOrderPayment = {
         orderId: input.order_id,
         amount: input.amount.toString(),
-        paymentMethod: input.payment_method,
+        paymentMethod: input.payment_method as any,
         paymentDate: new Date(),
         referenceNumber: input.transaction_ref,
         notes: input.notes,
       };
 
-      const createdPayment = await this.paymentRepository.create(payment, input.tenant_id);
+      const [createdPayment] = await tx.insert(orderPayments).values(paymentData).returning();
 
+      // Compute new payment status
       const newPaidAmount = orderPaid + input.amount;
-      const newRemainingAmount = orderTotal - newPaidAmount;
+      const newRemaining = orderTotal - newPaidAmount;
 
-      let newPaymentStatus: 'paid' | 'partial' | 'unpaid';
-      if (newRemainingAmount === 0) {
-        newPaymentStatus = 'paid';
-      } else if (newPaidAmount > 0) {
-        newPaymentStatus = 'partial';
-      } else {
-        newPaymentStatus = 'unpaid';
+      const newPaymentStatus: 'paid' | 'partial' | 'unpaid' =
+        newRemaining <= 0.001 ? 'paid' : newPaidAmount > 0 ? 'partial' : 'unpaid';
+
+      // Set closedAt and status = completed if fully paid
+      const orderUpdates: Record<string, any> = {
+        paid_amount: newPaidAmount.toString(),
+        payment_status: newPaymentStatus,
+        updated_at: new Date(),
+      };
+      if (newPaymentStatus === 'paid') {
+        // Auto-close only if order is in a settled fulfillment state
+        const currentStatus = orderRow.status as string;
+        if (['ready', 'served', 'confirmed', 'preparing'].includes(currentStatus)) {
+          orderUpdates.status = 'completed';
+          orderUpdates.closed_at = new Date();
+        }
       }
 
-      const updatedOrder = await this.orderRepository.update(
-        input.order_id,
-        {
-          paidAmount: newPaidAmount.toString(),
-          paymentStatus: newPaymentStatus,
-        },
-        input.tenant_id
-      );
+      // Use raw SQL update to match DB column names (snake_case)
+      const updatedOrders = await tx.execute(sql`
+        UPDATE orders
+        SET
+          paid_amount = ${orderUpdates.paid_amount},
+          payment_status = ${orderUpdates.payment_status},
+          updated_at = ${orderUpdates.updated_at},
+          status = CASE WHEN ${orderUpdates.status ?? null} IS NOT NULL
+                        THEN ${orderUpdates.status ?? orderRow.status}
+                        ELSE status END,
+          closed_at = CASE WHEN ${orderUpdates.closed_at ?? null} IS NOT NULL
+                           THEN ${orderUpdates.closed_at ?? null}
+                           ELSE closed_at END
+        WHERE id = ${input.order_id}
+          AND tenant_id = ${input.tenant_id}
+        RETURNING *
+      `);
+
+      const updatedOrder = (updatedOrders as any).rows?.[0] ?? (updatedOrders as any)[0];
 
       return {
         payment: createdPayment,
         order: updatedOrder,
-        remainingAmount: newRemainingAmount,
+        remainingAmount: Math.max(0, newRemaining),
       };
-    } catch (error) {
-      throw new Error(`Failed to record payment: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    });
+
+    return result;
   }
 }

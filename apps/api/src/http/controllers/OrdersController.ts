@@ -7,8 +7,6 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
-import { and, eq } from 'drizzle-orm';
-import { orderPayments, orders } from '@shared/schema';
 
 /**
  * POST /api/orders
@@ -70,7 +68,9 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
 
 /**
  * POST /api/orders/:id/payments
- * Record payment (supports partial payments)
+ * Record payment (supports partial payments).
+ * P1.2: RecordPayment use case now wraps everything in a DB transaction with row lock.
+ * Idempotency: if transaction_ref already exists for this order+tenant, replays prior result.
  */
 export const recordPayment = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.tenantId!;
@@ -80,7 +80,6 @@ export const recordPayment = asyncHandler(async (req: Request, res: Response) =>
     throw createError('Order ID is required', 400, 'MISSING_PARAMETER');
   }
 
-  // Validate request body
   const bodySchema = z.object({
     amount: z.number().positive(),
     payment_method: z.enum(['cash', 'card', 'ewallet', 'other']),
@@ -95,60 +94,16 @@ export const recordPayment = asyncHandler(async (req: Request, res: Response) =>
   }
 
   const idempotencyKey = parsed.data.idempotency_key?.trim();
+  const transactionRef = parsed.data.transaction_ref ?? idempotencyKey;
 
-  // Idempotency support for payment recording:
-  // if a payment with the same reference already exists for this order+tenant, replay previous result.
-  if (idempotencyKey) {
-    const existing = await container.db
-      .select({
-        paymentId: orderPayments.id,
-        paymentOrderId: orderPayments.orderId,
-      })
-      .from(orderPayments)
-      .innerJoin(orders, eq(orderPayments.orderId, orders.id))
-      .where(
-        and(
-          eq(orders.tenantId, tenantId),
-          eq(orderPayments.orderId, id),
-          eq(orderPayments.referenceNumber, idempotencyKey)
-        )
-      )
-      .limit(1);
-
-    if (existing[0]?.paymentId) {
-      const order = await container.orderRepository.findById(id, tenantId);
-      if (!order) {
-        throw createError('Order not found', 404, 'NOT_FOUND');
-      }
-
-      const payments = await container.orderPaymentRepository.findByOrder(id, tenantId);
-      const matchedPayment = payments.find((p) => p.id === existing[0]?.paymentId);
-
-      if (matchedPayment) {
-        const orderTotal = parseFloat(order.total_amount ?? order.total ?? '0');
-        const orderPaid = parseFloat(order.paid_amount ?? order.paidAmount ?? '0');
-
-        return res.status(200).json({
-          success: true,
-          data: {
-            payment: matchedPayment,
-            order,
-            remainingAmount: orderTotal - orderPaid,
-            idempotent_replay: true,
-          },
-        });
-      }
-    }
-  }
-
-  // Execute use case
+  // Execute use case (P1.2: transaction-safe with row lock inside use case)
   const result = await container.recordPayment.execute({
     order_id: id,
     tenant_id: tenantId,
     amount: parsed.data.amount,
     payment_method: parsed.data.payment_method,
     notes: parsed.data.notes,
-    transaction_ref: parsed.data.transaction_ref ?? idempotencyKey,
+    transaction_ref: transactionRef,
   });
 
   res.status(201).json({
@@ -205,7 +160,7 @@ export const createKitchenTicket = asyncHandler(async (req: Request, res: Respon
 export const listOrders = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.tenantId!;
 
-  const orderStatusSchema = z.enum(['draft', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled']);
+  const orderStatusSchema = z.enum(['draft', 'confirmed', 'preparing', 'ready', 'served', 'completed', 'cancelled']);
 
   // Validate query params
   const querySchema = z.object({
@@ -409,7 +364,15 @@ export const completeOrder = asyncHandler(async (req: Request, res: Response) =>
 
 /**
  * PATCH /api/orders/:id/status
- * Update only the status of an order (e.g. for kitchen display: confirmed → preparing → ready → completed)
+ * Update only the status of an order.
+ *
+ * Modes (P0.3):
+ *  - Default (POS/cashier): full transition map via TransitionOrderStatus.
+ *    Can set any status including 'completed' (financial close, requires payment paid).
+ *  - Kitchen mode (?mode=kitchen): restricted to fulfillment path via
+ *    TransitionOrderFulfillmentStatus. Cannot set 'completed'.
+ *
+ * 'served' is now a valid status (dine-in pay-later: food delivered, bill open).
  */
 export const updateOrderStatus = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.tenantId!;
@@ -419,10 +382,44 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
     throw createError('Order ID is required', 400, 'MISSING_PARAMETER');
   }
 
-  const ALLOWED_STATUSES = ['confirmed', 'preparing', 'ready', 'completed', 'cancelled'] as const;
+  const isKitchenMode = req.query.mode === 'kitchen';
+
+  // Kitchen mode: restricted to fulfillment statuses only
+  if (isKitchenMode) {
+    const KITCHEN_STATUSES = ['confirmed', 'preparing', 'ready', 'served'] as const;
+    const bodySchema = z.object({
+      status: z.enum(KITCHEN_STATUSES),
+    });
+
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw createError(
+        'Invalid request body: ' + parsed.error.message + '. Kitchen mode allows: ' + KITCHEN_STATUSES.join(', '),
+        400,
+        'VALIDATION_ERROR'
+      );
+    }
+
+    const result = await container.transitionOrderFulfillmentStatus.execute({
+      order_id: id,
+      tenant_id: tenantId,
+      status: parsed.data.status,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        order: result.order,
+      },
+    });
+  }
+
+  // POS/cashier mode: full transition map
+  const ALLOWED_STATUSES = ['confirmed', 'preparing', 'ready', 'served', 'completed', 'cancelled'] as const;
 
   const bodySchema = z.object({
     status: z.enum(ALLOWED_STATUSES),
+    override_payment_check: z.boolean().optional(),
   });
 
   const parsed = bodySchema.safeParse(req.body);
@@ -430,12 +427,11 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
-  const { status } = parsed.data;
-
   const result = await container.transitionOrderStatus.execute({
     order_id: id,
     tenant_id: tenantId,
-    status,
+    status: parsed.data.status,
+    override_payment_check: parsed.data.override_payment_check,
   });
 
   res.status(200).json({
@@ -584,8 +580,9 @@ export const listOrderHistory = asyncHandler(async (req: Request, res: Response)
 
 /**
  * POST /api/orders/create-and-pay
- * Create order and record payment atomically (P3 - Transaction Safety)
- * Prevents orphaned orders if payment fails
+ * Create order and record payment atomically (P0.2 – True DB Transaction)
+ * Uses CreateAndPayOrder use case which wraps everything in a single transaction.
+ * Eliminates compensating-rollback pattern; no orphaned orders possible.
  */
 export const createAndPay = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.tenantId!;
@@ -632,83 +629,30 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
-  // Idempotency support: if key already used for this tenant, return prior result
-  const idempotencyKey = parsed.data.idempotency_key?.trim();
+  // Execute via dedicated use case (single DB transaction – P0.2)
+  const result = await container.createAndPayOrder.execute({
+    tenant_id: tenantId,
+    items: parsed.data.items,
+    order_type_id: parsed.data.order_type_id,
+    customer_name: parsed.data.customer_name,
+    table_number: parsed.data.table_number,
+    tax_rate: parsed.data.tax_rate,
+    service_charge_rate: parsed.data.service_charge_rate,
+    amount: parsed.data.amount,
+    payment_method: parsed.data.payment_method,
+    transaction_ref: parsed.data.transaction_ref,
+    payment_notes: parsed.data.payment_notes,
+    idempotency_key: parsed.data.idempotency_key,
+  });
 
-  if (idempotencyKey) {
-    const existing = await container.db
-      .select({ orderId: orderPayments.orderId })
-      .from(orderPayments)
-      .innerJoin(orders, eq(orderPayments.orderId, orders.id))
-      .where(
-        and(
-          eq(orders.tenantId, tenantId),
-          eq(orderPayments.referenceNumber, idempotencyKey)
-        )
-      )
-      .limit(1);
-
-    if (existing[0]?.orderId) {
-      const existingOrder = await container.orderRepository.findById(existing[0].orderId, tenantId);
-      if (existingOrder) {
-        return res.status(200).json({
-          success: true,
-          data: {
-            order: existingOrder,
-            pricing: null,
-            payment: null,
-            idempotent_replay: true,
-          },
-        });
-      }
-    }
-  }
-
-  // Execute create + pay flow with compensating rollback to avoid orphan orders
-  let createdOrderId: string | null = null;
-
-  try {
-    const orderResult = await container.createOrder.execute({
-      tenant_id: tenantId,
-      items: parsed.data.items,
-      order_type_id: parsed.data.order_type_id,
-      customer_name: parsed.data.customer_name,
-      table_number: parsed.data.table_number,
-      tax_rate: parsed.data.tax_rate,
-      service_charge_rate: parsed.data.service_charge_rate,
-      idempotency_key: idempotencyKey,
-    });
-
-    createdOrderId = orderResult.order.id;
-
-    const paymentResult = await container.recordPayment.execute({
-      order_id: orderResult.order.id,
-      tenant_id: tenantId,
-      amount: parsed.data.amount,
-      payment_method: parsed.data.payment_method,
-      transaction_ref: parsed.data.transaction_ref ?? idempotencyKey,
-      notes: parsed.data.payment_notes,
-    });
-
-    res.status(201).json({
-      success: true,
-      data: {
-        order: paymentResult.order,
-        pricing: orderResult.pricing,
-        payment: paymentResult.payment,
-      },
-    });
-  } catch (error) {
-    if (createdOrderId) {
-      try {
-        await container.db
-          .delete(orders)
-          .where(and(eq(orders.id, createdOrderId), eq(orders.tenantId, tenantId)));
-      } catch (cleanupError) {
-        console.error('Create-and-pay rollback cleanup failed:', cleanupError);
-      }
-    }
-
-    throw error;
-  }
+  const status = result.idempotent_replay ? 200 : 201;
+  res.status(status).json({
+    success: true,
+    data: {
+      order: result.order,
+      payment: result.payment,
+      remainingAmount: result.remainingAmount,
+      idempotent_replay: result.idempotent_replay ?? false,
+    },
+  });
 });

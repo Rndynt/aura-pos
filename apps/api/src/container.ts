@@ -36,6 +36,8 @@ import { CancelOrder } from '@pos/application/orders/CancelOrder';
 import { ListOpenOrders } from '@pos/application/orders/ListOpenOrders';
 import { ListOrderHistory } from '@pos/application/orders/ListOrderHistory';
 import { TransitionOrderStatus } from '@pos/application/orders/TransitionOrderStatus';
+import { CreateAndPayOrder } from '@pos/application/orders/CreateAndPayOrder';
+import { TransitionOrderFulfillmentStatus } from '@pos/application/orders/TransitionOrderFulfillmentStatus';
 
 // Use Cases - Tenants
 import { GetActiveFeaturesForTenant } from '@pos/application/tenants/GetActiveFeaturesForTenant';
@@ -85,6 +87,10 @@ class Container {
   public readonly listOpenOrders: ListOpenOrders;
   public readonly listOrderHistory: ListOrderHistory;
   public readonly transitionOrderStatus: TransitionOrderStatus;
+  /** P0.2: true atomic create-and-pay */
+  public readonly createAndPayOrder: CreateAndPayOrder;
+  /** P0.3: kitchen/KDS fulfillment-only transitions */
+  public readonly transitionOrderFulfillmentStatus: TransitionOrderFulfillmentStatus;
 
   // Tenant Use Cases
   public readonly getActiveFeaturesForTenant: GetActiveFeaturesForTenant;
@@ -132,10 +138,8 @@ class Container {
       this.orderRepository as any,
       this.tenantRepository as any
     );
-    this.recordPayment = new RecordPayment(
-      this.orderRepository as any,
-      this.orderPaymentRepository as any
-    );
+    // P1.2: transaction-safe record payment (wrapped in DB transaction + row lock)
+    this.recordPayment = new RecordPayment(db as any);
     this.createKitchenTicket = new CreateKitchenTicket(
       this.orderRepository as any,
       this.kitchenTicketRepository as any
@@ -157,6 +161,14 @@ class Container {
       this.tenantRepository as any
     );
     this.transitionOrderStatus = new TransitionOrderStatus(
+      this.orderRepository
+    );
+
+    // P0.2: True atomic create-and-pay (single DB transaction)
+    this.createAndPayOrder = new CreateAndPayOrder(db);
+
+    // P0.3: Kitchen/KDS fulfillment-only transitions
+    this.transitionOrderFulfillmentStatus = new TransitionOrderFulfillmentStatus(
       this.orderRepository
     );
 

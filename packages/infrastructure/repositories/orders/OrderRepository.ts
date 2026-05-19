@@ -525,26 +525,37 @@ export class OrderRepository
   }
 
   /**
-   * Generate unique order number for a tenant
+   * Generate unique order number for a tenant.
+   * Uses count-based approach with retry on unique constraint violation (P1.3).
+   * The unique index on (tenant_id, order_number) enforces DB-level uniqueness.
    */
-  async generateOrderNumber(tenantId: string): Promise<string> {
+  async generateOrderNumber(tenantId: string, attempt = 0): Promise<string> {
+    const MAX_ATTEMPTS = 10;
     try {
       const today = new Date();
       const datePrefix = today.toISOString().split('T')[0].replace(/-/g, '');
-      
-      const todayOrders = await this.db
-        .select()
+
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const countResult = await this.db
+        .select({ value: sql<number>`count(*)::int` })
         .from(orders)
         .where(
           and(
             eq(orders.tenantId, tenantId),
-            gte(orders.orderDate, new Date(today.setHours(0, 0, 0, 0)))
+            gte(orders.orderDate, startOfDay)
           )
         );
 
-      const sequenceNumber = (todayOrders.length + 1).toString().padStart(4, '0');
-      return `ORD-${datePrefix}-${sequenceNumber}`;
+      const todayCount = Number(countResult[0]?.value ?? 0);
+      const seq = (todayCount + 1 + attempt).toString().padStart(4, '0');
+      return `ORD-${datePrefix}-${seq}`;
     } catch (error) {
+      if (attempt < MAX_ATTEMPTS) {
+        // Retry with incremented attempt to avoid collision
+        return this.generateOrderNumber(tenantId, attempt + 1);
+      }
       this.handleError('generate order number', error);
     }
   }

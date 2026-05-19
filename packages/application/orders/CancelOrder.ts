@@ -84,6 +84,7 @@ export class CancelOrder {
       // Update order status to cancelled
       const updatedOrder = await this.orderRepository.update(input.order_id, {
         status: 'cancelled',
+        cancellationReason: input.cancellation_reason,
         notes: updatedNotes || undefined,
       }, input.tenant_id);
 

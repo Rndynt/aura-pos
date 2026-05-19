@@ -24,8 +24,6 @@ export { RecordPayment } from './RecordPayment';
 export type { 
   RecordPaymentInput, 
   RecordPaymentOutput,
-  IOrderRepository as IOrderRepositoryForRecordPayment,
-  IPaymentRepository
 } from './RecordPayment';
 
 export { CreateKitchenTicket } from './CreateKitchenTicket';
@@ -77,3 +75,15 @@ export type {
   ITenantRepository as ITenantRepositoryForListOrderHistory
 } from './ListOrderHistory';
 export * from './TransitionOrderStatus';
+
+// P0.2: True atomic create-and-pay use case
+export { CreateAndPayOrder } from './CreateAndPayOrder';
+export type { CreateAndPayOrderInput, CreateAndPayOrderOutput, CreateAndPayOrderItemInput } from './CreateAndPayOrder';
+
+// P0.3: Kitchen/KDS-scoped fulfillment-only transition
+export { TransitionOrderFulfillmentStatus } from './TransitionOrderFulfillmentStatus';
+export type {
+  TransitionOrderFulfillmentStatusInput,
+  TransitionOrderFulfillmentStatusOutput,
+  FulfillmentStatus,
+} from './TransitionOrderFulfillmentStatus';
