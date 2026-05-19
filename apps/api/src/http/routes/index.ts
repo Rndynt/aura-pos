@@ -9,7 +9,7 @@ import catalogRoutes from './catalog';
 import ordersRoutes from './orders';
 import tenantsRoutes from './tenants';
 import { createTablesRouter } from './tables';
-import { auth } from '../../../lib/auth';
+import { auth } from '../../lib/auth';
 import { fromNodeHeaders } from 'better-auth/node';
 
 const router = Router();
