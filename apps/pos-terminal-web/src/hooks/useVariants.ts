@@ -58,7 +58,10 @@ export function useVariantsLibrary() {
       }
     });
 
-    return Array.from(variantsMap.values());
+    // Sort by name for stable, predictable ordering regardless of save/refetch
+    return Array.from(variantsMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, "id")
+    );
   }, [products]);
 
   return { data: variants, isLoading, error };
@@ -74,27 +77,27 @@ export function useCreateOrUpdateVariant() {
 
       const { linkedProducts, name, type, required, options, isEditing, oldName } = variantData;
 
-      const optionGroup = {
+      const buildOptionGroup = (display_order: number) => ({
         name,
         selection_type: type,
         min_selections: required ? 1 : 0,
         max_selections: type === "single" ? 1 : options.length,
         is_required: required,
-        display_order: 0,
+        display_order,
         options: options.map((opt, idx) => ({
           name: opt.name,
           price_delta: opt.price_delta,
-          is_available: opt.is_available !== false, // Read from is_available, not available
+          is_available: opt.is_available !== false,
           display_order: idx,
         })),
-      };
+      });
 
       const updates: Promise<any>[] = [];
 
       products.forEach((product: any) => {
         const shouldHave = linkedProducts.includes(product.id);
         const existingGroups = product.option_groups || [];
-        
+
         const nameToMatch = isEditing && oldName ? oldName : name;
         const hasVariant = existingGroups.some(
           (g: any) => g.name === nameToMatch
@@ -108,9 +111,11 @@ export function useCreateOrUpdateVariant() {
           );
 
           if (existingIdx >= 0) {
-            newGroups[existingIdx] = optionGroup;
+            // Preserve existing display_order so position in dialog never shifts
+            const preservedOrder = newGroups[existingIdx].display_order ?? existingIdx;
+            newGroups[existingIdx] = buildOptionGroup(preservedOrder);
           } else {
-            newGroups.push(optionGroup);
+            newGroups.push(buildOptionGroup(newGroups.length));
           }
         } else if (hasVariant) {
           newGroups = newGroups.filter((g: any) => g.name !== nameToMatch);
@@ -134,10 +139,12 @@ export function useCreateOrUpdateVariant() {
               min_selections: g.min_selections || g.minSelections || 0,
               max_selections: g.max_selections || g.maxSelections || 1,
               is_required: g.is_required ?? g.isRequired ?? false,
-              options: (g.options || []).map((o: any) => ({
+              display_order: g.display_order ?? g.displayOrder,   // ← selalu kirim display_order
+              options: (g.options || []).map((o: any, oIdx: number) => ({
                 name: o.name,
                 price_delta: Number(o.price_delta || o.priceDelta || 0),
-                is_available: o.is_available !== false, // Read from is_available, not available
+                is_available: o.is_available !== false,
+                display_order: o.display_order ?? oIdx,           // ← preserve option order
               })),
             })),
           })
