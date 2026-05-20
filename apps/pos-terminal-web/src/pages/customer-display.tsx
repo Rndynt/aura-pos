@@ -119,73 +119,70 @@ function useClock() {
 function IdleScreen({ tenantName }: { tenantName: string }) {
   const now = useClock();
 
-  const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const hh  = now.toLocaleTimeString('id-ID', { hour: '2-digit', hour12: false });
+  const mm  = now.toLocaleTimeString('id-ID', { minute: '2-digit' });
+  const ss  = now.toLocaleTimeString('id-ID', { second: '2-digit' });
   const dateStr = now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const initials = tenantName.slice(0, 2).toUpperCase();
 
   return (
-    <div className="flex-1 flex flex-col bg-gradient-to-br from-blue-50 via-white to-slate-50 relative overflow-hidden">
-      {/* Soft ambient blobs — consistent with app's blue-600 primary */}
-      <div style={{ animation: 'orb1 9s ease-in-out infinite' }}
-        className="absolute -top-[20%] -left-[10%] w-[55vw] h-[55vw] rounded-full bg-blue-100/70 blur-[90px] pointer-events-none" />
-      <div style={{ animation: 'orb2 11s ease-in-out infinite' }}
-        className="absolute -bottom-[20%] -right-[10%] w-[50vw] h-[50vw] rounded-full bg-indigo-100/60 blur-[100px] pointer-events-none" />
+    <div className="flex-1 flex flex-col bg-slate-950 relative overflow-hidden select-none">
+      {/* Blue accent stripe — app primary color */}
+      <div className="absolute top-0 left-0 right-0 h-[3px] bg-blue-600 z-20" />
 
-      {/* Top bar */}
-      <div className="flex-shrink-0 flex items-center justify-between px-8 pt-6 relative z-10">
-        <div className="flex items-center gap-3">
-          {/* Logo badge — matches app's blue-600 gradient */}
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-sm shadow-blue-200">
-            <span className="text-xs font-black text-white tracking-wide select-none">{initials}</span>
-          </div>
-          <span className="text-sm font-semibold text-slate-500">{tenantName}</span>
-        </div>
-        <div className="flex items-center gap-2 bg-white/80 border border-slate-200 rounded-full px-3 py-1.5 shadow-sm backdrop-blur-sm">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs font-semibold text-slate-500">Buka</span>
-        </div>
-      </div>
+      {/* Soft center glow */}
+      <div className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse 65% 55% at 50% 50%, rgba(59,130,246,0.09) 0%, transparent 70%)' }} />
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col items-center justify-center gap-5 relative z-10 px-8">
+      {/* Main — fully centered */}
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 relative z-10 px-8">
 
-        {/* Clock — slate-900, font-black, same weight as app headings */}
-        <div className="text-center" style={{ animation: 'fadeUp .7s ease both' }}>
-          <div
-            className="font-black text-slate-900 leading-none tracking-tighter tabular-nums select-none"
-            style={{ fontSize: 'clamp(4.5rem,14vw,8.5rem)', fontVariantNumeric: 'tabular-nums' }}
+        {/* HH:MM big + SS small */}
+        <div className="flex items-end leading-none tabular-nums" style={{ animation: 'fadeUp .5s ease both' }}>
+          <span
+            className="font-black text-white tracking-tighter"
+            style={{ fontSize: 'clamp(5.5rem,19vw,12rem)', fontVariantNumeric: 'tabular-nums' }}
           >
-            {timeStr}
-          </div>
-          <p className="text-slate-400 font-medium mt-2 capitalize" style={{ fontSize: 'clamp(.85rem,1.4vw,1.1rem)' }}>
-            {dateStr}
-          </p>
+            {hh}
+          </span>
+          <span
+            className="font-black text-blue-500 mx-[0.04em] pb-[0.05em]"
+            style={{ fontSize: 'clamp(5.5rem,19vw,12rem)' }}
+          >
+            :
+          </span>
+          <span
+            className="font-black text-white tracking-tighter"
+            style={{ fontSize: 'clamp(5.5rem,19vw,12rem)', fontVariantNumeric: 'tabular-nums' }}
+          >
+            {mm}
+          </span>
+          <span
+            className="font-bold text-slate-600 ml-[0.2em] mb-[0.18em] tracking-tighter"
+            style={{ fontSize: 'clamp(1.8rem,5vw,3.8rem)', fontVariantNumeric: 'tabular-nums' }}
+          >
+            {ss}
+          </span>
         </div>
 
-        {/* Divider line — same slate border tone as app */}
-        <div className="w-12 h-0.5 bg-slate-200 rounded-full" style={{ animation: 'fadeUp .7s ease .12s both' }} />
-
-        {/* Welcome card — white card, same as app's card style */}
-        <div
-          className="bg-white/90 border border-slate-200 rounded-2xl px-8 py-5 flex flex-col items-center gap-2 shadow-sm backdrop-blur-sm text-center"
-          style={{ animation: 'fadeUp .7s ease .22s both' }}
+        {/* Date — one line, minimal */}
+        <p
+          className="text-slate-500 font-medium capitalize tracking-widest uppercase"
+          style={{ fontSize: 'clamp(.7rem,1.1vw,.9rem)', letterSpacing: '0.15em', animation: 'fadeUp .5s ease .08s both' }}
         >
-          <p className="font-black text-slate-800 tracking-tight" style={{ fontSize: 'clamp(1.1rem,2.5vw,1.6rem)' }}>
-            Selamat datang
-          </p>
-          <p className="text-slate-400 font-medium text-sm md:text-base">
-            Kasir siap melayani Anda
-          </p>
-        </div>
+          {dateStr}
+        </p>
       </div>
 
-      {/* Bottom bar */}
-      <div className="flex-shrink-0 flex items-center justify-between px-8 pb-5 relative z-10">
-        <div className="flex items-center gap-1.5 text-slate-300">
-          <Monitor size={11} />
-          <span className="text-[11px] font-medium">Customer Display</span>
+      {/* Bottom — store brand only */}
+      <div
+        className="flex-shrink-0 flex items-center justify-center gap-2.5 pb-6 relative z-10"
+        style={{ animation: 'fadeUp .5s ease .15s both' }}
+      >
+        <div className="w-5 h-5 rounded-md bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <span className="text-[8px] font-black text-white leading-none">{initials}</span>
         </div>
-        <span className="text-[11px] text-slate-300 font-medium">AuraPOS</span>
+        <span className="text-xs font-semibold text-slate-600 tracking-widest uppercase">{tenantName}</span>
       </div>
     </div>
   );
