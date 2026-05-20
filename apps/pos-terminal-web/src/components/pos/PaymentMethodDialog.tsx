@@ -12,6 +12,7 @@ type PaymentMethodDialogProps = {
   open: boolean;
   onClose: () => void;
   onConfirm: (paymentMethod: PaymentMethod, cashReceived?: number) => void;
+  onMethodChange?: (method: PaymentMethod) => void;
   cartTotal: number;
   isSubmitting?: boolean;
   defaultPaymentMethod?: PaymentMethod;
@@ -29,11 +30,17 @@ export function PaymentMethodDialog({
   open,
   onClose,
   onConfirm,
+  onMethodChange,
   cartTotal,
   isSubmitting = false,
   defaultPaymentMethod = "cash",
 }: PaymentMethodDialogProps) {
   const [method, setMethod] = useState<PaymentMethod>(defaultPaymentMethod);
+
+  const selectMethod = (m: PaymentMethod) => {
+    setMethod(m);
+    onMethodChange?.(m);
+  };
   const [cashAmount, setCashAmount] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -74,7 +81,7 @@ export function PaymentMethodDialog({
   const renderMethodButton = (id: PaymentMethod, label: string, Icon: typeof Banknote) => (
     <button
       key={id}
-      onClick={() => setMethod(id)}
+      onClick={() => selectMethod(id)}
       className={`flex-1 p-2 md:p-3 rounded-xl flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-3 transition-all border ${
         method === id
           ? "bg-blue-50 border-blue-600 text-blue-600 shadow-sm"
@@ -105,7 +112,7 @@ export function PaymentMethodDialog({
         <div className="hidden md:flex w-1/3 bg-slate-50 border-r border-slate-200 p-4 flex-col gap-2">
           <h3 className="font-bold text-slate-700 mb-2 px-1">Metode</h3>
           <button
-            onClick={() => setMethod("cash")}
+            onClick={() => selectMethod("cash")}
             className={`p-3 rounded-xl flex items-center gap-3 transition-all ${
               method === "cash"
                 ? "bg-white border-2 border-blue-600 text-blue-600 shadow-md"
@@ -117,7 +124,7 @@ export function PaymentMethodDialog({
             <span className="font-bold text-sm">Tunai</span>
           </button>
           <button
-            onClick={() => setMethod("ewallet")}
+            onClick={() => selectMethod("ewallet")}
             className={`p-3 rounded-xl flex items-center gap-3 transition-all ${
               method === "ewallet"
                 ? "bg-white border-2 border-blue-600 text-blue-600 shadow-md"
@@ -129,7 +136,7 @@ export function PaymentMethodDialog({
             <span className="font-bold text-sm">QRIS</span>
           </button>
           <button
-            onClick={() => setMethod("card")}
+            onClick={() => selectMethod("card")}
             className={`p-3 rounded-xl flex items-center gap-3 transition-all ${
               method === "card"
                 ? "bg-white border-2 border-blue-600 text-blue-600 shadow-md"

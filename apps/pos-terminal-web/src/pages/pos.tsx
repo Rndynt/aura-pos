@@ -364,6 +364,26 @@ export default function POSPage() {
     setMobileCartOpen(false);
   };
 
+  // Saat user MEMILIH metode di dialog (sebelum konfirmasi) → CFD langsung update
+  // Sehingga layar customer langsung lihat QR QRIS saat kasir klik QRIS di sidebar
+  const handleCFDMethodChange = (method: PaymentMethod) => {
+    if (!cart.items.length) return;
+    inPaymentFlowRef.current = true;
+    sendToCFD({
+      type: 'payment',
+      tenantName,
+      orderNumber: pendingOrderForPayment?.orderNumber || cart.orderNumber,
+      total: pendingOrderForPayment?.totalAmount || cart.total,
+      method,
+      items: cart.items.map(toCFDItem),
+      subtotal: cart.subtotal,
+      tax: cart.tax,
+      serviceCharge: cart.serviceCharge,
+      customerName: cart.customerName || undefined,
+      tableNumber: cart.tableNumber || undefined,
+    });
+  };
+
   // Handle payment method confirmation from dialog
   const handlePaymentMethodConfirm = async (paymentMethod: PaymentMethod) => {
     if (!ensureCartHasItems() || !cart.selectedOrderTypeId) return;
@@ -822,6 +842,7 @@ export default function POSPage() {
           setPaymentMethodDialogOpen(false);
           setPendingOrderForPayment(null);
         }}
+        onMethodChange={handleCFDMethodChange}
         onConfirm={handlePaymentMethodConfirm}
         cartTotal={pendingOrderForPayment?.totalAmount || cart.total}
         isSubmitting={isProcessingQuickCharge}

@@ -274,110 +274,207 @@ function OrderingScreen(props: {
   );
 }
 
-// ─── PAYMENT — QRIS ───────────────────────────────────────────────────────────
-function QRISPaymentScreen(props: {
-  tenantName: string; orderNumber: string; total: number;
-  subtotal: number; tax: number; serviceCharge: number;
+// ─── Shared topbar (sama persis dengan OrderingScreen) ────────────────────────
+function CFDTopbar(props: {
+  tenantName: string; orderNumber: string;
+  badge?: React.ReactNode;
+  customerName?: string; tableNumber?: string;
 }) {
-  const qrData = `AURAPOS-QRIS-${props.orderNumber}-${props.total}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qrData)}&qzone=2&color=000000&bgcolor=ffffff&format=png`;
-
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
-      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-sm shadow-blue-200">
-            <span className="text-xs font-black text-white">{props.tenantName.slice(0,2).toUpperCase()}</span>
-          </div>
-          <span className="font-bold text-slate-800 text-sm">{props.tenantName}</span>
+    <div className="flex-shrink-0 bg-slate-900 px-5 py-2.5 flex items-center justify-between">
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className="w-7 h-7 rounded-lg bg-blue-500 flex items-center justify-center flex-shrink-0">
+          <span className="text-[10px] font-black text-white">{props.tenantName.slice(0,2).toUpperCase()}</span>
         </div>
-        <span className="text-xs font-bold bg-amber-50 border border-amber-100 text-amber-600 rounded-xl px-3 py-1.5">
-          Order #{props.orderNumber}
-        </span>
+        <span className="font-semibold text-white text-sm truncate">{props.tenantName}</span>
+        {props.tableNumber && (
+          <span className="text-xs text-slate-400 flex-shrink-0">· Meja {props.tableNumber}</span>
+        )}
+        {props.customerName && (
+          <span className="text-xs text-slate-500 flex-shrink-0 truncate">· {props.customerName}</span>
+        )}
+        {props.badge && <span className="flex-shrink-0 ml-1">{props.badge}</span>}
       </div>
+      <span className="text-xs text-slate-500 font-mono flex-shrink-0 ml-3">#{props.orderNumber}</span>
+    </div>
+  );
+}
 
-      <div className="flex-1 flex min-h-0">
-        <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">Scan QRIS untuk Membayar</p>
-          <div className="bg-white rounded-3xl shadow-2xl shadow-slate-200 border border-slate-200 p-7 flex flex-col items-center gap-5">
-            <div className="w-64 h-64 rounded-2xl overflow-hidden border border-slate-100">
-              <img src={qrUrl} alt="QRIS" className="w-full h-full object-contain"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            </div>
-            <div className="w-full text-center border-t border-dashed border-slate-200 pt-4">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Total Pembayaran</p>
-              <p className="text-4xl font-black text-slate-900 tabular-nums">{fmt(props.total)}</p>
-            </div>
-            <div className="flex flex-wrap gap-1.5 justify-center">
-              {['GoPay','OVO','Dana','LinkAja','ShopeePay','BCA Mobile'].map(app => (
-                <span key={app} className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{app}</span>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-amber-600">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            <p className="text-sm font-semibold">Menunggu konfirmasi pembayaran…</p>
-          </div>
+// ─── Shared right panel (sama persis dengan OrderingScreen) ───────────────────
+function CFDRightPanel(props: {
+  headerLabel: string;
+  total: number;
+  subtotal: number; tax: number; serviceCharge: number;
+  children?: React.ReactNode; // konten tambahan di bawah total
+}) {
+  return (
+    <div className="flex-shrink-0 w-72 flex flex-col bg-slate-900 overflow-hidden">
+      <div className="flex-shrink-0 bg-black/30 px-5 py-2.5 flex items-center">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">{props.headerLabel}</span>
+      </div>
+      <div className="flex-1 flex flex-col items-center justify-center px-6 gap-3">
+        <p className="text-xs font-semibold text-slate-500 tracking-widest uppercase">Total</p>
+        <div className="text-center">
+          <p className="text-xs font-semibold text-slate-500 mb-1">Rp</p>
+          <AnimatedTotal
+            value={props.total}
+            className="font-black text-white tabular-nums leading-none"
+            style={{ fontSize: 'clamp(2rem, 4.5vw, 3rem)' }}
+          />
         </div>
-
-        <div className="flex-shrink-0 w-72 border-l border-slate-200 bg-white flex flex-col">
-          <div className="bg-amber-500 px-6 py-6">
-            <p className="text-[11px] font-bold text-amber-100 uppercase tracking-widest mb-1">Total Tagihan</p>
-            <p className="text-[2.4rem] font-black text-white tabular-nums leading-tight">{fmt(props.total)}</p>
+        {props.children}
+      </div>
+      <div className="flex-shrink-0 border-t border-white/10 px-5 py-4 space-y-2.5">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-slate-500">Subtotal</span>
+          <span className="text-slate-300 font-semibold tabular-nums">{fmt(props.subtotal)}</span>
+        </div>
+        {props.serviceCharge > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-slate-500">Service</span>
+            <span className="text-slate-300 font-semibold tabular-nums">{fmt(props.serviceCharge)}</span>
           </div>
-          <div className="flex-1 px-6 py-5 space-y-3">
-            <div className="flex justify-between text-sm"><span className="text-slate-400">Subtotal</span><span className="font-semibold text-slate-700 tabular-nums">{fmt(props.subtotal)}</span></div>
-            {props.serviceCharge > 0 && <div className="flex justify-between text-sm"><span className="text-slate-400">Service Charge</span><span className="font-semibold text-slate-700 tabular-nums">{fmt(props.serviceCharge)}</span></div>}
-            {props.tax > 0 && <div className="flex justify-between text-sm"><span className="text-slate-400">Pajak</span><span className="font-semibold text-slate-700 tabular-nums">{fmt(props.tax)}</span></div>}
+        )}
+        {props.tax > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-slate-500">Pajak</span>
+            <span className="text-slate-300 font-semibold tabular-nums">{fmt(props.tax)}</span>
           </div>
+        )}
+        <div className="flex items-center justify-between pt-2 border-t border-white/10">
+          <span className="text-sm font-bold text-white">Total</span>
+          <span className="text-sm font-black text-blue-400 tabular-nums">{fmt(props.total)}</span>
         </div>
       </div>
     </div>
   );
 }
 
+// ─── PAYMENT — QRIS ───────────────────────────────────────────────────────────
+function QRISPaymentScreen(props: {
+  tenantName: string; orderNumber: string; total: number;
+  subtotal: number; tax: number; serviceCharge: number;
+  customerName?: string; tableNumber?: string;
+}) {
+  const qrData = `AURAPOS-QRIS-${props.orderNumber}-${props.total}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qrData)}&qzone=2&color=000000&bgcolor=ffffff&format=png`;
+
+  return (
+    <div className="flex-1 flex min-h-0 overflow-hidden bg-slate-50">
+      {/* ── LEFT: QR code ── */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <CFDTopbar
+          tenantName={props.tenantName}
+          orderNumber={props.orderNumber}
+          customerName={props.customerName}
+          tableNumber={props.tableNumber}
+          badge={
+            <span className="flex items-center gap-1.5 bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              QRIS
+            </span>
+          }
+        />
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 bg-slate-50">
+          {/* QR card */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-200/60 p-6 flex flex-col items-center gap-4"
+            style={{ animation: 'fadeUp .35s ease both' }}>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Scan QRIS untuk Membayar</p>
+            <div className="w-56 h-56 rounded-xl overflow-hidden border border-slate-100">
+              <img src={qrUrl} alt="QRIS" className="w-full h-full object-contain"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            </div>
+            {/* Wallet badges */}
+            <div className="flex flex-wrap gap-1.5 justify-center pt-1">
+              {['GoPay','OVO','Dana','LinkAja','ShopeePay','BCA Mobile'].map(app => (
+                <span key={app} className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{app}</span>
+              ))}
+            </div>
+          </div>
+          {/* Waiting indicator */}
+          <div className="flex items-center gap-2 text-amber-600">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <p className="text-sm font-semibold">Menunggu konfirmasi pembayaran…</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── RIGHT: total panel ── */}
+      <CFDRightPanel
+        headerLabel="Scan QRIS"
+        total={props.total}
+        subtotal={props.subtotal}
+        tax={props.tax}
+        serviceCharge={props.serviceCharge}
+      >
+        <div className="flex items-center gap-2 mt-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          <span className="text-sm text-amber-400 font-medium">Menunggu Pembayaran</span>
+        </div>
+      </CFDRightPanel>
+    </div>
+  );
+}
+
 // ─── PAYMENT — non-QRIS ───────────────────────────────────────────────────────
-const METHOD_LABEL: Record<string, string> = { cash:'Tunai', card:'Kartu Debit/Kredit', transfer:'Transfer Bank', ewallet:'E-Wallet' };
-const METHOD_EMOJI: Record<string, string> = { cash:'💵', card:'💳', transfer:'🏦', ewallet:'📲' };
+const METHOD_LABEL: Record<string, string> = { cash:'Tunai', card:'Kartu', transfer:'Transfer', ewallet:'QRIS' };
+const METHOD_ICON: Record<string, string> = { cash:'💵', card:'💳', transfer:'🏦', ewallet:'📲' };
 
 function CashPaymentScreen(props: {
   tenantName: string; orderNumber: string; total: number; method: string;
   subtotal: number; tax: number; serviceCharge: number;
+  customerName?: string; tableNumber?: string;
 }) {
+  const label = METHOD_LABEL[props.method] ?? props.method;
+  const icon  = METHOD_ICON[props.method] ?? '💰';
+
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
-      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
-            <span className="text-xs font-black text-white">{props.tenantName.slice(0,2).toUpperCase()}</span>
+    <div className="flex-1 flex min-h-0 overflow-hidden bg-slate-50">
+      {/* ── LEFT: method indicator ── */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <CFDTopbar
+          tenantName={props.tenantName}
+          orderNumber={props.orderNumber}
+          customerName={props.customerName}
+          tableNumber={props.tableNumber}
+          badge={
+            <span className="flex items-center gap-1.5 bg-blue-500/20 border border-blue-500/30 text-blue-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+              {label}
+            </span>
+          }
+        />
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 bg-slate-50">
+          <div className="flex flex-col items-center gap-5" style={{ animation: 'fadeUp .35s ease both' }}>
+            {/* Method icon */}
+            <div className="w-24 h-24 rounded-2xl bg-white border border-slate-200 shadow-lg shadow-slate-200/60 flex items-center justify-center text-5xl">
+              {icon}
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Metode Pembayaran</p>
+              <p className="text-2xl font-black text-slate-800">{label}</p>
+            </div>
+            {/* Spinner + status */}
+            <div className="flex items-center gap-3 text-slate-400 mt-2">
+              <div className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-blue-500 animate-spin flex-shrink-0" />
+              <p className="text-sm font-medium">Kasir sedang memproses pembayaran…</p>
+            </div>
           </div>
-          <span className="font-bold text-slate-800 text-sm">{props.tenantName}</span>
         </div>
-        <span className="text-xs font-bold bg-amber-50 border border-amber-100 text-amber-600 rounded-xl px-3 py-1.5">
-          Order #{props.orderNumber}
-        </span>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl shadow-slate-100 p-10 flex flex-col items-center gap-7 w-full max-w-md">
-          <div className="w-20 h-20 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-4xl">
-            {METHOD_EMOJI[props.method] ?? '💰'}
-          </div>
-          <div className="text-center">
-            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">{METHOD_LABEL[props.method] ?? props.method}</p>
-            <p className="font-black text-slate-900 tabular-nums" style={{ fontSize: 'clamp(2.5rem,7vw,4.5rem)' }}>{fmt(props.total)}</p>
-          </div>
-          <div className="w-full bg-slate-50 rounded-2xl px-5 py-4 space-y-2.5">
-            <div className="flex justify-between text-sm text-slate-500"><span>Subtotal</span><span className="font-semibold tabular-nums">{fmt(props.subtotal)}</span></div>
-            {props.serviceCharge > 0 && <div className="flex justify-between text-sm text-slate-500"><span>Service Charge</span><span className="font-semibold tabular-nums">{fmt(props.serviceCharge)}</span></div>}
-            {props.tax > 0 && <div className="flex justify-between text-sm text-slate-500"><span>Pajak</span><span className="font-semibold tabular-nums">{fmt(props.tax)}</span></div>}
-          </div>
-          <div className="flex items-center gap-3 text-slate-400">
-            <div className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-blue-500 animate-spin flex-shrink-0" />
-            <p className="text-sm font-medium">Kasir sedang memproses pembayaran…</p>
-          </div>
+      {/* ── RIGHT: total panel ── */}
+      <CFDRightPanel
+        headerLabel={label}
+        total={props.total}
+        subtotal={props.subtotal}
+        tax={props.tax}
+        serviceCharge={props.serviceCharge}
+      >
+        <div className="flex items-center gap-2 mt-1">
+          <div className="w-3 h-3 rounded-full border-2 border-slate-700 border-t-blue-400 animate-spin flex-shrink-0" />
+          <span className="text-sm text-slate-400 font-medium">Memproses</span>
         </div>
-      </div>
+      </CFDRightPanel>
     </div>
   );
 }
@@ -394,62 +491,108 @@ function PaymentScreen(props: {
 // ─── COMPLETED SCREEN ─────────────────────────────────────────────────────────
 function CompletedScreen(props: {
   tenantName: string; orderNumber: string;
-  total: number; amountPaid: number; change: number; customerName?: string;
+  total: number; amountPaid: number; change: number;
+  subtotal: number; tax: number; serviceCharge: number;
+  customerName?: string;
 }) {
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex-shrink-0 bg-emerald-600 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-            <span className="text-xs font-black text-white">{props.tenantName.slice(0,2).toUpperCase()}</span>
-          </div>
-          <span className="font-bold text-white text-sm">{props.tenantName}</span>
-        </div>
-        <span className="text-xs font-bold bg-emerald-700 text-emerald-100 rounded-xl px-3 py-1.5">
-          Order #{props.orderNumber}
-        </span>
-      </div>
+    <div className="flex-1 flex min-h-0 overflow-hidden bg-slate-50">
+      {/* ── LEFT: success area ── */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <CFDTopbar
+          tenantName={props.tenantName}
+          orderNumber={props.orderNumber}
+          customerName={props.customerName}
+          badge={
+            <span className="flex items-center gap-1.5 bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              Lunas
+            </span>
+          }
+        />
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 bg-slate-50">
+          <div className="flex flex-col items-center gap-5" style={{ animation: 'fadeUp .4s ease both' }}>
+            {/* Checkmark circle */}
+            <div
+              className="w-24 h-24 rounded-full bg-emerald-500 flex items-center justify-center shadow-xl shadow-emerald-200"
+              style={{ animation: 'popIn .5s cubic-bezier(.175,.885,.32,1.275) .08s both' }}
+            >
+              <CheckCircle2 size={52} className="text-white" strokeWidth={2.5} />
+            </div>
 
-      <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-emerald-50 to-white p-8">
-        <div
-          className="bg-white rounded-3xl border border-slate-200 shadow-2xl shadow-slate-100 px-12 py-10 flex flex-col items-center gap-7 w-full max-w-lg"
-          style={{ animation: 'fadeUp .4s ease both' }}
-        >
-          <div
-            className="w-24 h-24 rounded-full bg-emerald-500 flex items-center justify-center shadow-xl shadow-emerald-100"
-            style={{ animation: 'popIn .5s cubic-bezier(.175,.885,.32,1.275) .1s both' }}
-          >
-            <CheckCircle2 size={50} className="text-white" strokeWidth={2.5} />
-          </div>
-
-          <div className="text-center">
-            <p className="text-2xl font-black text-emerald-600 mb-2">Pembayaran Berhasil!</p>
-            <p className="font-black text-slate-900 tabular-nums" style={{ fontSize: 'clamp(2.8rem,8vw,5rem)' }}>
-              {fmt(props.total)}
-            </p>
-          </div>
-
-          {props.amountPaid > 0 && (
-            <div className="w-full rounded-2xl border border-slate-200 overflow-hidden">
-              <div className="flex justify-between px-5 py-3 bg-slate-50 text-sm">
-                <span className="text-slate-500">Dibayar</span>
-                <span className="font-semibold text-slate-700 tabular-nums">{fmt(props.amountPaid)}</span>
-              </div>
-              {props.change > 0 && (
-                <div className="flex justify-between items-center px-5 py-4 border-t border-slate-200">
-                  <span className="font-bold text-slate-700 text-base">Kembalian</span>
-                  <span className="font-black text-emerald-600 tabular-nums text-3xl">{fmt(props.change)}</span>
-                </div>
+            <div className="text-center">
+              <p className="text-2xl font-black text-emerald-600 mb-2">Pembayaran Berhasil!</p>
+              <p className="text-lg font-semibold text-slate-500">Terima kasih telah berkunjung 🙏</p>
+              {props.customerName && (
+                <p className="text-sm text-slate-400 mt-1">
+                  Sampai jumpa, <strong className="text-slate-600">{props.customerName}</strong>!
+                </p>
               )}
             </div>
-          )}
 
-          <div className="text-center">
-            <p className="text-lg font-semibold text-slate-500">Terima kasih telah berkunjung 🙏</p>
-            {props.customerName && (
-              <p className="text-sm text-slate-400 mt-1">Sampai jumpa, <strong className="text-slate-600">{props.customerName}</strong>!</p>
+            {/* Kembalian — hanya tampil jika ada */}
+            {props.change > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 px-8 py-4 text-center shadow-sm"
+                style={{ animation: 'fadeUp .4s ease .15s both' }}>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em] mb-1">Kembalian</p>
+                <p className="font-black text-emerald-600 tabular-nums" style={{ fontSize: 'clamp(2rem,5vw,3rem)' }}>
+                  {fmt(props.change)}
+                </p>
+              </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* ── RIGHT: total panel ── */}
+      <div className="flex-shrink-0 w-72 flex flex-col bg-slate-900 overflow-hidden">
+        <div className="flex-shrink-0 bg-emerald-600/30 px-5 py-2.5 flex items-center">
+          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.18em]">Pembayaran Lunas</span>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-6 gap-3">
+          <p className="text-xs font-semibold text-slate-500 tracking-widest uppercase">Total Dibayar</p>
+          <div className="text-center">
+            <p className="text-xs font-semibold text-slate-500 mb-1">Rp</p>
+            <AnimatedTotal
+              value={props.total}
+              className="font-black text-white tabular-nums leading-none"
+              style={{ fontSize: 'clamp(2rem, 4.5vw, 3rem)' }}
+            />
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span className="text-sm text-emerald-400 font-medium">Lunas</span>
+          </div>
+        </div>
+        <div className="flex-shrink-0 border-t border-white/10 px-5 py-4 space-y-2.5">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-slate-500">Subtotal</span>
+            <span className="text-slate-300 font-semibold tabular-nums">{fmt(props.subtotal)}</span>
+          </div>
+          {props.serviceCharge > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Service</span>
+              <span className="text-slate-300 font-semibold tabular-nums">{fmt(props.serviceCharge)}</span>
+            </div>
+          )}
+          {props.tax > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Pajak</span>
+              <span className="text-slate-300 font-semibold tabular-nums">{fmt(props.tax)}</span>
+            </div>
+          )}
+          {props.amountPaid > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Dibayar</span>
+              <span className="text-slate-300 font-semibold tabular-nums">{fmt(props.amountPaid)}</span>
+            </div>
+          )}
+          {props.change > 0 && (
+            <div className="flex items-center justify-between pt-2 border-t border-white/10">
+              <span className="text-sm font-bold text-white">Kembalian</span>
+              <span className="text-sm font-black text-emerald-400 tabular-nums">{fmt(props.change)}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
