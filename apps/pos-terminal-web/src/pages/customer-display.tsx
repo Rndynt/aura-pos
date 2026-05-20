@@ -24,7 +24,10 @@ function useClock() {
   return now;
 }
 
-// ─── Animated number ──────────────────────────────────────────────────────────
+// ─── Animated number (digits only, no Rp prefix) ─────────────────────────────
+const fmtNum = (n: number) =>
+  new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 }).format(n);
+
 function AnimatedTotal({ value, className, style }: { value: number; className?: string; style?: React.CSSProperties }) {
   const [display, setDisplay] = useState(value);
   const rafRef = useRef<number>();
@@ -42,7 +45,7 @@ function AnimatedTotal({ value, className, style }: { value: number; className?:
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
-  return <span className={className} style={style}>{fmt(display)}</span>;
+  return <span className={className} style={style}>{fmtNum(display)}</span>;
 }
 
 // ─── IDLE ─────────────────────────────────────────────────────────────────────
@@ -133,98 +136,82 @@ function OrderingScreen(props: {
   return (
     <div className="flex-1 flex min-h-0 overflow-hidden">
 
-      {/* ── LEFT: Item list ── */}
+      {/* ── LEFT: Item list — all rows fill full height equally, never scroll ── */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-white">
 
-        {/* Topbar */}
+        {/* Header bar */}
         <div className="flex-shrink-0 bg-slate-900 h-11 px-5 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-6 h-6 rounded-md bg-blue-500 flex items-center justify-center">
-              <span className="text-[9px] font-black text-white leading-none">{props.tenantName.slice(0,2).toUpperCase()}</span>
+          <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+            <div className="flex-shrink-0 w-6 h-6 rounded-md bg-blue-500 flex items-center justify-center">
+              <span className="text-[9px] font-black text-white">{props.tenantName.slice(0,2).toUpperCase()}</span>
             </div>
-            <span className="text-sm font-semibold text-white">{props.tenantName}</span>
-            {props.tableNumber && (
-              <>
-                <span className="text-slate-600 text-xs">·</span>
-                <span className="text-xs font-semibold text-slate-300">Meja {props.tableNumber}</span>
-              </>
-            )}
-            {props.customerName && (
-              <>
-                <span className="text-slate-600 text-xs">·</span>
-                <span className="text-xs text-slate-400">{props.customerName}</span>
-              </>
-            )}
+            <span className="text-sm font-semibold text-white whitespace-nowrap overflow-hidden text-ellipsis">{props.tenantName}</span>
+            {props.tableNumber && <span className="text-xs text-slate-400 whitespace-nowrap flex-shrink-0">· Meja {props.tableNumber}</span>}
+            {props.customerName && <span className="text-xs text-slate-500 whitespace-nowrap flex-shrink-0 overflow-hidden text-ellipsis">· {props.customerName}</span>}
           </div>
-          <span className="text-xs text-slate-500 font-medium">#{props.orderNumber}</span>
+          <span className="flex-shrink-0 text-xs text-slate-500 font-medium ml-3">#{props.orderNumber}</span>
         </div>
 
-        {/* Column headers */}
-        <div className="flex-shrink-0 flex items-center gap-3 px-5 py-2 bg-slate-50 border-b border-slate-200">
-          <span className="w-8 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider">Qty</span>
-          <span className="flex-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Item</span>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Subtotal</span>
-        </div>
-
-        {/* Rows */}
-        <div className="flex-1 overflow-hidden">
-          {props.items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 text-slate-300 h-full">
-              <ShoppingCart size={32} strokeWidth={1.5} />
-              <p className="text-sm">Menambahkan item…</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {props.items.map((item) => {
-                const sub = [item.variantName, item.optionsSummary].filter(Boolean).join(', ');
-                return (
-                  <div key={item.id} className="flex items-center gap-3 px-5 py-3">
-                    <span className="flex-shrink-0 w-8 text-right text-sm font-bold text-slate-500 tabular-nums">
-                      {item.quantity}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-800 truncate">{item.name}</p>
-                      {sub && <p className="text-xs text-slate-400 truncate mt-0.5">{sub}</p>}
-                    </div>
-                    <span className="flex-shrink-0 text-sm font-semibold text-slate-700 tabular-nums">
-                      {fmt(item.itemTotal)}
-                    </span>
+        {/* Item rows — flex-1 per row = each row gets equal share of remaining height */}
+        {props.items.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-300">
+            <ShoppingCart size={32} strokeWidth={1.5} />
+            <p className="text-sm">Menambahkan item…</p>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-5 py-1">
+            {props.items.map((item, i) => {
+              const sub = [item.variantName, item.optionsSummary].filter(Boolean).join(', ');
+              return (
+                <div
+                  key={item.id}
+                  className={`flex-1 min-h-0 flex items-center gap-3 overflow-hidden ${i < props.items.length - 1 ? 'border-b border-slate-100' : ''}`}
+                >
+                  <span className="flex-shrink-0 w-7 text-right text-sm font-bold text-slate-400 tabular-nums whitespace-nowrap">
+                    {item.quantity}×
+                  </span>
+                  <div className="flex-1 min-w-0 overflow-hidden whitespace-nowrap">
+                    <span className="text-sm font-semibold text-slate-800">{item.name}</span>
+                    {sub && <span className="text-xs text-slate-400 ml-2">{sub}</span>}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                  <span className="flex-shrink-0 text-sm font-semibold text-slate-700 tabular-nums whitespace-nowrap">
+                    {fmt(item.itemTotal)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* ── RIGHT: Total panel — full height, solid blue ── */}
+      {/* ── RIGHT: Total panel — full height blue ── */}
       <div className="flex-shrink-0 w-80 bg-blue-600 flex flex-col overflow-hidden">
 
-        {/* Filler top (topbar height match) */}
+        {/* Match header height */}
         <div className="flex-shrink-0 h-11 bg-blue-700 px-5 flex items-center">
           <span className="text-[10px] font-bold text-blue-300 uppercase tracking-widest">Total Tagihan</span>
         </div>
 
-        {/* Big total — centered vertically */}
-        <div className="flex-1 flex flex-col items-start justify-center px-7">
-          <span className="text-sm font-semibold text-blue-300 mb-1">Rp</span>
+        {/* Total centered vertically */}
+        <div className="flex-1 flex flex-col justify-center px-6">
+          <p className="text-xs font-semibold text-blue-300 mb-1">Rp</p>
           <AnimatedTotal
             value={props.total}
             className="font-black text-white tabular-nums leading-none"
-            style={{ fontSize: 'clamp(1.75rem, 5vw, 2.75rem)', wordBreak: 'break-all' }}
+            style={{ fontSize: 'clamp(1.8rem, 4.5vw, 2.8rem)' }}
           />
-          <span className="text-sm text-blue-300 font-medium mt-3">{itemCount} item</span>
+          <p className="text-sm text-blue-300 font-medium mt-3">{itemCount} item</p>
         </div>
 
-        {/* Breakdown — bottom */}
-        <div className="flex-shrink-0 border-t border-blue-500 px-7 py-5 space-y-2.5">
+        {/* Breakdown pinned to bottom */}
+        <div className="flex-shrink-0 border-t border-blue-500 px-6 py-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-blue-300">Subtotal</span>
             <span className="font-semibold text-white tabular-nums">{fmt(props.subtotal)}</span>
           </div>
           {props.serviceCharge > 0 && (
             <div className="flex justify-between text-sm">
-              <span className="text-blue-300">Service Charge</span>
+              <span className="text-blue-300">Service</span>
               <span className="font-semibold text-white tabular-nums">{fmt(props.serviceCharge)}</span>
             </div>
           )}
