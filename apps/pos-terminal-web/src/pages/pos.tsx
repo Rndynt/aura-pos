@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getActiveTenantId } from "@/lib/tenant";
 import { useTenant } from "@/context/TenantContext";
+import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import { useCustomerDisplaySender, toCFDItem } from "@/hooks/useCustomerDisplay";
 
 export default function POSPage() {
@@ -47,10 +48,16 @@ export default function POSPage() {
   const isMobile = useIsMobile();
   const { send: sendToCFD } = useCustomerDisplaySender();
   const { tenantId } = useTenant();
+  const { data: tenantProfile } = useTenantProfile(tenantId);
+  const tenantName = tenantProfile?.tenant?.name || 'AuraPOS';
+
+  // Prevent cart-change effect from overriding payment/completed CFD state
+  const inPaymentFlowRef = useRef(false);
 
   // ── Broadcast cart state ke Customer Display setiap ada perubahan ──────────
   useEffect(() => {
-    const tenantName = document.title || 'AuraPOS';
+    // Don't override payment/completed states while processing
+    if (inPaymentFlowRef.current) return;
     if (cart.items.length === 0) {
       sendToCFD({ type: 'idle', tenantName });
     } else {
@@ -63,10 +70,12 @@ export default function POSPage() {
         tax: cart.tax,
         serviceCharge: cart.serviceCharge,
         total: cart.total,
+        customerName: cart.customerName || undefined,
+        tableNumber: cart.tableNumber || undefined,
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart.items, cart.total, cart.orderNumber]);
+  }, [cart.items, cart.total, cart.orderNumber, tenantName]);
 
   // Auto-close mobile cart drawer when switching to tablet/desktop
   useEffect(() => {
@@ -358,26 +367,45 @@ export default function POSPage() {
   // Handle payment method confirmation from dialog
   const handlePaymentMethodConfirm = async (paymentMethod: PaymentMethod) => {
     if (!ensureCartHasItems() || !cart.selectedOrderTypeId) return;
-    
+
+    // Snapshot cart before clearing
+    const cfdItems = cart.items.map(toCFDItem);
+    const cfdSubtotal = cart.subtotal;
+    const cfdTax = cart.tax;
+    const cfdServiceCharge = cart.serviceCharge;
+    const cfdTotal = cart.total;
+    const cfdCustomerName = cart.customerName || undefined;
+    const cfdTableNumber = cart.tableNumber || undefined;
+    const cfdOrderNumber = cart.orderNumber;
+
+    // Lock CFD so cart-change effect won't override payment/completed state
+    inPaymentFlowRef.current = true;
+
     // Update CFD dengan metode bayar yang dipilih
     sendToCFD({
       type: 'payment',
-      tenantName: document.title || 'AuraPOS',
-      orderNumber: cart.orderNumber,
-      total: cart.total,
+      tenantName,
+      orderNumber: cfdOrderNumber,
+      total: cfdTotal,
       method: paymentMethod,
+      items: cfdItems,
+      subtotal: cfdSubtotal,
+      tax: cfdTax,
+      serviceCharge: cfdServiceCharge,
+      customerName: cfdCustomerName,
+      tableNumber: cfdTableNumber,
     });
 
     setIsProcessingQuickCharge(true);
     try {
-      const totalAmount = cart.total;
+      const totalAmount = cfdTotal;
       const orderResult = await createAndPayMutation.mutateAsync({
         items: cart.toBackendOrderItems(),
         tax_rate: cart.taxRate,
         service_charge_rate: cart.serviceChargeRate,
         order_type_id: cart.selectedOrderTypeId,
-        customer_name: cart.customerName || undefined,
-        table_number: cart.tableNumber || undefined,
+        customer_name: cfdCustomerName,
+        table_number: cfdTableNumber,
         amount: totalAmount,
         payment_method: paymentMethod,
       });
@@ -386,11 +414,16 @@ export default function POSPage() {
       // Broadcast: pembayaran selesai
       sendToCFD({
         type: 'completed',
-        tenantName: document.title || 'AuraPOS',
-        orderNumber: String(orderNumber ?? ''),
+        tenantName,
+        orderNumber: String(orderNumber ?? cfdOrderNumber),
         total: totalAmount,
         amountPaid: totalAmount,
         change: 0,
+        items: cfdItems,
+        subtotal: cfdSubtotal,
+        tax: cfdTax,
+        serviceCharge: cfdServiceCharge,
+        customerName: cfdCustomerName,
       });
       
       toast({
@@ -398,10 +431,11 @@ export default function POSPage() {
         description: `Order #${orderNumber} - Total: Rp ${totalAmount.toLocaleString("id-ID")} (${paymentMethod})`,
       });
       
-      // Kembali ke idle setelah 4 detik
+      // Kembali ke idle setelah 7 detik — release lock lalu kirim idle
       setTimeout(() => {
-        sendToCFD({ type: 'idle', tenantName: document.title || 'AuraPOS' });
-      }, 4000);
+        inPaymentFlowRef.current = false;
+        sendToCFD({ type: 'idle', tenantName });
+      }, 7000);
 
       // Clear everything and close
       cart.clearCart();
@@ -421,6 +455,21 @@ export default function POSPage() {
       
       console.error("Payment confirmation error:", error);
       
+      // Release CFD lock — send back to ordering state
+      inPaymentFlowRef.current = false;
+      sendToCFD({
+        type: 'ordering',
+        tenantName,
+        orderNumber: cfdOrderNumber,
+        items: cfdItems,
+        subtotal: cfdSubtotal,
+        tax: cfdTax,
+        serviceCharge: cfdServiceCharge,
+        total: cfdTotal,
+        customerName: cfdCustomerName,
+        tableNumber: cfdTableNumber,
+      });
+
       toast({
         title: "Pembayaran gagal",
         description: errorMessage,

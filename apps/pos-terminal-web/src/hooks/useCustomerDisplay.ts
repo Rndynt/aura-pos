@@ -14,11 +14,16 @@ export const CFD_CHANNEL = 'aurapos-cfd-v1';
 export type CFDMessage =
   | { type: 'idle';      tenantName: string; logoText?: string }
   | { type: 'ordering';  tenantName: string; orderNumber: string;
-      items: CFDItem[];  subtotal: number; tax: number; serviceCharge: number; total: number }
+      items: CFDItem[];  subtotal: number; tax: number; serviceCharge: number; total: number;
+      customerName?: string; tableNumber?: string; orderTypeName?: string }
   | { type: 'payment';   tenantName: string; orderNumber: string;
-      total: number;     method: string }
+      total: number;     method: string;
+      items: CFDItem[];  subtotal: number; tax: number; serviceCharge: number;
+      customerName?: string; tableNumber?: string }
   | { type: 'completed'; tenantName: string; orderNumber: string;
-      total: number;     amountPaid: number; change: number }
+      total: number;     amountPaid: number; change: number;
+      items: CFDItem[];  subtotal: number; tax: number; serviceCharge: number;
+      customerName?: string }
   | { type: 'ping' };
 
 export interface CFDItem {
