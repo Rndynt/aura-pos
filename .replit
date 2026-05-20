@@ -38,7 +38,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "NODE_ENV=development ./node_modules/.bin/tsx --tsconfig apps/api/tsconfig.node.json apps/api/src/index.ts"
+args = "NODE_ENV=development npx tsx --tsconfig apps/api/tsconfig.node.json apps/api/src/index.ts"
 waitForPort = 5000
 
 [agent]
@@ -51,5 +51,3 @@ stack = "FULLSTACK_JS"
 [userenv.shared]
 PORT = "5000"
 NODE_ENV = "development"
-BETTER_AUTH_URL = "http://localhost:5000"
-BETTER_AUTH_SECRET = "20cbb4b4a5f9d4c24bf65bbdd89e6775da8148cabe43fea648c8aa24c0b84b8a"
