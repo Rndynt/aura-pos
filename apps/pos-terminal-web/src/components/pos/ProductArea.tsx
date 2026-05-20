@@ -67,13 +67,6 @@ export function ProductArea({
 
   return (
     <div className="flex flex-col bg-slate-50/50 h-full min-h-0 overflow-x-hidden w-full max-w-full">
-      {/* Modern POS Header */}
-      <ModernPOSHeader 
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        searchDisabled={isLoading}
-      />
-
       {/* Order Queue - shown when kitchen display is enabled AND there are active orders */}
       {isKitchenDisplayEnabled && orders.length > 0 && onUpdateOrderStatus && (
         <div className="border-b border-slate-200 bg-white flex-shrink-0">
@@ -85,9 +78,9 @@ export function ProductArea({
         </div>
       )}
 
-      {/* Category Chips - with smooth slide animation */}
-      <div className={`px-4 md:px-8 py-4 transition-all duration-300 ease-in-out ${isOrderQueueExpanded ? 'translate-y-0' : 'translate-y-0'}`}>
-        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+      {/* Category Chips */}
+      <div className="px-4 md:px-8 pt-4 pb-2">
+        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           {isLoading ? (
             <>
               <Skeleton className="h-9 w-24 rounded-full flex-shrink-0" />
@@ -108,6 +101,13 @@ export function ProductArea({
           )}
         </div>
       </div>
+
+      {/* Search bar — di bawah kategori */}
+      <ModernPOSHeader
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchDisabled={isLoading}
+      />
 
       {/* Product Grid */}
       <div className="flex-1 overflow-y-auto px-4 md:px-8 pb-32 md:pb-8">
