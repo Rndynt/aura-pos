@@ -126,109 +126,114 @@ function OrderingScreen(props: {
 }) {
   const itemCount = props.items.reduce((s, i) => s + i.quantity, 0);
 
-  // Group by category, preserve insertion order
-  const catOrder: string[] = [];
-  const grouped: Record<string, CFDItem[]> = {};
-  for (const item of props.items) {
-    const cat = item.category || 'Lainnya';
-    if (!grouped[cat]) { grouped[cat] = []; catOrder.push(cat); }
-    grouped[cat].push(item);
-  }
+  // Format total: split "Rp " prefix from number so the big display never clips
+  const totalFormatted = fmt(props.total); // "Rp 6.369.850"
+  const totalNumber = totalFormatted.replace(/^Rp\s*/, ''); // "6.369.850"
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
-      {/* ── Header ── */}
-      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-sm shadow-blue-200">
-            <span className="text-xs font-black text-white">{props.tenantName.slice(0,2).toUpperCase()}</span>
-          </div>
-          <div>
-            <p className="font-bold text-slate-800 text-sm leading-tight">{props.tenantName}</p>
-            {(props.tableNumber || props.customerName) && (
-              <p className="text-[11px] text-slate-400 leading-tight">
-                {props.tableNumber && <span className="font-semibold text-blue-500">Meja {props.tableNumber}</span>}
-                {props.tableNumber && props.customerName && <span className="mx-1">·</span>}
-                {props.customerName}
-              </p>
+    <div className="flex-1 flex min-h-0 overflow-hidden">
+
+      {/* ── LEFT: Item list ── */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-white">
+
+        {/* Topbar */}
+        <div className="flex-shrink-0 bg-slate-900 h-11 px-5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-6 h-6 rounded-md bg-blue-500 flex items-center justify-center">
+              <span className="text-[9px] font-black text-white leading-none">{props.tenantName.slice(0,2).toUpperCase()}</span>
+            </div>
+            <span className="text-sm font-semibold text-white">{props.tenantName}</span>
+            {props.tableNumber && (
+              <>
+                <span className="text-slate-600 text-xs">·</span>
+                <span className="text-xs font-semibold text-slate-300">Meja {props.tableNumber}</span>
+              </>
+            )}
+            {props.customerName && (
+              <>
+                <span className="text-slate-600 text-xs">·</span>
+                <span className="text-xs text-slate-400">{props.customerName}</span>
+              </>
             )}
           </div>
+          <span className="text-xs text-slate-500 font-medium">#{props.orderNumber}</span>
         </div>
-        <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-100 rounded-xl px-3 py-1.5">
-          <ShoppingCart size={12} className="text-blue-500" />
-          <span className="text-xs font-bold text-blue-600">Order #{props.orderNumber}</span>
+
+        {/* Column headers */}
+        <div className="flex-shrink-0 flex items-center gap-3 px-5 py-2 bg-slate-50 border-b border-slate-200">
+          <span className="w-8 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider">Qty</span>
+          <span className="flex-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Item</span>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Subtotal</span>
+        </div>
+
+        {/* Rows */}
+        <div className="flex-1 overflow-hidden">
+          {props.items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 text-slate-300 h-full">
+              <ShoppingCart size={32} strokeWidth={1.5} />
+              <p className="text-sm">Menambahkan item…</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {props.items.map((item) => {
+                const sub = [item.variantName, item.optionsSummary].filter(Boolean).join(', ');
+                return (
+                  <div key={item.id} className="flex items-center gap-3 px-5 py-3">
+                    <span className="flex-shrink-0 w-8 text-right text-sm font-bold text-slate-500 tabular-nums">
+                      {item.quantity}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 truncate">{item.name}</p>
+                      {sub && <p className="text-xs text-slate-400 truncate mt-0.5">{sub}</p>}
+                    </div>
+                    <span className="flex-shrink-0 text-sm font-semibold text-slate-700 tabular-nums">
+                      {fmt(item.itemTotal)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── Body ── */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
+      {/* ── RIGHT: Total panel — full height, solid blue ── */}
+      <div className="flex-shrink-0 w-80 bg-blue-600 flex flex-col overflow-hidden">
 
-        {/* Items — single column, rows stretch to fill full height, nothing cut off */}
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {props.items.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-300">
-              <ShoppingCart size={40} strokeWidth={1.5} />
-              <p className="text-sm font-medium">Menambahkan item…</p>
-            </div>
-          ) : (() => {
-            // Scale font + spacing based on item count so everything fits on screen
-            const n = props.items.length;
-            const fs = n > 20 ? 11 : n > 15 ? 12 : n > 10 ? 13 : 14;
-            const subFs = fs - 1;
-            return (
-              <div className="flex-1 flex flex-col px-6 py-1 overflow-hidden">
-                {props.items.map((item, i) => {
-                  const sub = [item.variantName, item.optionsSummary].filter(Boolean).join(', ');
-                  return (
-                    <div
-                      key={item.id}
-                      className={`flex-1 min-h-0 flex items-center gap-3 overflow-hidden ${i < props.items.length - 1 ? 'border-b border-slate-100' : ''}`}
-                    >
-                      <span className="flex-shrink-0 font-bold text-slate-400 w-5 text-right tabular-nums" style={{ fontSize: fs }}>
-                        {item.quantity}×
-                      </span>
-                      <div className="flex-1 min-w-0 overflow-hidden whitespace-nowrap">
-                        <span className="font-semibold text-slate-800" style={{ fontSize: fs }}>{item.name}</span>
-                        {sub && <span className="text-slate-400 ml-1.5" style={{ fontSize: subFs }}>{sub}</span>}
-                      </div>
-                      <span className="flex-shrink-0 font-bold text-slate-800 tabular-nums" style={{ fontSize: fs }}>
-                        {fmt(item.itemTotal)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
+        {/* Filler top (topbar height match) */}
+        <div className="flex-shrink-0 h-11 bg-blue-700 px-5 flex items-center">
+          <span className="text-[10px] font-bold text-blue-300 uppercase tracking-widest">Total Tagihan</span>
         </div>
 
-        {/* ── Right: Summary panel ── */}
-        <div className="flex-shrink-0 w-72 border-l border-slate-200 bg-white flex flex-col overflow-hidden">
-          {/* Total — font auto-shrinks for large numbers */}
-          <div className="flex-shrink-0 bg-blue-600 px-5 py-6">
-            <p className="text-[10px] font-bold text-blue-200 uppercase tracking-widest mb-2">Total Tagihan</p>
-            <AnimatedTotal value={props.total} className="font-black text-white tabular-nums leading-none block" style={{ fontSize: 'clamp(1.6rem, 4.5vw, 2.6rem)' }} />
-            <p className="text-xs text-blue-300 font-medium mt-3">{itemCount} item</p>
+        {/* Big total — centered vertically */}
+        <div className="flex-1 flex flex-col items-start justify-center px-7">
+          <span className="text-sm font-semibold text-blue-300 mb-1">Rp</span>
+          <AnimatedTotal
+            value={props.total}
+            className="font-black text-white tabular-nums leading-none"
+            style={{ fontSize: 'clamp(1.75rem, 5vw, 2.75rem)', wordBreak: 'break-all' }}
+          />
+          <span className="text-sm text-blue-300 font-medium mt-3">{itemCount} item</span>
+        </div>
+
+        {/* Breakdown — bottom */}
+        <div className="flex-shrink-0 border-t border-blue-500 px-7 py-5 space-y-2.5">
+          <div className="flex justify-between text-sm">
+            <span className="text-blue-300">Subtotal</span>
+            <span className="font-semibold text-white tabular-nums">{fmt(props.subtotal)}</span>
           </div>
-          {/* Breakdown */}
-          <div className="px-6 py-5 space-y-3.5">
+          {props.serviceCharge > 0 && (
             <div className="flex justify-between text-sm">
-              <span className="text-slate-400">Subtotal</span>
-              <span className="font-semibold text-slate-700 tabular-nums">{fmt(props.subtotal)}</span>
+              <span className="text-blue-300">Service Charge</span>
+              <span className="font-semibold text-white tabular-nums">{fmt(props.serviceCharge)}</span>
             </div>
-            {props.serviceCharge > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Service Charge</span>
-                <span className="font-semibold text-slate-700 tabular-nums">{fmt(props.serviceCharge)}</span>
-              </div>
-            )}
-            {props.tax > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Pajak</span>
-                <span className="font-semibold text-slate-700 tabular-nums">{fmt(props.tax)}</span>
-              </div>
-            )}
-          </div>
+          )}
+          {props.tax > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-blue-300">Pajak</span>
+              <span className="font-semibold text-white tabular-nums">{fmt(props.tax)}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
