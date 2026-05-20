@@ -9,6 +9,7 @@ import { UnifiedBottomNav } from "@/components/navigation/UnifiedBottomNav";
 import { ProductOptionsDialog } from "@/components/pos/ProductOptionsDialog";
 import { PartialPaymentDialog } from "@/components/pos/PartialPaymentDialog";
 import { PaymentMethodDialog } from "@/components/pos/PaymentMethodDialog";
+import { DraftOrdersSheet } from "@/components/pos/DraftOrdersSheet";
 import type { PaymentMethod } from "@/hooks/useCart";
 import { useCart } from "@/hooks/useCart";
 import { useFeatures } from "@/hooks/useFeatures";
@@ -33,6 +34,7 @@ export default function POSPage() {
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [draftSheetOpen, setDraftSheetOpen] = useState(false);
   const [partialPaymentDialogOpen, setPartialPaymentDialogOpen] = useState(false);
   const [isSubmittingPartialPayment, setIsSubmittingPartialPayment] = useState(false);
   const [isProcessingQuickCharge, setIsProcessingQuickCharge] = useState(false);
@@ -722,6 +724,7 @@ export default function POSPage() {
         onAddToCart={handleAddToCart}
         orders={orders}
         onUpdateOrderStatus={handleUpdateOrderStatus}
+        onOpenDraftSheet={() => setDraftSheetOpen(true)}
       />
 
       {/* Cart Panel - Hidden on mobile, shown on tablet (md) and up */}
@@ -807,6 +810,16 @@ export default function POSPage() {
         setSelectedOrderTypeId={cart.setSelectedOrderTypeId}
         />
       )}
+
+      {/* Draft Orders Sheet */}
+      <DraftOrdersSheet
+        open={draftSheetOpen}
+        onOpenChange={setDraftSheetOpen}
+        onContinueOrder={(orderId) => {
+          cart.clearCart();
+          setLocation(`/pos?continueOrderId=${orderId}`);
+        }}
+      />
 
       {/* Product Options Dialog */}
       <ProductOptionsDialog

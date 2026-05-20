@@ -9,6 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { OrderQueue } from "@/components/kitchen-display/OrderQueue";
 import { useTenant } from "@/context/TenantContext";
+import { useOpenOrders } from "@/lib/api/tableHooks";
+import { Clock } from "lucide-react";
 
 const DEFAULT_CATEGORY = "All";
 
@@ -19,6 +21,7 @@ type ProductAreaProps = {
   onAddToCart: (product: Product) => void;
   orders?: Order[];
   onUpdateOrderStatus?: (orderId: string, status: string) => Promise<void>;
+  onOpenDraftSheet?: () => void;
 };
 
 // Extract unique categories from products
@@ -44,13 +47,16 @@ export function ProductArea({
   error, 
   onAddToCart,
   orders = [],
-  onUpdateOrderStatus
+  onUpdateOrderStatus,
+  onOpenDraftSheet,
 }: ProductAreaProps) {
   const [selectedCategory, setSelectedCategory] = useState(DEFAULT_CATEGORY);
   const [searchQuery, setSearchQuery] = useState("");
   const [isOrderQueueExpanded, setIsOrderQueueExpanded] = useState(false);
   const { hasModule } = useTenant();
   const isKitchenDisplayEnabled = hasModule("enable_kitchen_ticket");
+  const { data: openOrdersData } = useOpenOrders();
+  const draftCount = (openOrdersData?.orders ?? []).filter((o) => o.paymentStatus !== "paid").length;
 
   const categories = useMemo(() => getCategories(products), [products]);
 
@@ -78,26 +84,44 @@ export function ProductArea({
         </div>
       )}
 
-      {/* Category Chips */}
+      {/* Category Chips + Draft button */}
       <div className="px-4 md:px-8 pt-4 pb-2">
-        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-          {isLoading ? (
-            <>
-              <Skeleton className="h-9 w-24 rounded-full flex-shrink-0" />
-              <Skeleton className="h-9 w-20 rounded-full flex-shrink-0" />
-              <Skeleton className="h-9 w-20 rounded-full flex-shrink-0" />
-            </>
-          ) : (
-            categories.map((category) => (
-              <CategoryChip
-                key={category}
-                id={category}
-                name={category}
-                icon={getCategoryIcon(category)}
-                isActive={selectedCategory === category}
-                onClick={() => setSelectedCategory(category)}
-              />
-            ))
+        <div className="flex items-center gap-2">
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar flex-1">
+            {isLoading ? (
+              <>
+                <Skeleton className="h-9 w-24 rounded-full flex-shrink-0" />
+                <Skeleton className="h-9 w-20 rounded-full flex-shrink-0" />
+                <Skeleton className="h-9 w-20 rounded-full flex-shrink-0" />
+              </>
+            ) : (
+              categories.map((category) => (
+                <CategoryChip
+                  key={category}
+                  id={category}
+                  name={category}
+                  icon={getCategoryIcon(category)}
+                  isActive={selectedCategory === category}
+                  onClick={() => setSelectedCategory(category)}
+                />
+              ))
+            )}
+          </div>
+          {/* Draft orders quick-access button */}
+          {onOpenDraftSheet && (
+            <button
+              onClick={onOpenDraftSheet}
+              className="relative flex-shrink-0 flex items-center gap-1.5 bg-white border border-slate-200 hover:border-amber-300 hover:bg-amber-50 px-3 h-9 rounded-full text-xs font-semibold text-slate-600 hover:text-amber-700 transition-colors shadow-sm"
+              data-testid="btn-open-draft-sheet"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Draft</span>
+              {draftCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-amber-500 text-white text-[10px] font-bold rounded-full leading-none">
+                  {draftCount}
+                </span>
+              )}
+            </button>
           )}
         </div>
       </div>
