@@ -105,24 +105,87 @@ function SummaryLines({ subtotal, tax, serviceCharge, total }: {
   );
 }
 
+// ─── Live clock ───────────────────────────────────────────────────────────────
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
 // ─── IDLE ─────────────────────────────────────────────────────────────────────
 function IdleScreen({ tenantName }: { tenantName: string }) {
+  const now = useClock();
+
+  const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const dateStr = now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const initials = tenantName.slice(0, 2).toUpperCase();
+
   return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50 relative">
-      <div className="flex flex-col items-center gap-6 px-8 text-center">
-        <LogoBadge name={tenantName} size="lg" />
-        <div className="space-y-2">
-          <h1 className="text-4xl md:text-5xl font-black text-slate-800 tracking-tight">{tenantName}</h1>
-          <p className="text-lg md:text-xl text-slate-400 font-medium">Selamat datang</p>
+    <div className="flex-1 flex flex-col bg-gradient-to-br from-blue-50 via-white to-slate-50 relative overflow-hidden">
+      {/* Soft ambient blobs — consistent with app's blue-600 primary */}
+      <div style={{ animation: 'orb1 9s ease-in-out infinite' }}
+        className="absolute -top-[20%] -left-[10%] w-[55vw] h-[55vw] rounded-full bg-blue-100/70 blur-[90px] pointer-events-none" />
+      <div style={{ animation: 'orb2 11s ease-in-out infinite' }}
+        className="absolute -bottom-[20%] -right-[10%] w-[50vw] h-[50vw] rounded-full bg-indigo-100/60 blur-[100px] pointer-events-none" />
+
+      {/* Top bar */}
+      <div className="flex-shrink-0 flex items-center justify-between px-8 pt-6 relative z-10">
+        <div className="flex items-center gap-3">
+          {/* Logo badge — matches app's blue-600 gradient */}
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-sm shadow-blue-200">
+            <span className="text-xs font-black text-white tracking-wide select-none">{initials}</span>
+          </div>
+          <span className="text-sm font-semibold text-slate-500">{tenantName}</span>
         </div>
-        <div className="flex items-center gap-2.5 bg-white border border-slate-200 rounded-full px-6 py-3 shadow-sm">
-          <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-sm md:text-base font-semibold text-slate-600">Siap melayani Anda</span>
+        <div className="flex items-center gap-2 bg-white/80 border border-slate-200 rounded-full px-3 py-1.5 shadow-sm backdrop-blur-sm">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs font-semibold text-slate-500">Buka</span>
         </div>
       </div>
-      <div className="absolute bottom-5 flex items-center gap-2 text-slate-300">
-        <Monitor size={12} />
-        <span className="text-xs font-medium">Customer Display · AuraPOS</span>
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col items-center justify-center gap-5 relative z-10 px-8">
+
+        {/* Clock — slate-900, font-black, same weight as app headings */}
+        <div className="text-center" style={{ animation: 'fadeUp .7s ease both' }}>
+          <div
+            className="font-black text-slate-900 leading-none tracking-tighter tabular-nums select-none"
+            style={{ fontSize: 'clamp(4.5rem,14vw,8.5rem)', fontVariantNumeric: 'tabular-nums' }}
+          >
+            {timeStr}
+          </div>
+          <p className="text-slate-400 font-medium mt-2 capitalize" style={{ fontSize: 'clamp(.85rem,1.4vw,1.1rem)' }}>
+            {dateStr}
+          </p>
+        </div>
+
+        {/* Divider line — same slate border tone as app */}
+        <div className="w-12 h-0.5 bg-slate-200 rounded-full" style={{ animation: 'fadeUp .7s ease .12s both' }} />
+
+        {/* Welcome card — white card, same as app's card style */}
+        <div
+          className="bg-white/90 border border-slate-200 rounded-2xl px-8 py-5 flex flex-col items-center gap-2 shadow-sm backdrop-blur-sm text-center"
+          style={{ animation: 'fadeUp .7s ease .22s both' }}
+        >
+          <p className="font-black text-slate-800 tracking-tight" style={{ fontSize: 'clamp(1.1rem,2.5vw,1.6rem)' }}>
+            Selamat datang
+          </p>
+          <p className="text-slate-400 font-medium text-sm md:text-base">
+            Kasir siap melayani Anda
+          </p>
+        </div>
+      </div>
+
+      {/* Bottom bar */}
+      <div className="flex-shrink-0 flex items-center justify-between px-8 pb-5 relative z-10">
+        <div className="flex items-center gap-1.5 text-slate-300">
+          <Monitor size={11} />
+          <span className="text-[11px] font-medium">Customer Display</span>
+        </div>
+        <span className="text-[11px] text-slate-300 font-medium">AuraPOS</span>
       </div>
     </div>
   );
@@ -450,9 +513,12 @@ export default function CustomerDisplayPage() {
   return (
     <>
       <style>{`
-        @keyframes slideIn  { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
-        @keyframes popIn    { from{opacity:0;transform:scale(.4)} to{opacity:1;transform:scale(1)} }
-        @keyframes fadeUp   { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
+        @keyframes slideIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
+        @keyframes popIn   { from{opacity:0;transform:scale(.4)} to{opacity:1;transform:scale(1)} }
+        @keyframes fadeUp  { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:none} }
+        @keyframes orb1    { 0%,100%{transform:translate(0,0) scale(1)} 40%{transform:translate(5%,8%) scale(1.1)} 70%{transform:translate(-3%,4%) scale(.95)} }
+        @keyframes orb2    { 0%,100%{transform:translate(0,0) scale(1)} 35%{transform:translate(-6%,-5%) scale(1.08)} 65%{transform:translate(4%,-8%) scale(.92)} }
+        @keyframes orb3    { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(-8%,6%) scale(1.15)} }
         body { overflow:hidden; }
       `}</style>
       <div className="w-screen h-screen flex flex-col bg-slate-50 overflow-hidden">
