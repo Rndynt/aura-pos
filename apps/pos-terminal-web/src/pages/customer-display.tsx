@@ -133,40 +133,35 @@ function CompactItemRow({ item }: { item: CFDItem }) {
   );
 }
 
-// ─── Summary panel (right side) ───────────────────────────────────────────────
+// ─── Summary panel (right side) — total FIRST, always visible ─────────────────
 function SummaryPanel({
   subtotal,
   tax,
   serviceCharge,
   total,
   itemCount,
-  highlightColor = 'blue',
+  accentBg = 'bg-blue-600',
 }: {
   subtotal: number;
   tax: number;
   serviceCharge: number;
   total: number;
   itemCount: number;
-  highlightColor?: 'blue' | 'amber' | 'green';
+  accentBg?: string;
 }) {
-  const totalColor = {
-    blue: 'text-blue-600',
-    amber: 'text-amber-600',
-    green: 'text-green-600',
-  }[highlightColor];
-
   return (
-    <div className="flex flex-col h-full">
-      {/* Item count pill */}
-      <div className="flex items-center gap-2 mb-5">
-        <ShoppingCart size={14} className="text-slate-400" />
-        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-          {itemCount} Item
-        </span>
+    <div className="flex flex-col h-full gap-4">
+      {/* ── TOTAL — top, full-width, unmissable ── */}
+      <div className={`${accentBg} rounded-2xl px-5 py-5 flex flex-col gap-1`}>
+        <p className="text-xs font-bold text-white/60 uppercase tracking-widest">Total Tagihan</p>
+        <AnimatedTotal value={total} className="text-4xl font-black tabular-nums text-white leading-tight" />
+        {itemCount > 0 && (
+          <p className="text-xs text-white/50 font-medium mt-0.5">{itemCount} item</p>
+        )}
       </div>
 
-      {/* Breakdown */}
-      <div className="space-y-2.5 mb-5">
+      {/* ── Breakdown ── */}
+      <div className="space-y-2.5">
         <div className="flex justify-between text-sm text-slate-500">
           <span>Subtotal</span>
           <span className="font-semibold tabular-nums">{fmt(subtotal)}</span>
@@ -183,17 +178,6 @@ function SummaryPanel({
             <span className="font-semibold tabular-nums">{fmt(tax)}</span>
           </div>
         )}
-      </div>
-
-      {/* Total — big and dominant */}
-      <div className="mt-auto border-t-2 border-slate-200 pt-4">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
-          Total Tagihan
-        </p>
-        <AnimatedTotal
-          value={total}
-          className={`text-4xl font-black tabular-nums leading-tight ${totalColor}`}
-        />
       </div>
     </div>
   );
@@ -358,13 +342,14 @@ function OrderingScreen(props: {
 }) {
   const itemCount = props.items.reduce((s, i) => s + i.quantity, 0);
 
-  // Split items into 2 columns for compact grid display
-  const col1: CFDItem[] = [];
-  const col2: CFDItem[] = [];
-  props.items.forEach((item, i) => {
-    if (i % 2 === 0) col1.push(item);
-    else col2.push(item);
-  });
+  // Group items by category
+  const grouped = props.items.reduce<Record<string, CFDItem[]>>((acc, item) => {
+    const cat = item.category || 'Lainnya';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(item);
+    return acc;
+  }, {});
+  const categories = Object.keys(grouped);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
@@ -386,45 +371,41 @@ function OrderingScreen(props: {
 
       {/* Main body: items left | summary right */}
       <div className="flex-1 flex min-h-0">
-        {/* Items — 2 column compact grid */}
+
+        {/* Items — grouped by category, 2 columns of category cards */}
         <div className="flex-1 p-4 min-w-0 overflow-hidden">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
-            Detail Pesanan
-          </p>
           {props.items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 text-slate-300 h-40">
-              <ShoppingCart size={32} />
+            <div className="flex flex-col items-center justify-center gap-3 text-slate-300 h-full">
+              <ShoppingCart size={36} />
               <p className="text-sm font-medium">Menambahkan item…</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 h-full">
-              {/* Col 1 */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden self-start">
-                {col1.map((item) => (
-                  <CompactItemRow key={item.id} item={item} />
-                ))}
-              </div>
-              {/* Col 2 */}
-              {col2.length > 0 && (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden self-start">
-                  {col2.map((item) => (
+            <div className="grid grid-cols-2 gap-3 content-start h-full">
+              {categories.map((cat) => (
+                <div key={cat} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden self-start">
+                  {/* Category header */}
+                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 flex items-center gap-2">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{cat}</span>
+                  </div>
+                  {/* Items in this category */}
+                  {grouped[cat].map((item) => (
                     <CompactItemRow key={item.id} item={item} />
                   ))}
                 </div>
-              )}
+              ))}
             </div>
           )}
         </div>
 
-        {/* Summary panel — right */}
-        <div className="flex-shrink-0 w-72 border-l border-slate-200 bg-white p-6 overflow-hidden">
+        {/* Summary panel — right, total always at top */}
+        <div className="flex-shrink-0 w-72 border-l border-slate-200 bg-white p-5 overflow-hidden">
           <SummaryPanel
             subtotal={props.subtotal}
             tax={props.tax}
             serviceCharge={props.serviceCharge}
             total={props.total}
             itemCount={itemCount}
-            highlightColor="blue"
+            accentBg="bg-blue-600"
           />
         </div>
       </div>
@@ -505,7 +486,7 @@ function QRISPaymentScreen(props: {
             serviceCharge={props.serviceCharge}
             total={props.total}
             itemCount={0}
-            highlightColor="amber"
+            accentBg="bg-amber-500"
           />
         </div>
       </div>

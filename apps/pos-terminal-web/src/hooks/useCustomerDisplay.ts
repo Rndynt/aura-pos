@@ -29,6 +29,7 @@ export type CFDMessage =
 export interface CFDItem {
   id: string;
   name: string;
+  category?: string;
   variantName?: string;
   optionsSummary?: string;
   quantity: number;
@@ -45,6 +46,7 @@ export function toCFDItem(item: CartItem): CFDItem {
   return {
     id: item.id,
     name: item.product.name,
+    category: item.product.category,
     variantName: item.variant?.name,
     optionsSummary,
     quantity: item.quantity,
