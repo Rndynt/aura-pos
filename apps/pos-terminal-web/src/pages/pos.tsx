@@ -692,22 +692,6 @@ export default function POSPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full w-full max-w-[100vw]">
-      {/* Customer Display Shortcut Bar */}
-      <div className="flex items-center justify-end gap-2 px-3 py-1.5 bg-slate-50 border-b border-slate-200">
-        <button
-          onClick={() => window.open('/display', '_blank', 'width=1280,height=720,menubar=no,toolbar=no')}
-          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-200 px-3 py-1.5 rounded-md transition-colors"
-          title="Buka layar Customer Display di window baru"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-            <line x1="8" y1="21" x2="16" y2="21"/>
-            <line x1="12" y1="17" x2="12" y2="21"/>
-          </svg>
-          Customer Display
-        </button>
-      </div>
-
       {/* Main Content */}
       <div className="flex flex-1 min-h-0 h-full w-full max-w-[100vw]">
       {/* Main Product Area */}
