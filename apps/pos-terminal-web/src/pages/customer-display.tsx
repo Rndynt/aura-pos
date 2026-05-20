@@ -10,9 +10,11 @@ import {
   type CFDItem,
 } from '@/hooks/useCustomerDisplay';
 
-// ─── Formatter ────────────────────────────────────────────────────────────────
 const fmt = (n: number) =>
   new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n);
+
+const fmtNum = (n: number) =>
+  new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 }).format(n);
 
 // ─── Live clock ───────────────────────────────────────────────────────────────
 function useClock() {
@@ -24,10 +26,7 @@ function useClock() {
   return now;
 }
 
-// ─── Animated number (digits only, no Rp prefix) ─────────────────────────────
-const fmtNum = (n: number) =>
-  new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 }).format(n);
-
+// ─── Animated total counter ───────────────────────────────────────────────────
 function AnimatedTotal({ value, className, style }: { value: number; className?: string; style?: React.CSSProperties }) {
   const [display, setDisplay] = useState(value);
   const rafRef = useRef<number>();
@@ -48,13 +47,13 @@ function AnimatedTotal({ value, className, style }: { value: number; className?:
   return <span className={className} style={style}>{fmtNum(display)}</span>;
 }
 
-// ─── IDLE ─────────────────────────────────────────────────────────────────────
+// ─── IDLE SCREEN ─────────────────────────────────────────────────────────────
 type Slide = { id: string; bg: string; headline: string; sub?: string; label?: string; badge?: string; badgeBg?: string; dark?: boolean };
 const SLIDES: Slide[] = [
-  { id: 'welcome', bg: 'bg-white', headline: 'Selamat\nDatang', sub: 'Terima kasih telah berkunjung' },
-  { id: 'promo1', bg: 'bg-blue-600', headline: 'Diskon\n20%', label: 'Promo Hari Ini', sub: 'Untuk semua minuman pilihan', badge: 'Terbatas', badgeBg: 'bg-white/20', dark: true },
-  { id: 'promo2', bg: 'bg-slate-900', headline: 'Beli 2\nGratis 1', label: 'Spesial Weekend', sub: 'Berlaku setiap Sabtu & Minggu', badge: 'Weekend Only', badgeBg: 'bg-blue-600', dark: true },
-  { id: 'loyalty', bg: 'bg-slate-50', headline: 'Kumpulkan\nPoin', label: 'Program Loyalitas', sub: 'Setiap transaksi = poin reward' },
+  { id: 'welcome', bg: 'bg-white',      headline: 'Selamat\nDatang',    sub: 'Terima kasih telah berkunjung' },
+  { id: 'promo1',  bg: 'bg-blue-600',   headline: 'Diskon\n20%',        label: 'Promo Hari Ini',     sub: 'Untuk semua minuman pilihan', badge: 'Terbatas',     badgeBg: 'bg-white/20', dark: true },
+  { id: 'promo2',  bg: 'bg-slate-900',  headline: 'Beli 2\nGratis 1',   label: 'Spesial Weekend',    sub: 'Berlaku setiap Sabtu & Minggu', badge: 'Weekend Only', badgeBg: 'bg-blue-600', dark: true },
+  { id: 'loyalty', bg: 'bg-slate-50',   headline: 'Kumpulkan\nPoin',    label: 'Program Loyalitas',  sub: 'Setiap transaksi = poin reward' },
 ];
 
 function IdleScreen({ tenantName }: { tenantName: string }) {
@@ -80,7 +79,6 @@ function IdleScreen({ tenantName }: { tenantName: string }) {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden select-none">
-      {/* Top bar */}
       <div className="flex-shrink-0 flex items-center justify-between px-8 py-4 bg-white border-b border-slate-100">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-md shadow-blue-200">
@@ -94,8 +92,6 @@ function IdleScreen({ tenantName }: { tenantName: string }) {
           <span className="text-xs text-slate-400 capitalize hidden sm:block">{date}</span>
         </div>
       </div>
-
-      {/* Slide */}
       <div className={`flex-1 flex flex-col items-center justify-center px-16 transition-opacity duration-300 ${slide.bg} ${fading ? 'opacity-0' : 'opacity-100'}`}>
         <div className="w-full max-w-2xl flex flex-col gap-5">
           {slide.label && <p className={`text-[11px] font-bold tracking-[0.2em] uppercase ${lColor}`}>{slide.label}</p>}
@@ -106,8 +102,6 @@ function IdleScreen({ tenantName }: { tenantName: string }) {
           {slide.badge && <span className={`self-start text-xs font-bold text-white px-3 py-1.5 rounded-full ${slide.badgeBg}`}>{slide.badge}</span>}
         </div>
       </div>
-
-      {/* Bottom */}
       <div className="flex-shrink-0 flex items-center justify-between px-8 py-4 bg-white border-t border-slate-100">
         <div className="flex gap-2">
           {SLIDES.map((s, i) => (
@@ -121,7 +115,49 @@ function IdleScreen({ tenantName }: { tenantName: string }) {
   );
 }
 
-// ─── ORDERING ─────────────────────────────────────────────────────────────────
+// ─── ORDERING SCREEN ─────────────────────────────────────────────────────────
+// Card accent colors — cycles through items
+const CARD_ACCENTS = [
+  'border-l-blue-500',
+  'border-l-violet-500',
+  'border-l-emerald-500',
+  'border-l-amber-500',
+  'border-l-rose-500',
+  'border-l-cyan-500',
+  'border-l-orange-500',
+  'border-l-pink-500',
+];
+
+function ItemCard({ item, index }: { item: CFDItem; index: number }) {
+  const accent = CARD_ACCENTS[index % CARD_ACCENTS.length];
+  const sub = [item.variantName, item.optionsSummary].filter(Boolean).join(', ');
+
+  return (
+    <div
+      className={`flex items-start gap-3 bg-white rounded-xl border-l-4 ${accent} border border-slate-100 px-4 py-3 shadow-sm`}
+      style={{ animation: `cardIn .25s ease ${index * 0.04}s both` }}
+    >
+      {/* Qty badge */}
+      <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center mt-0.5">
+        <span className="text-sm font-black text-slate-700 tabular-nums leading-none">{item.quantity}</span>
+      </div>
+
+      {/* Name + options */}
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-slate-800 text-sm leading-snug truncate">{item.name}</p>
+        {sub && (
+          <p className="text-xs text-slate-400 mt-0.5 leading-tight truncate">{sub}</p>
+        )}
+      </div>
+
+      {/* Price */}
+      <p className="flex-shrink-0 text-sm font-bold text-slate-700 tabular-nums whitespace-nowrap mt-0.5">
+        {fmt(item.itemTotal)}
+      </p>
+    </div>
+  );
+}
+
 function OrderingScreen(props: {
   tenantName: string; orderNumber: string; items: CFDItem[];
   subtotal: number; tax: number; serviceCharge: number; total: number;
@@ -129,98 +165,108 @@ function OrderingScreen(props: {
 }) {
   const itemCount = props.items.reduce((s, i) => s + i.quantity, 0);
 
-  // Format total: split "Rp " prefix from number so the big display never clips
-  const totalFormatted = fmt(props.total); // "Rp 6.369.850"
-  const totalNumber = totalFormatted.replace(/^Rp\s*/, ''); // "6.369.850"
+  // Show max 8 cards. If more, show overflow badge on the last card slot.
+  const MAX_VISIBLE = 8;
+  const visible = props.items.slice(0, MAX_VISIBLE);
+  const overflow = props.items.length - MAX_VISIBLE;
 
   return (
-    <div className="flex-1 flex min-h-0 overflow-hidden">
+    <div className="flex-1 flex min-h-0 overflow-hidden bg-slate-50">
 
-      {/* ── LEFT: Item list — all rows fill full height equally, never scroll ── */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-white">
+      {/* ── LEFT: item grid ── */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
 
-        {/* Header bar */}
-        <div className="flex-shrink-0 bg-slate-900 h-11 px-5 flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0 overflow-hidden">
-            <div className="flex-shrink-0 w-6 h-6 rounded-md bg-blue-500 flex items-center justify-center">
-              <span className="text-[9px] font-black text-white">{props.tenantName.slice(0,2).toUpperCase()}</span>
+        {/* Topbar */}
+        <div className="flex-shrink-0 bg-slate-900 px-5 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-blue-500 flex items-center justify-center flex-shrink-0">
+              <span className="text-[10px] font-black text-white">{props.tenantName.slice(0,2).toUpperCase()}</span>
             </div>
-            <span className="text-sm font-semibold text-white whitespace-nowrap overflow-hidden text-ellipsis">{props.tenantName}</span>
-            {props.tableNumber && <span className="text-xs text-slate-400 whitespace-nowrap flex-shrink-0">· Meja {props.tableNumber}</span>}
-            {props.customerName && <span className="text-xs text-slate-500 whitespace-nowrap flex-shrink-0 overflow-hidden text-ellipsis">· {props.customerName}</span>}
+            <span className="font-semibold text-white text-sm truncate">{props.tenantName}</span>
+            {props.tableNumber && (
+              <span className="text-xs text-slate-400 flex-shrink-0">· Meja {props.tableNumber}</span>
+            )}
+            {props.customerName && (
+              <span className="text-xs text-slate-500 flex-shrink-0 truncate">· {props.customerName}</span>
+            )}
           </div>
-          <span className="flex-shrink-0 text-xs text-slate-500 font-medium ml-3">#{props.orderNumber}</span>
+          <span className="text-xs text-slate-500 font-mono flex-shrink-0 ml-3">#{props.orderNumber}</span>
         </div>
 
-        {/* Item rows — flex-1 per row = each row gets equal share of remaining height */}
-        {props.items.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-300">
-            <ShoppingCart size={32} strokeWidth={1.5} />
-            <p className="text-sm">Menambahkan item…</p>
-          </div>
-        ) : (
-          <div className="flex-1 flex flex-col min-h-0 overflow-hidden px-5 py-1">
-            {props.items.map((item, i) => {
-              const sub = [item.variantName, item.optionsSummary].filter(Boolean).join(', ');
-              return (
-                <div
-                  key={item.id}
-                  className={`flex-1 min-h-0 flex items-center gap-3 overflow-hidden ${i < props.items.length - 1 ? 'border-b border-slate-100' : ''}`}
-                >
-                  <span className="flex-shrink-0 w-7 text-right text-sm font-bold text-slate-400 tabular-nums whitespace-nowrap">
-                    {item.quantity}×
-                  </span>
-                  <div className="flex-1 min-w-0 overflow-hidden whitespace-nowrap">
-                    <span className="text-sm font-semibold text-slate-800">{item.name}</span>
-                    {sub && <span className="text-xs text-slate-400 ml-2">{sub}</span>}
-                  </div>
-                  <span className="flex-shrink-0 text-sm font-semibold text-slate-700 tabular-nums whitespace-nowrap">
-                    {fmt(item.itemTotal)}
-                  </span>
+        {/* Cards area */}
+        <div className="flex-1 min-h-0 overflow-hidden p-4">
+          {props.items.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center gap-3 text-slate-300">
+              <ShoppingCart size={40} strokeWidth={1.2} />
+              <p className="text-base font-medium">Menambahkan item…</p>
+            </div>
+          ) : (
+            <div
+              className="h-full grid gap-3 content-start"
+              style={{ gridTemplateColumns: props.items.length <= 4 ? '1fr 1fr' : '1fr 1fr 1fr' }}
+            >
+              {visible.map((item, i) => (
+                <ItemCard key={item.id} item={item} index={i} />
+              ))}
+
+              {/* Overflow pill */}
+              {overflow > 0 && (
+                <div className="flex items-center justify-center bg-slate-200 rounded-xl border border-slate-200 px-4 py-3">
+                  <span className="text-sm font-bold text-slate-500">+{overflow} item lainnya</span>
                 </div>
-              );
-            })}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ── RIGHT: Total panel — full height blue ── */}
-      <div className="flex-shrink-0 w-80 bg-blue-600 flex flex-col overflow-hidden">
+      {/* ── RIGHT: total panel ── */}
+      <div className="flex-shrink-0 w-72 flex flex-col bg-slate-900 overflow-hidden">
 
-        {/* Match header height */}
-        <div className="flex-shrink-0 h-11 bg-blue-700 px-5 flex items-center">
-          <span className="text-[10px] font-bold text-blue-300 uppercase tracking-widest">Total Tagihan</span>
+        {/* Header */}
+        <div className="flex-shrink-0 bg-black/30 px-5 py-2.5 flex items-center">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">Total Tagihan</span>
         </div>
 
-        {/* Total centered vertically */}
-        <div className="flex-1 flex flex-col justify-center px-6">
-          <p className="text-xs font-semibold text-blue-300 mb-1">Rp</p>
-          <AnimatedTotal
-            value={props.total}
-            className="font-black text-white tabular-nums leading-none"
-            style={{ fontSize: 'clamp(1.8rem, 4.5vw, 2.8rem)' }}
-          />
-          <p className="text-sm text-blue-300 font-medium mt-3">{itemCount} item</p>
+        {/* Total — vertically centered, takes up most of the panel */}
+        <div className="flex-1 flex flex-col items-center justify-center px-6 gap-3">
+          <p className="text-xs font-semibold text-slate-500 tracking-widest uppercase">Total</p>
+          <div className="text-center">
+            <p className="text-xs font-semibold text-slate-500 mb-1">Rp</p>
+            <AnimatedTotal
+              value={props.total}
+              className="font-black text-white tabular-nums leading-none"
+              style={{ fontSize: 'clamp(2rem, 4.5vw, 3rem)' }}
+            />
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+            <span className="text-sm text-slate-400 font-medium">{itemCount} item</span>
+          </div>
         </div>
 
-        {/* Breakdown pinned to bottom */}
-        <div className="flex-shrink-0 border-t border-blue-500 px-6 py-4 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-blue-300">Subtotal</span>
-            <span className="font-semibold text-white tabular-nums">{fmt(props.subtotal)}</span>
+        {/* Breakdown */}
+        <div className="flex-shrink-0 border-t border-white/10 px-5 py-4 space-y-2.5">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-slate-500">Subtotal</span>
+            <span className="text-slate-300 font-semibold tabular-nums">{fmt(props.subtotal)}</span>
           </div>
           {props.serviceCharge > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-blue-300">Service</span>
-              <span className="font-semibold text-white tabular-nums">{fmt(props.serviceCharge)}</span>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Service</span>
+              <span className="text-slate-300 font-semibold tabular-nums">{fmt(props.serviceCharge)}</span>
             </div>
           )}
           {props.tax > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-blue-300">Pajak</span>
-              <span className="font-semibold text-white tabular-nums">{fmt(props.tax)}</span>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Pajak (11%)</span>
+              <span className="text-slate-300 font-semibold tabular-nums">{fmt(props.tax)}</span>
             </div>
           )}
+          <div className="flex items-center justify-between pt-2 border-t border-white/10">
+            <span className="text-sm font-bold text-white">Total</span>
+            <span className="text-sm font-black text-blue-400 tabular-nums">{fmt(props.total)}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -237,7 +283,6 @@ function QRISPaymentScreen(props: {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
-      {/* Header */}
       <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-sm shadow-blue-200">
@@ -251,60 +296,38 @@ function QRISPaymentScreen(props: {
       </div>
 
       <div className="flex-1 flex min-h-0">
-        {/* QR section */}
         <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em]">Scan QRIS untuk Membayar</p>
-
           <div className="bg-white rounded-3xl shadow-2xl shadow-slate-200 border border-slate-200 p-7 flex flex-col items-center gap-5">
-            {/* QR */}
             <div className="w-64 h-64 rounded-2xl overflow-hidden border border-slate-100">
               <img src={qrUrl} alt="QRIS" className="w-full h-full object-contain"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             </div>
-
-            {/* Total under QR */}
             <div className="w-full text-center border-t border-dashed border-slate-200 pt-4">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Total Pembayaran</p>
               <p className="text-4xl font-black text-slate-900 tabular-nums">{fmt(props.total)}</p>
             </div>
-
-            {/* Wallets */}
             <div className="flex flex-wrap gap-1.5 justify-center">
               {['GoPay','OVO','Dana','LinkAja','ShopeePay','BCA Mobile'].map(app => (
                 <span key={app} className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{app}</span>
               ))}
             </div>
           </div>
-
           <div className="flex items-center gap-2 text-amber-600">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
             <p className="text-sm font-semibold">Menunggu konfirmasi pembayaran…</p>
           </div>
         </div>
 
-        {/* Summary panel */}
         <div className="flex-shrink-0 w-72 border-l border-slate-200 bg-white flex flex-col">
           <div className="bg-amber-500 px-6 py-6">
             <p className="text-[11px] font-bold text-amber-100 uppercase tracking-widest mb-1">Total Tagihan</p>
             <p className="text-[2.4rem] font-black text-white tabular-nums leading-tight">{fmt(props.total)}</p>
           </div>
           <div className="flex-1 px-6 py-5 space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-400">Subtotal</span>
-              <span className="font-semibold text-slate-700 tabular-nums">{fmt(props.subtotal)}</span>
-            </div>
-            {props.serviceCharge > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Service Charge</span>
-                <span className="font-semibold text-slate-700 tabular-nums">{fmt(props.serviceCharge)}</span>
-              </div>
-            )}
-            {props.tax > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Pajak</span>
-                <span className="font-semibold text-slate-700 tabular-nums">{fmt(props.tax)}</span>
-              </div>
-            )}
+            <div className="flex justify-between text-sm"><span className="text-slate-400">Subtotal</span><span className="font-semibold text-slate-700 tabular-nums">{fmt(props.subtotal)}</span></div>
+            {props.serviceCharge > 0 && <div className="flex justify-between text-sm"><span className="text-slate-400">Service Charge</span><span className="font-semibold text-slate-700 tabular-nums">{fmt(props.serviceCharge)}</span></div>}
+            {props.tax > 0 && <div className="flex justify-between text-sm"><span className="text-slate-400">Pajak</span><span className="font-semibold text-slate-700 tabular-nums">{fmt(props.tax)}</span></div>}
           </div>
         </div>
       </div>
@@ -322,7 +345,6 @@ function CashPaymentScreen(props: {
 }) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
-      {/* Header */}
       <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
@@ -337,7 +359,6 @@ function CashPaymentScreen(props: {
 
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl shadow-slate-100 p-10 flex flex-col items-center gap-7 w-full max-w-md">
-          {/* Method */}
           <div className="w-20 h-20 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center text-4xl">
             {METHOD_EMOJI[props.method] ?? '💰'}
           </div>
@@ -345,15 +366,11 @@ function CashPaymentScreen(props: {
             <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">{METHOD_LABEL[props.method] ?? props.method}</p>
             <p className="font-black text-slate-900 tabular-nums" style={{ fontSize: 'clamp(2.5rem,7vw,4.5rem)' }}>{fmt(props.total)}</p>
           </div>
-
-          {/* Breakdown */}
           <div className="w-full bg-slate-50 rounded-2xl px-5 py-4 space-y-2.5">
             <div className="flex justify-between text-sm text-slate-500"><span>Subtotal</span><span className="font-semibold tabular-nums">{fmt(props.subtotal)}</span></div>
             {props.serviceCharge > 0 && <div className="flex justify-between text-sm text-slate-500"><span>Service Charge</span><span className="font-semibold tabular-nums">{fmt(props.serviceCharge)}</span></div>}
             {props.tax > 0 && <div className="flex justify-between text-sm text-slate-500"><span>Pajak</span><span className="font-semibold tabular-nums">{fmt(props.tax)}</span></div>}
           </div>
-
-          {/* Spinner */}
           <div className="flex items-center gap-3 text-slate-400">
             <div className="w-5 h-5 rounded-full border-2 border-slate-200 border-t-blue-500 animate-spin flex-shrink-0" />
             <p className="text-sm font-medium">Kasir sedang memproses pembayaran…</p>
@@ -373,14 +390,13 @@ function PaymentScreen(props: {
   return <CashPaymentScreen {...props} />;
 }
 
-// ─── COMPLETED ────────────────────────────────────────────────────────────────
+// ─── COMPLETED SCREEN ─────────────────────────────────────────────────────────
 function CompletedScreen(props: {
   tenantName: string; orderNumber: string;
   total: number; amountPaid: number; change: number; customerName?: string;
 }) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Green header */}
       <div className="flex-shrink-0 bg-emerald-600 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
@@ -394,16 +410,17 @@ function CompletedScreen(props: {
       </div>
 
       <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-emerald-50 to-white p-8">
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl shadow-slate-100 px-12 py-10 flex flex-col items-center gap-7 w-full max-w-lg"
-          style={{ animation: 'fadeUp .4s ease both' }}>
-
-          {/* Check icon */}
-          <div className="w-24 h-24 rounded-full bg-emerald-500 flex items-center justify-center shadow-xl shadow-emerald-100"
-            style={{ animation: 'popIn .5s cubic-bezier(.175,.885,.32,1.275) .1s both' }}>
+        <div
+          className="bg-white rounded-3xl border border-slate-200 shadow-2xl shadow-slate-100 px-12 py-10 flex flex-col items-center gap-7 w-full max-w-lg"
+          style={{ animation: 'fadeUp .4s ease both' }}
+        >
+          <div
+            className="w-24 h-24 rounded-full bg-emerald-500 flex items-center justify-center shadow-xl shadow-emerald-100"
+            style={{ animation: 'popIn .5s cubic-bezier(.175,.885,.32,1.275) .1s both' }}
+          >
             <CheckCircle2 size={50} className="text-white" strokeWidth={2.5} />
           </div>
 
-          {/* Total */}
           <div className="text-center">
             <p className="text-2xl font-black text-emerald-600 mb-2">Pembayaran Berhasil!</p>
             <p className="font-black text-slate-900 tabular-nums" style={{ fontSize: 'clamp(2.8rem,8vw,5rem)' }}>
@@ -411,7 +428,6 @@ function CompletedScreen(props: {
             </p>
           </div>
 
-          {/* Paid / change */}
           {props.amountPaid > 0 && (
             <div className="w-full rounded-2xl border border-slate-200 overflow-hidden">
               <div className="flex justify-between px-5 py-3 bg-slate-50 text-sm">
@@ -427,7 +443,6 @@ function CompletedScreen(props: {
             </div>
           )}
 
-          {/* Thank you */}
           <div className="text-center">
             <p className="text-lg font-semibold text-slate-500">Terima kasih telah berkunjung 🙏</p>
             {props.customerName && (
@@ -451,11 +466,12 @@ export default function CustomerDisplayPage() {
       <style>{`
         @keyframes popIn  { from{opacity:0;transform:scale(.4)} to{opacity:1;transform:scale(1)} }
         @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:none} }
+        @keyframes cardIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
         * { -webkit-font-smoothing:antialiased; }
         body { overflow:hidden; }
       `}</style>
       <div className="w-screen h-screen flex flex-col overflow-hidden bg-slate-50">
-        {msg.type === 'idle'      && <IdleScreen    tenantName={tenantName} />}
+        {msg.type === 'idle'      && <IdleScreen     tenantName={tenantName} />}
         {msg.type === 'ordering'  && <OrderingScreen  {...msg} />}
         {msg.type === 'payment'   && <PaymentScreen   {...msg} />}
         {msg.type === 'completed' && <CompletedScreen {...msg} />}
