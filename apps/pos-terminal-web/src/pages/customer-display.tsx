@@ -9,6 +9,7 @@ import {
   type CFDMessage,
   type CFDItem,
 } from '@/hooks/useCustomerDisplay';
+import { getActiveTenantId } from '@/lib/tenant';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n);
@@ -487,7 +488,17 @@ function useFullscreen() {
 }
 
 // ─── FULLSCREEN PROMPT OVERLAY ────────────────────────────────────────────────
-function FullscreenPrompt({ onEnter }: { onEnter: () => void }) {
+function FullscreenPrompt({ onEnter, cfdUrl }: { onEnter: () => void; cfdUrl: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation(); // jangan trigger fullscreen
+    navigator.clipboard.writeText(cfdUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  };
+
   return (
     <div
       onClick={onEnter}
@@ -505,9 +516,25 @@ function FullscreenPrompt({ onEnter }: { onEnter: () => void }) {
         <p className="text-white font-bold text-xl mb-1">Tap untuk Fullscreen</p>
         <p className="text-white/50 text-sm">Layar akan terkunci landscape otomatis</p>
       </div>
+
+      {/* Link siap share ke device lain */}
+      <div
+        onClick={handleCopy}
+        className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 hover:bg-white/15 transition-colors cursor-pointer"
+        title="Klik untuk copy link"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-blue-400 flex-shrink-0">
+          <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+        </svg>
+        <span className="text-white/50 text-[11px] font-mono truncate max-w-[280px]">{cfdUrl}</span>
+        <span className={`text-[10px] font-semibold flex-shrink-0 transition-colors ${copied ? 'text-emerald-400' : 'text-blue-400'}`}>
+          {copied ? 'Tersalin!' : 'Copy'}
+        </span>
+      </div>
+
       <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/15">
         <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
-        <span className="text-white/60 text-xs font-medium">Customer Display siap</span>
+        <span className="text-white/60 text-xs font-medium">Customer Display siap • buka link di device lain</span>
       </div>
     </div>
   );
@@ -549,8 +576,19 @@ export default function CustomerDisplayPage() {
   const [showPrompt, setShowPrompt] = useState(true);
   const { isFullscreen, enter } = useFullscreen();
 
-  useCustomerDisplayReceiver((m) => { if (m.type !== 'ping') setMsg(m); });
+  // Ambil tenantId dari URL (?tenantId=xxx) agar Device B tanpa login bisa sync
+  const tenantIdFromUrl = new URLSearchParams(window.location.search).get('tenantId') ?? undefined;
+
+  useCustomerDisplayReceiver((m) => { if (m.type !== 'ping') setMsg(m); }, tenantIdFromUrl);
   const tenantName = msg.type !== 'ping' && 'tenantName' in msg ? msg.tenantName : 'AuraPOS';
+
+  // Bangun link CFD yang mengandung tenantId — ini yang di-share ke Device B
+  // Priority: ?tenantId dari URL  >  active session (localStorage setelah login)
+  const cfdUrl = (() => {
+    const base = `${window.location.origin}/display`;
+    const tid = tenantIdFromUrl || getActiveTenantId();
+    return tid ? `${base}?tenantId=${encodeURIComponent(tid)}` : base;
+  })();
 
   const handleEnterFullscreen = async () => {
     await enter();
@@ -578,7 +616,7 @@ export default function CustomerDisplayPage() {
         {msg.type === 'completed' && <CompletedScreen {...msg} />}
 
         {/* Fullscreen prompt — tampil saat pertama buka */}
-        {showPrompt && <FullscreenPrompt onEnter={handleEnterFullscreen} />}
+        {showPrompt && <FullscreenPrompt onEnter={handleEnterFullscreen} cfdUrl={cfdUrl} />}
 
         {/* Tombol fullscreen kecil — muncul saat kursor gerak, tidak fullscreen */}
         {!isFullscreen && !showPrompt && <FullscreenButton onClick={enter} />}
