@@ -410,18 +410,14 @@ export function ProductOptionsDialog({
   // Desktop: Dialog
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="w-full max-w-md bg-white" data-testid="dialog-product-options">
-        <div className="flex justify-between items-center mb-4">
+      <DialogContent
+        className="w-full max-w-md bg-white flex flex-col max-h-[85vh] p-0 gap-0"
+        data-testid="dialog-product-options"
+      >
+        <div className="flex items-center px-4 py-4 border-b border-slate-100 flex-shrink-0 pr-12">
           <DialogTitle className="text-lg font-bold text-slate-800">
             {product.name}
           </DialogTitle>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-slate-100 rounded-full"
-            data-testid="button-close-options"
-          >
-            <X size={20} />
-          </button>
         </div>
         <Content />
       </DialogContent>

@@ -83,7 +83,7 @@ export function Sidebar() {
           icon={Settings}
           label="Management"
           isActive={isManagementActive}
-          onClick={() => handleNavigation("/dashboard")}
+          onClick={() => handleNavigation("/hub")}
           testId="button-nav-management"
         />
       </nav>
@@ -145,7 +145,7 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
       )}
 
       <button
-        onClick={() => handleNavigation("/dashboard")}
+        onClick={() => handleNavigation("/hub")}
         data-testid="button-nav-mobile-management"
         className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
           isManagementActive
