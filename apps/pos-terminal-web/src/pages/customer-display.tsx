@@ -455,11 +455,112 @@ function CompletedScreen(props: {
   );
 }
 
+// ─── FULLSCREEN HOOK ──────────────────────────────────────────────────────────
+function useFullscreen() {
+  const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  const enter = async () => {
+    try {
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+      // Lock to landscape if supported
+      try {
+        await (screen.orientation as any).lock('landscape');
+      } catch {
+        // Not all browsers support orientation lock — silently ignore
+      }
+    } catch {
+      // Fullscreen may be blocked (e.g. no user gesture) — ignore
+    }
+  };
+
+  const exit = async () => {
+    try { if (document.fullscreenElement) await document.exitFullscreen(); } catch { /* ignore */ }
+  };
+
+  return { isFullscreen, enter, exit };
+}
+
+// ─── FULLSCREEN PROMPT OVERLAY ────────────────────────────────────────────────
+function FullscreenPrompt({ onEnter }: { onEnter: () => void }) {
+  return (
+    <div
+      onClick={onEnter}
+      className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-6 cursor-pointer select-none"
+      style={{ background: 'rgba(2,6,23,0.82)', backdropFilter: 'blur(8px)', animation: 'fadeUp .3s ease both' }}
+    >
+      {/* Icon */}
+      <div className="w-20 h-20 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/>
+          <path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>
+        </svg>
+      </div>
+      <div className="text-center">
+        <p className="text-white font-bold text-xl mb-1">Tap untuk Fullscreen</p>
+        <p className="text-white/50 text-sm">Layar akan terkunci landscape otomatis</p>
+      </div>
+      <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/15">
+        <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+        <span className="text-white/60 text-xs font-medium">Customer Display siap</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── FULLSCREEN BUTTON (pojok kanan bawah saat tidak fullscreen) ──────────────
+function FullscreenButton({ onClick }: { onClick: () => void }) {
+  const [visible, setVisible] = useState(false);
+
+  // Show on mouse move, hide after 3s
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const show = () => { setVisible(true); clearTimeout(timer); timer = setTimeout(() => setVisible(false), 3000); };
+    window.addEventListener('mousemove', show);
+    window.addEventListener('touchstart', show);
+    return () => { window.removeEventListener('mousemove', show); window.removeEventListener('touchstart', show); clearTimeout(timer); };
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <button
+      onClick={onClick}
+      title="Masuk Fullscreen"
+      className="fixed bottom-4 right-4 z-40 w-10 h-10 rounded-xl bg-slate-900/80 border border-white/10 backdrop-blur-sm flex items-center justify-center hover:bg-slate-800 transition-colors"
+      style={{ animation: 'fadeUp .2s ease both' }}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/>
+        <path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>
+      </svg>
+    </button>
+  );
+}
+
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function CustomerDisplayPage() {
   const [msg, setMsg] = useState<CFDMessage>({ type: 'idle', tenantName: 'AuraPOS' });
+  const [showPrompt, setShowPrompt] = useState(true);
+  const { isFullscreen, enter } = useFullscreen();
+
   useCustomerDisplayReceiver((m) => { if (m.type !== 'ping') setMsg(m); });
   const tenantName = msg.type !== 'ping' && 'tenantName' in msg ? msg.tenantName : 'AuraPOS';
+
+  const handleEnterFullscreen = async () => {
+    await enter();
+    setShowPrompt(false);
+  };
+
+  // Jika sudah fullscreen dari awal (mis. dibuka ulang), langsung hide prompt
+  useEffect(() => {
+    if (isFullscreen) setShowPrompt(false);
+  }, [isFullscreen]);
 
   return (
     <>
@@ -470,11 +571,17 @@ export default function CustomerDisplayPage() {
         * { -webkit-font-smoothing:antialiased; }
         body { overflow:hidden; }
       `}</style>
-      <div className="w-screen h-screen flex flex-col overflow-hidden bg-slate-50">
+      <div className="relative w-screen h-screen flex flex-col overflow-hidden bg-slate-50">
         {msg.type === 'idle'      && <IdleScreen     tenantName={tenantName} />}
         {msg.type === 'ordering'  && <OrderingScreen  {...msg} />}
         {msg.type === 'payment'   && <PaymentScreen   {...msg} />}
         {msg.type === 'completed' && <CompletedScreen {...msg} />}
+
+        {/* Fullscreen prompt — tampil saat pertama buka */}
+        {showPrompt && <FullscreenPrompt onEnter={handleEnterFullscreen} />}
+
+        {/* Tombol fullscreen kecil — muncul saat kursor gerak, tidak fullscreen */}
+        {!isFullscreen && !showPrompt && <FullscreenButton onClick={enter} />}
       </div>
     </>
   );
