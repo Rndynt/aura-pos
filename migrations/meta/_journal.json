@@ -29,6 +29,27 @@
       "when": 1766030000000,
       "tag": "0003_create_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779293400000,
+      "tag": "0004_orders_idempotency_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779293420000,
+      "tag": "0005_served_status_and_order_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779293444010,
+      "tag": "0006_auth_tables",
+      "breakpoints": true
     }
   ]
 }
