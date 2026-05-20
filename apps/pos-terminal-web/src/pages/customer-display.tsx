@@ -170,30 +170,36 @@ function OrderingScreen(props: {
               <ShoppingCart size={40} strokeWidth={1.5} />
               <p className="text-sm font-medium">Menambahkan item…</p>
             </div>
-          ) : (
-            <div className="flex-1 flex flex-col px-6 py-2 overflow-hidden">
-              {props.items.map((item, i) => {
-                const sub = [item.variantName, item.optionsSummary].filter(Boolean).join(', ');
-                return (
-                  <div
-                    key={item.id}
-                    className={`flex-1 flex items-center gap-4 min-h-0 ${i < props.items.length - 1 ? 'border-b border-slate-100' : ''}`}
-                  >
-                    <span className="flex-shrink-0 text-sm font-bold text-slate-400 w-6 text-right tabular-nums">
-                      {item.quantity}×
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[14px] font-semibold text-slate-800">{item.name}</span>
-                      {sub && <span className="text-[11px] text-slate-400 ml-2">{sub}</span>}
+          ) : (() => {
+            // Scale font + spacing based on item count so everything fits on screen
+            const n = props.items.length;
+            const fs = n > 20 ? 11 : n > 15 ? 12 : n > 10 ? 13 : 14;
+            const subFs = fs - 1;
+            return (
+              <div className="flex-1 flex flex-col px-6 py-1 overflow-hidden">
+                {props.items.map((item, i) => {
+                  const sub = [item.variantName, item.optionsSummary].filter(Boolean).join(', ');
+                  return (
+                    <div
+                      key={item.id}
+                      className={`flex-1 min-h-0 flex items-center gap-3 overflow-hidden ${i < props.items.length - 1 ? 'border-b border-slate-100' : ''}`}
+                    >
+                      <span className="flex-shrink-0 font-bold text-slate-400 w-5 text-right tabular-nums" style={{ fontSize: fs }}>
+                        {item.quantity}×
+                      </span>
+                      <div className="flex-1 min-w-0 overflow-hidden whitespace-nowrap">
+                        <span className="font-semibold text-slate-800" style={{ fontSize: fs }}>{item.name}</span>
+                        {sub && <span className="text-slate-400 ml-1.5" style={{ fontSize: subFs }}>{sub}</span>}
+                      </div>
+                      <span className="flex-shrink-0 font-bold text-slate-800 tabular-nums" style={{ fontSize: fs }}>
+                        {fmt(item.itemTotal)}
+                      </span>
                     </div>
-                    <span className="flex-shrink-0 text-[14px] font-bold text-slate-800 tabular-nums">
-                      {fmt(item.itemTotal)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
 
         {/* ── Right: Summary panel ── */}
