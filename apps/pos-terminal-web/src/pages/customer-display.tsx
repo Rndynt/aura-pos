@@ -781,19 +781,33 @@ function FullscreenButton({ onClick }: { onClick: () => void }) {
 export default function CustomerDisplayPage() {
   const [msg, setMsg] = useState<CFDMessage>({ type: 'idle', tenantName: 'AuraPOS' });
   const [showPrompt, setShowPrompt] = useState(true);
+  const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
   const { isFullscreen, enter } = useFullscreen();
 
   // Ambil tenantId dari URL (?tenantId=xxx) agar Device B tanpa login bisa sync
   const tenantIdFromUrl = new URLSearchParams(window.location.search).get('tenantId') ?? undefined;
 
+  // Fetch tenantId dari session login — karena CURRENT_TENANT_ID sengaja kosong,
+  // satu-satunya cara dapat tenantId yang benar adalah dari /api/auth/me
+  useEffect(() => {
+    if (tenantIdFromUrl) return; // sudah ada di URL, tidak perlu fetch
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(body => {
+        const tid = body?.data?.tenantId;
+        if (tid) setSessionTenantId(tid);
+      })
+      .catch(() => {});
+  }, [tenantIdFromUrl]);
+
   useCustomerDisplayReceiver((m) => { if (m.type !== 'ping') setMsg(m); }, tenantIdFromUrl);
   const tenantName = msg.type !== 'ping' && 'tenantName' in msg ? msg.tenantName : 'AuraPOS';
 
   // Bangun link CFD yang mengandung tenantId — ini yang di-share ke Device B
-  // Priority: ?tenantId dari URL  >  active session (localStorage setelah login)
+  // Priority: ?tenantId dari URL  >  session login  >  localStorage
   const cfdUrl = (() => {
     const base = `${window.location.origin}/display`;
-    const tid = tenantIdFromUrl || getActiveTenantId();
+    const tid = tenantIdFromUrl || sessionTenantId || getActiveTenantId();
     return tid ? `${base}?tenantId=${encodeURIComponent(tid)}` : base;
   })();
 
