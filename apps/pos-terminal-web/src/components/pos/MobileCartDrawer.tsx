@@ -17,8 +17,29 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { useTenant } from "@/context/TenantContext";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTables } from "@/lib/api/tableHooks";
+
+/** Tracks visual viewport height so the drawer shrinks when the keyboard opens. */
+function useVisualViewportHeight() {
+  const [height, setHeight] = useState<number>(() =>
+    typeof window !== 'undefined'
+      ? (window.visualViewport?.height ?? window.innerHeight)
+      : 812,
+  );
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => setHeight(vv.height);
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
+  return height;
+}
 
 type MobileCartDrawerProps = {
   open: boolean;
@@ -89,6 +110,7 @@ export function MobileCartDrawer({
   const { business_type, hasModule, isLoading } = useTenant();
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const { data: tablesData, isLoading: tablesLoading } = useTables();
+  const vpHeight = useVisualViewportHeight();
   
   const [internalOrderType, setInternalOrderType] = useState<OrderType>('dine-in');
   const orderType = externalOrderType ?? internalOrderType;
@@ -136,8 +158,12 @@ export function MobileCartDrawer({
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 bg-black/40 z-[55]" />
           <Drawer.Content
-            className={`fixed top-0 bottom-0 right-0 z-[60] bg-white border-l border-slate-200 flex flex-col shadow-2xl w-full rounded-t-[2rem]`}
-            style={{ height: '95dvh', marginTop: '5dvh' }}
+            className={`fixed right-0 z-[60] bg-white border-l border-slate-200 flex flex-col shadow-2xl w-full rounded-t-[2rem]`}
+            style={{
+              height: `${vpHeight * 0.95}px`,
+              top: `${vpHeight * 0.05}px`,
+              bottom: 0,
+            }}
             data-testid="drawer-mobile-cart"
           >
           {/* Drag Handle */}
