@@ -1,8 +1,13 @@
 import { useState, useEffect } from "react";
-import { Box, Layers, Save, ChevronLeft, ChevronDown, Trash2, Check } from "lucide-react";
+import { Box, Layers, Save, ChevronLeft, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface ProductFormProps {
   product?: any | null;
@@ -13,35 +18,6 @@ interface ProductFormProps {
   onDelete?: () => void;
   categories?: Array<{ id: string; name: string }>;
 }
-
-const CustomSelect = ({
-  value,
-  onChange,
-  options,
-  className = "",
-}: {
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-  options: { value: string; label: string }[];
-  className?: string;
-}) => (
-  <div className={`relative ${className}`}>
-    <select
-      value={value}
-      onChange={onChange}
-      className="appearance-none w-full bg-white border border-slate-200 rounded-xl py-2.5 pl-3 pr-8 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer"
-    >
-      {options.map((opt, idx) => (
-        <option key={idx} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
-    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-      <ChevronDown size={16} />
-    </div>
-  </div>
-);
 
 const InputField = ({
   label,
@@ -102,8 +78,6 @@ export default function ProductForm({
       });
     }
   }, [product]);
-
-  const [categoryOpen, setCategoryOpen] = useState(false);
 
   const handleSubmit = () => {
     onSave({
@@ -184,42 +158,40 @@ export default function ProductForm({
             />
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-500">Kategori</label>
-              <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="w-full border border-slate-200 rounded-xl p-2.5 text-sm text-left bg-white flex items-center justify-between"
-                  >
-                    <span className={formData.category ? "text-slate-700" : "text-slate-400"}>
-                      {formData.category || "Pilih kategori"}
-                    </span>
-                    <ChevronDown size={16} className="text-slate-400" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder="Cari kategori..." />
-                    <CommandList>
-                      <CommandEmpty>Kategori tidak ditemukan.</CommandEmpty>
-                      <CommandGroup>
-                        {categories.map((c) => (
-                          <CommandItem
-                            key={c.id}
-                            value={c.name}
-                            onSelect={() => {
-                              setFormData({ ...formData, category: c.name, category_id: c.id });
-                              setCategoryOpen(false);
-                            }}
-                          >
-                            <Check size={14} className={formData.category_id === c.id ? "opacity-100" : "opacity-0"} />
-                            {c.name}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <Select
+                value={formData.category_id || formData.category}
+                onValueChange={(selectedValue) => {
+                  const selectedCategory = categories.find(
+                    (category) => category.id === selectedValue || category.name === selectedValue
+                  );
+
+                  if (selectedCategory) {
+                    setFormData({
+                      ...formData,
+                      category: selectedCategory.name,
+                      category_id: selectedCategory.id,
+                    });
+                    return;
+                  }
+
+                  setFormData({
+                    ...formData,
+                    category: selectedValue,
+                    category_id: "",
+                  });
+                }}
+              >
+                <SelectTrigger className="h-10 rounded-xl border-slate-200">
+                  <SelectValue placeholder="Pilih kategori" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
