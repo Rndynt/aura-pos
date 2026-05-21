@@ -128,6 +128,7 @@ export function ProductArea({
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         searchDisabled={isLoading}
+        isLoading={isLoading}
         onDraftClick={onOpenDraftSheet}
         draftCount={draftCount}
       />

@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PortraitOverlay } from "@/components/PortraitOverlay";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
 import HomePage from "@/pages/home";
 import POSPage from "@/pages/pos";
@@ -131,10 +132,31 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 animate-pulse" />
-          <p className="text-sm text-slate-400 font-medium">Memuat...</p>
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        {/* Skeleton: category chips */}
+        <div className="px-4 pt-4 pb-2 flex gap-2">
+          <Skeleton className="h-9 w-24 rounded-full flex-shrink-0" />
+          <Skeleton className="h-9 w-20 rounded-full flex-shrink-0" />
+          <Skeleton className="h-9 w-20 rounded-full flex-shrink-0" />
+        </div>
+        {/* Skeleton: search + draft */}
+        <div className="px-4 pb-3 flex gap-2">
+          <Skeleton className="h-9 flex-1 rounded-xl" />
+          <Skeleton className="h-9 w-20 rounded-xl flex-shrink-0" />
+        </div>
+        {/* Skeleton: product grid */}
+        <div className="px-4 grid grid-cols-2 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-2xl overflow-hidden border border-slate-100">
+              <Skeleton className="h-32 w-full" />
+              <div className="p-3 space-y-2">
+                <Skeleton className="h-4 w-3/4 rounded" />
+                <Skeleton className="h-3 w-1/2 rounded" />
+                <Skeleton className="h-3 w-1/3 rounded" />
+                <Skeleton className="h-8 w-full rounded-lg mt-1" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );

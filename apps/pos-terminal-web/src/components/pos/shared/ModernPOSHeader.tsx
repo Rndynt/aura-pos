@@ -1,9 +1,11 @@
 import { Search, Clock } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type ModernPOSHeaderProps = {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   searchDisabled?: boolean;
+  isLoading?: boolean;
   onDraftClick?: () => void;
   draftCount?: number;
 };
@@ -12,9 +14,21 @@ export function ModernPOSHeader({
   searchQuery,
   onSearchChange,
   searchDisabled = false,
+  isLoading = false,
   onDraftClick,
   draftCount = 0,
 }: ModernPOSHeaderProps) {
+  if (isLoading) {
+    return (
+      <div className="px-4 md:px-8 pb-3">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-9 flex-1 rounded-xl" />
+          <Skeleton className="h-9 w-20 rounded-xl flex-shrink-0" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 md:px-8 pb-3">
       <div className="flex items-center gap-2">
