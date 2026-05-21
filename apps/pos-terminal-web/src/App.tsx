@@ -4,7 +4,6 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PortraitOverlay } from "@/components/PortraitOverlay";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
 import HomePage from "@/pages/home";
 import POSPage from "@/pages/pos";
@@ -132,31 +131,20 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen flex flex-col bg-slate-50">
-        {/* Skeleton: category chips */}
-        <div className="px-4 pt-4 pb-2 flex gap-2">
-          <Skeleton className="h-9 w-24 rounded-full flex-shrink-0" />
-          <Skeleton className="h-9 w-20 rounded-full flex-shrink-0" />
-          <Skeleton className="h-9 w-20 rounded-full flex-shrink-0" />
-        </div>
-        {/* Skeleton: search + draft */}
-        <div className="px-4 pb-3 flex gap-2">
-          <Skeleton className="h-9 flex-1 rounded-xl" />
-          <Skeleton className="h-9 w-20 rounded-xl flex-shrink-0" />
-        </div>
-        {/* Skeleton: product grid */}
-        <div className="px-4 grid grid-cols-2 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-2xl overflow-hidden border border-slate-100">
-              <Skeleton className="h-32 w-full" />
-              <div className="p-3 space-y-2">
-                <Skeleton className="h-4 w-3/4 rounded" />
-                <Skeleton className="h-3 w-1/2 rounded" />
-                <Skeleton className="h-3 w-1/3 rounded" />
-                <Skeleton className="h-8 w-full rounded-lg mt-1" />
-              </div>
-            </div>
-          ))}
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-500/30">
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <rect x="3" y="8" width="22" height="14" rx="3" stroke="white" strokeWidth="2" fill="none" />
+              <path d="M9 8V6a5 5 0 0 1 10 0v2" stroke="white" strokeWidth="2" strokeLinecap="round" />
+              <circle cx="14" cy="15" r="2" fill="white" />
+            </svg>
+          </div>
+          <div className="flex gap-1.5 items-center">
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+          </div>
         </div>
       </div>
     );
