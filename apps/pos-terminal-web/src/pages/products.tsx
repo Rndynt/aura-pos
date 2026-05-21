@@ -1,11 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   ChevronLeft,
   Plus,
   ChevronDown,
   Layers,
-  ChevronRight,
   MoreVertical,
   GripVertical,
 } from "lucide-react";
@@ -45,7 +44,9 @@ export default function ProductsPage() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [openCategoryActionFor, setOpenCategoryActionFor] = useState<string | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
-  const [draggingCategoryId, setDraggingCategoryId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [insertBeforeId, setInsertBeforeId] = useState<string | "end" | null>(null);
+  const [localCategories, setLocalCategories] = useState<Array<{ id: string; name: string; items: any[] }>>([]);
 
   const { data: products = [], isLoading: isLoadingProducts } = useProducts();
   const { data: categories = [] } = useCategories();
@@ -130,6 +131,12 @@ export default function ProductsPage() {
     }));
   }, [categories, groupedProducts]);
 
+  useEffect(() => {
+    if (!draggingId) {
+      setLocalCategories(orderedCategories);
+    }
+  }, [orderedCategories, draggingId]);
+
   const handleDeleteCategory = async (categoryId: string, categoryName: string) => {
     const fallback = window.prompt(`Pindahkan produk dari kategori "${categoryName}" ke kategori:`, "Uncategorized");
     if (!fallback || !fallback.trim()) return;
@@ -141,23 +148,61 @@ export default function ProductsPage() {
     }
   };
 
-  const handleDropCategory = async (targetCategoryId: string) => {
-    if (!draggingCategoryId || draggingCategoryId === targetCategoryId) return;
-    const current = [...orderedCategories];
-    const from = current.findIndex((c) => c.id === draggingCategoryId);
-    const to = current.findIndex((c) => c.id === targetCategoryId);
-    if (from < 0 || to < 0) return;
-    const [moved] = current.splice(from, 1);
-    current.splice(to, 0, moved);
+  const handleDragStart = (e: React.DragEvent, categoryId: string) => {
+    setDraggingId(categoryId);
+    e.dataTransfer.effectAllowed = "move";
+  };
 
+  const handleDragOver = (e: React.DragEvent, categoryId: string) => {
+    if (!reorderMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    if (e.clientY < mid) {
+      setInsertBeforeId(categoryId);
+    } else {
+      const idx = localCategories.findIndex((c) => c.id === categoryId);
+      const next = localCategories[idx + 1];
+      setInsertBeforeId(next ? next.id : "end");
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!draggingId || !insertBeforeId) {
+      setDraggingId(null);
+      setInsertBeforeId(null);
+      return;
+    }
+    const current = [...localCategories];
+    const fromIdx = current.findIndex((c) => c.id === draggingId);
+    if (fromIdx < 0) { setDraggingId(null); setInsertBeforeId(null); return; }
+    const [moved] = current.splice(fromIdx, 1);
+    let toIdx: number;
+    if (insertBeforeId === "end") {
+      toIdx = current.length;
+    } else {
+      toIdx = current.findIndex((c) => c.id === insertBeforeId);
+      if (toIdx < 0) toIdx = current.length;
+    }
+    current.splice(toIdx, 0, moved);
+    setLocalCategories(current);
+    setDraggingId(null);
+    setInsertBeforeId(null);
     try {
       await reorderCategoriesMutation.mutateAsync({ ordered_ids: current.map((c) => c.id) });
       addToast("Urutan kategori diperbarui", "success");
     } catch (error) {
+      setLocalCategories(orderedCategories);
       addToast("Gagal menyimpan urutan kategori", "error");
-    } finally {
-      setDraggingCategoryId(null);
     }
+  };
+
+  const handleDragEnd = () => {
+    setDraggingId(null);
+    setInsertBeforeId(null);
   };
 
   const handleCreateProduct = () => {
@@ -495,12 +540,6 @@ export default function ProductsPage() {
           {activeTab === "products" ? (
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setReorderMode((v) => !v)}
-                className={`px-3 py-2 rounded-xl text-sm font-bold border ${reorderMode ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white text-slate-700 border-slate-200"}`}
-              >
-                {reorderMode ? "Selesai Urutkan" : "Urutkan Kategori"}
-              </button>
-              <button
                 onClick={() => setIsCategoryDialogOpen(true)}
                 className="bg-white text-slate-700 border border-slate-200 px-3 py-2 rounded-xl text-sm font-bold"
                 data-testid="button-add-category"
@@ -565,24 +604,65 @@ export default function ProductsPage() {
                 <p className="text-xs">Klik tombol "+ Produk" untuk menambahkan</p>
               </div>
             ) : (
-              orderedCategories.map(({ id: categoryId, name: category, items }) => {
-                const isCollapsed = collapsedCategories[category];
-                return (
+              <>
+                {/* Reorder toggle above first category */}
+                <div className="flex justify-end -mt-1 mb-1">
+                  <button
+                    onClick={() => setReorderMode((v) => !v)}
+                    className={`text-xs font-semibold px-2 py-1 rounded-lg transition-colors ${
+                      reorderMode
+                        ? "text-blue-600 bg-blue-50 hover:bg-blue-100"
+                        : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                    }`}
+                    data-testid="button-reorder-categories"
+                  >
+                    {reorderMode ? "✓ Selesai" : "Ubah urutan"}
+                  </button>
+                </div>
+
+                {/* Drop zone at the top */}
+                {reorderMode && (
                   <div
-                    key={category}
-                    className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                    className="h-2"
+                    onDragOver={(e) => { e.preventDefault(); const first = localCategories[0]; if (first) setInsertBeforeId(first.id); }}
+                    onDrop={handleDrop}
+                  />
+                )}
+
+                {localCategories.map(({ id: categoryId, name: category, items }) => {
+                const isCollapsed = collapsedCategories[category];
+                const isDragging = draggingId === categoryId;
+                const showInsertBefore = reorderMode && insertBeforeId === categoryId && draggingId && !isDragging;
+                return (
+                  <div key={category}>
+                    {/* Insert indicator line */}
+                    {showInsertBefore && (
+                      <div className="flex items-center gap-2 my-1 px-1">
+                        <div className="h-0.5 flex-1 bg-blue-500 rounded-full shadow-sm" style={{ boxShadow: "0 0 4px rgba(59,130,246,0.6)" }} />
+                        <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                      </div>
+                    )}
+                  <div
+                    className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-all duration-150 select-none ${
+                      isDragging
+                        ? "opacity-40 border-blue-300 scale-[0.98] shadow-none"
+                        : "border-slate-200"
+                    } ${reorderMode ? "cursor-grab active:cursor-grabbing" : ""}`}
                     draggable={reorderMode}
-                    onDragStart={() => setDraggingCategoryId(categoryId)}
-                    onDragOver={(e) => reorderMode && e.preventDefault()}
-                    onDrop={() => reorderMode && handleDropCategory(categoryId)}
+                    onDragStart={(e) => handleDragStart(e, categoryId)}
+                    onDragOver={(e) => handleDragOver(e, categoryId)}
+                    onDrop={handleDrop}
+                    onDragEnd={handleDragEnd}
                     data-testid={`category-${category}`}
                   >
                     <div
-                      className="p-4 bg-slate-50 flex justify-between items-center hover:bg-slate-100 transition-colors"
+                      className={`p-4 flex justify-between items-center transition-colors ${
+                        reorderMode ? "bg-blue-50/60" : "bg-slate-50 hover:bg-slate-100"
+                      }`}
                       data-testid={`category-header-${category}`}
                     >
                       <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {reorderMode && <GripVertical size={16} className="text-slate-400" />}
+                        {reorderMode && <GripVertical size={16} className="text-blue-400" />}
                         {editingCategory === category ? (
                           <input
                             autoFocus
@@ -603,8 +683,8 @@ export default function ProductsPage() {
                           />
                         ) : (
                           <h3
-                            onClick={() => handleEditCategory(category)}
-                            className="font-bold text-slate-700 capitalize cursor-pointer hover:text-blue-600 transition-colors"
+                            onClick={() => !reorderMode && handleEditCategory(category)}
+                            className={`font-bold text-slate-700 capitalize transition-colors ${!reorderMode ? "cursor-pointer hover:text-blue-600" : ""}`}
                             data-testid={`text-category-${category}`}
                           >
                             {category}
@@ -626,19 +706,20 @@ export default function ProductsPage() {
                         )}
                         {openCategoryActionFor === categoryId && !reorderMode && (
                           <div className="absolute right-8 top-0 z-10 bg-white border border-slate-200 rounded-lg shadow-md p-1 min-w-36">
-                            <button className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 rounded" onClick={() => { setReorderMode(true); setOpenCategoryActionFor(null); }}>Ubah urutan</button>
                             <button className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded" onClick={() => { setOpenCategoryActionFor(null); handleDeleteCategory(categoryId, category); }}>Hapus</button>
                           </div>
                         )}
+                        {!reorderMode && (
                         <div
                           onClick={() => toggleCategory(category)}
-                        className={`text-slate-400 transition-transform duration-300 cursor-pointer hover:text-slate-600 flex-shrink-0 ${
-                          isCollapsed ? "-rotate-90" : "rotate-0"
-                        }`}
-                        data-testid={`button-toggle-category-${category}`}
-                      >
+                          className={`text-slate-400 transition-transform duration-300 cursor-pointer hover:text-slate-600 flex-shrink-0 ${
+                            isCollapsed ? "-rotate-90" : "rotate-0"
+                          }`}
+                          data-testid={`button-toggle-category-${category}`}
+                        >
                           <ChevronDown size={20} />
                         </div>
+                        )}
                       </div>
                     </div>
 
@@ -731,8 +812,27 @@ export default function ProductsPage() {
                       </div>
                     )}
                   </div>
+                  </div>
                 );
-              })
+              })}
+
+                {/* End drop zone + indicator */}
+                {reorderMode && (
+                  <>
+                    {insertBeforeId === "end" && draggingId && (
+                      <div className="flex items-center gap-2 my-1 px-1">
+                        <div className="h-0.5 flex-1 bg-blue-500 rounded-full shadow-sm" style={{ boxShadow: "0 0 4px rgba(59,130,246,0.6)" }} />
+                        <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                      </div>
+                    )}
+                    <div
+                      className="h-8"
+                      onDragOver={(e) => { e.preventDefault(); setInsertBeforeId("end"); }}
+                      onDrop={handleDrop}
+                    />
+                  </>
+                )}
+              </>
             )}
           </div>
         )}
