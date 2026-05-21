@@ -1,26 +1,6 @@
 import { useState, useEffect } from "react";
-import { Box, Layers, Save, ChevronLeft, Trash2, ChevronDown, Check } from "lucide-react";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { cn } from "@/lib/utils";
+import { Box, Layers, Save, ChevronLeft, Trash2 } from "lucide-react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface ProductFormProps {
   product?: any | null;
@@ -56,125 +36,6 @@ const InputField = ({
     />
   </div>
 );
-
-function CategoryComboboxContent({
-  categories,
-  value,
-  onSelect,
-}: {
-  categories: Array<{ id: string; name: string }>;
-  value: string;
-  onSelect: (id: string, name: string) => void;
-}) {
-  return (
-    <Command>
-      <CommandInput placeholder="Cari kategori..." className="h-10" />
-      <CommandList>
-        <CommandEmpty>
-          <span className="text-sm text-slate-400">Kategori tidak ditemukan</span>
-        </CommandEmpty>
-        <CommandGroup>
-          {categories.map((cat) => (
-            <CommandItem
-              key={cat.id}
-              value={cat.name}
-              onSelect={() => onSelect(cat.id, cat.name)}
-              className="flex items-center gap-2 cursor-pointer"
-            >
-              <Check
-                size={15}
-                className={cn(
-                  "flex-shrink-0 text-blue-600",
-                  value === cat.id ? "opacity-100" : "opacity-0"
-                )}
-              />
-              <span className="capitalize">{cat.name}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
-      </CommandList>
-    </Command>
-  );
-}
-
-const triggerClass =
-  "flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer";
-
-function CategoryCombobox({
-  categories,
-  value,
-  onChange,
-}: {
-  categories: Array<{ id: string; name: string }>;
-  value: { id: string; name: string } | null;
-  onChange: (id: string, name: string) => void;
-}) {
-  const isMobile = useIsMobile();
-  const [open, setOpen] = useState(false);
-
-  const handleSelect = (id: string, name: string) => {
-    onChange(id, name);
-    setOpen(false);
-  };
-
-  if (isMobile) {
-    return (
-      <>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className={triggerClass}
-          data-testid="button-select-category"
-        >
-          {value?.name
-            ? <span className="capitalize text-foreground">{value.name}</span>
-            : <span className="text-muted-foreground">Pilih kategori</span>
-          }
-          <ChevronDown className="h-4 w-4 opacity-50 flex-shrink-0" />
-        </button>
-        <Drawer open={open} onOpenChange={setOpen}>
-          <DrawerContent>
-            <DrawerHeader className="pb-2">
-              <DrawerTitle className="text-base font-bold">Pilih Kategori</DrawerTitle>
-            </DrawerHeader>
-            <div className="px-4 pb-6">
-              <CategoryComboboxContent
-                categories={categories}
-                value={value?.id ?? ""}
-                onSelect={handleSelect}
-              />
-            </div>
-          </DrawerContent>
-        </Drawer>
-      </>
-    );
-  }
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={triggerClass}
-          data-testid="button-select-category"
-        >
-          {value?.name
-            ? <span className="capitalize text-foreground">{value.name}</span>
-            : <span className="text-muted-foreground">Pilih kategori</span>
-          }
-          <ChevronDown className="h-4 w-4 opacity-50 flex-shrink-0" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-0" align="start">
-        <CategoryComboboxContent
-          categories={categories}
-          value={value?.id ?? ""}
-          onSelect={handleSelect}
-        />
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 export default function ProductForm({
   product,
@@ -294,12 +155,24 @@ export default function ProductForm({
             />
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-500">Kategori</label>
-              <CategoryCombobox
-                categories={categories}
-                value={selectedCategory}
-                onChange={(id, name) =>
-                  setFormData({ ...formData, category: name, category_id: id })
-                }
+              <SearchableSelect
+                value={selectedCategory?.id ?? ""}
+                options={categories.map((cat) => ({
+                  value: cat.id,
+                  label: cat.name,
+                }))}
+                placeholder="Pilih kategori"
+                searchPlaceholder="Cari kategori..."
+                emptyLabel="Kategori tidak ditemukan"
+                onChange={(id) => {
+                  const selected = categories.find((cat) => cat.id === id);
+                  setFormData({
+                    ...formData,
+                    category: selected?.name ?? "",
+                    category_id: selected?.id ?? "",
+                  });
+                }}
+                data-testid="button-select-category"
               />
             </div>
           </div>
