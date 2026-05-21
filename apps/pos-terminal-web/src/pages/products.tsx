@@ -5,8 +5,10 @@ import {
   Plus,
   ChevronDown,
   Layers,
-  MoreVertical,
+  Trash2,
   GripVertical,
+  Search,
+  X,
 } from "lucide-react";
 import { useProducts, useCreateProduct, useUpdateProduct } from "@/hooks/api/useProducts";
 import { useVariantsLibrary, useCreateOrUpdateVariant, type Variant } from "@/hooks/useVariants";
@@ -42,8 +44,9 @@ export default function ProductsPage() {
   const [savingCategory, setSavingCategory] = useState<string | null>(null);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
-  const [openCategoryActionFor, setOpenCategoryActionFor] = useState<string | null>(null);
+  const [confirmDeleteCategoryId, setConfirmDeleteCategoryId] = useState<string | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [insertBeforeId, setInsertBeforeId] = useState<string | "end" | null>(null);
   const [localCategories, setLocalCategories] = useState<Array<{ id: string; name: string; items: any[] }>>([]);
@@ -130,6 +133,17 @@ export default function ProductsPage() {
       items: groupedProducts[name] || [],
     }));
   }, [categories, groupedProducts]);
+
+  const filteredLocalCategories = useMemo(() => {
+    if (!searchQuery.trim()) return localCategories;
+    const q = searchQuery.toLowerCase();
+    return localCategories
+      .map((cat) => ({
+        ...cat,
+        items: cat.items.filter((p) => (p.name || "").toLowerCase().includes(q)),
+      }))
+      .filter((cat) => cat.items.length > 0 || cat.name.toLowerCase().includes(q));
+  }, [localCategories, searchQuery]);
 
   useEffect(() => {
     if (!draggingId) {
@@ -591,6 +605,31 @@ export default function ProductsPage() {
         </div>
       </header>
 
+      {activeTab === "products" && (
+        <div className="px-4 pt-4">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Cari produk..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              data-testid="input-search-products"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                data-testid="button-clear-search"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
         {activeTab === "products" && (
           <div className="space-y-4">
@@ -629,10 +668,11 @@ export default function ProductsPage() {
                   />
                 )}
 
-                {localCategories.map(({ id: categoryId, name: category, items }) => {
+                {filteredLocalCategories.map(({ id: categoryId, name: category, items }) => {
                 const isCollapsed = collapsedCategories[category];
                 const isDragging = draggingId === categoryId;
                 const showInsertBefore = reorderMode && insertBeforeId === categoryId && draggingId && !isDragging;
+                const isConfirmingDelete = confirmDeleteCategoryId === categoryId;
                 return (
                   <div key={category}>
                     {/* Insert indicator line */}
@@ -646,6 +686,8 @@ export default function ProductsPage() {
                     className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-all duration-150 select-none ${
                       isDragging
                         ? "opacity-40 border-blue-300 scale-[0.98] shadow-none"
+                        : isConfirmingDelete
+                        ? "border-red-200"
                         : "border-slate-200"
                     } ${reorderMode ? "cursor-grab active:cursor-grabbing" : ""}`}
                     draggable={reorderMode}
@@ -655,6 +697,33 @@ export default function ProductsPage() {
                     onDragEnd={handleDragEnd}
                     data-testid={`category-${category}`}
                   >
+                    {/* Inline delete confirmation bar */}
+                    {isConfirmingDelete ? (
+                      <div className="px-4 py-3 bg-red-50 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Trash2 size={15} className="text-red-500 flex-shrink-0" />
+                          <span className="text-sm text-red-700 font-medium truncate">
+                            Hapus kategori <span className="font-bold">"{category}"</span>?
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 transition-colors"
+                            onClick={() => setConfirmDeleteCategoryId(null)}
+                            data-testid={`button-cancel-delete-${categoryId}`}
+                          >
+                            Batal
+                          </button>
+                          <button
+                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
+                            onClick={() => { setConfirmDeleteCategoryId(null); handleDeleteCategory(categoryId, category); }}
+                            data-testid={`button-confirm-delete-${categoryId}`}
+                          >
+                            Hapus
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
                     <div
                       className={`p-4 flex justify-between items-center transition-colors ${
                         reorderMode ? "bg-blue-50/60" : "bg-slate-50 hover:bg-slate-100"
@@ -694,25 +763,21 @@ export default function ProductsPage() {
                           {items.length}
                         </span>
                       </div>
-                      <div className="relative flex items-center gap-1">
+                      <div className="flex items-center gap-1">
                         {!reorderMode && (
                           <button
                             type="button"
-                            className="p-1 rounded hover:bg-slate-200"
-                            onClick={() => setOpenCategoryActionFor(openCategoryActionFor === categoryId ? null : categoryId)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
+                            onClick={() => setConfirmDeleteCategoryId(categoryId)}
+                            data-testid={`button-delete-category-${categoryId}`}
                           >
-                            <MoreVertical size={16} />
+                            <Trash2 size={15} />
                           </button>
-                        )}
-                        {openCategoryActionFor === categoryId && !reorderMode && (
-                          <div className="absolute right-8 top-0 z-10 bg-white border border-slate-200 rounded-lg shadow-md p-1 min-w-36">
-                            <button className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded" onClick={() => { setOpenCategoryActionFor(null); handleDeleteCategory(categoryId, category); }}>Hapus</button>
-                          </div>
                         )}
                         {!reorderMode && (
                         <div
                           onClick={() => toggleCategory(category)}
-                          className={`text-slate-400 transition-transform duration-300 cursor-pointer hover:text-slate-600 flex-shrink-0 ${
+                          className={`text-slate-400 transition-transform duration-300 cursor-pointer hover:text-slate-600 flex-shrink-0 p-1 ${
                             isCollapsed ? "-rotate-90" : "rotate-0"
                           }`}
                           data-testid={`button-toggle-category-${category}`}
@@ -722,6 +787,7 @@ export default function ProductsPage() {
                         )}
                       </div>
                     </div>
+                    )}
 
                     {!isCollapsed && (
                       <div className="divide-y divide-slate-100 animate-in slide-in-from-top-2">
