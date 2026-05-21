@@ -8,7 +8,8 @@ import {
   FileText, 
   Store, 
   Edit2, 
-  LogOut 
+  LogOut,
+  Printer 
 } from "lucide-react";
 import { UnifiedBottomNav } from "@/components/navigation/UnifiedBottomNav";
 import { useToast } from "@/hooks/use-toast";
@@ -106,6 +107,13 @@ export default function HomePage() {
       color: 'bg-slate-100 text-slate-600',
       subtitle: 'Pengaturan toko',
     },
+    {
+      id: 'printers',
+      title: 'Printers',
+      icon: Printer,
+      color: 'bg-cyan-100 text-cyan-600',
+      subtitle: 'Pairing & test print',
+    },
   ];
 
   const handleNavigate = (menuId: string) => {
@@ -116,6 +124,7 @@ export default function HomePage() {
       employees: "/employees",
       reports: "/reports",
       store: "/store-profile",
+      printers: "/printers",
     };
 
     const route = routes[menuId];
