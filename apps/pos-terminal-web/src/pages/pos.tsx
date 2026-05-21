@@ -25,6 +25,7 @@ import { getActiveTenantId } from "@/lib/tenant";
 import { useTenant } from "@/context/TenantContext";
 import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import { useCustomerDisplaySender, toCFDItem } from "@/hooks/useCustomerDisplay";
+import { printReceiptViaBluetooth } from "@/lib/receiptPrinter";
 
 export default function POSPage() {
   const searchParams = useSearch();
@@ -46,6 +47,7 @@ export default function POSPage() {
   } | null>(null);
   const cart = useCart();
   const { hasFeature } = useFeatures();
+  const hasReceiptPrinter = hasFeature("receipt_printer");
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { send: sendToCFD } = useCustomerDisplaySender();
@@ -452,6 +454,43 @@ export default function POSPage() {
         title: "Pesanan berhasil dibuat & dibayar",
         description: `Order #${orderNumber} - Total: Rp ${totalAmount.toLocaleString("id-ID")} (${paymentMethod})`,
       });
+
+      if (hasReceiptPrinter) {
+        try {
+          await printReceiptViaBluetooth({
+            orderNumber: String(orderNumber ?? cfdOrderNumber),
+            tenantName,
+            customerName: cfdCustomerName,
+            tableNumber: cfdTableNumber,
+            paymentMethod,
+            createdAt: new Date(),
+            subtotal: cfdSubtotal,
+            tax: cfdTax,
+            serviceCharge: cfdServiceCharge,
+            total: cfdTotal,
+            items: cfdItems.map((item) => ({
+              name: item.name,
+              qty: item.quantity,
+              unitPrice: item.unitPrice,
+              total: item.itemTotal,
+            })),
+          });
+
+          toast({
+            title: "Struk tercetak",
+            description: `Order #${orderNumber} berhasil dicetak ke printer bluetooth`,
+          });
+        } catch (printError) {
+          toast({
+            title: "Pembayaran sukses, cetak struk gagal",
+            description:
+              printError instanceof Error
+                ? printError.message
+                : "Silakan cek koneksi printer bluetooth lalu cetak ulang.",
+            variant: "destructive",
+          });
+        }
+      }
       
       // Kembali ke idle setelah 7 detik — release lock lalu kirim idle
       setTimeout(() => {
