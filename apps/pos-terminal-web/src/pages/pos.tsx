@@ -25,7 +25,7 @@ import { getActiveTenantId } from "@/lib/tenant";
 import { useTenant } from "@/context/TenantContext";
 import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import { useCustomerDisplaySender, toCFDItem } from "@/hooks/useCustomerDisplay";
-import { printReceiptViaBluetooth } from "@/lib/receiptPrinter";
+import { bluetoothReceiptPrinter } from "@/lib/receiptPrinter";
 
 export default function POSPage() {
   const searchParams = useSearch();
@@ -457,7 +457,7 @@ export default function POSPage() {
 
       if (hasReceiptPrinter) {
         try {
-          await printReceiptViaBluetooth({
+          await bluetoothReceiptPrinter.print({
             orderNumber: String(orderNumber ?? cfdOrderNumber),
             tenantName,
             customerName: cfdCustomerName,

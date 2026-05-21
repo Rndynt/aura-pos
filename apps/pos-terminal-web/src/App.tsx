@@ -17,6 +17,7 @@ import EmployeesPage from "@/pages/employees";
 import StoreProfilePage from "@/pages/store-profile";
 import KitchenDisplayPage from "@/pages/kitchen-display";
 import CustomerDisplayPage from "@/pages/customer-display";
+import PrintersPage from "@/pages/printers";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
@@ -80,6 +81,12 @@ const ReportsPageWithLayout = () => (
 const StoreProfilePageWithLayout = () => (
   <MainLayout>
     <StoreProfilePage />
+  </MainLayout>
+);
+
+const PrintersPageWithLayout = () => (
+  <MainLayout>
+    <PrintersPage />
   </MainLayout>
 );
 
@@ -215,6 +222,11 @@ function Router() {
       <Route path="/reports">
         <RequireAuth>
           <ReportsPageWithLayout />
+        </RequireAuth>
+      </Route>
+      <Route path="/printers">
+        <RequireAuth>
+          <PrintersPageWithLayout />
         </RequireAuth>
       </Route>
       <Route path="/store-profile">

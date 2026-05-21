@@ -71,3 +71,32 @@ Lanjutkan dengan generate/migrate schema better-auth dan integrasi client login/
 
 ### Continuation Notes
 Lanjutkan dengan endpoint backend payload struk tenant-aware dan fitur reprint dari Orders page untuk reliabilitas operasional.
+
+## Plan: Persisten Pairing Printer Hub + Testing Page
+
+### Source
+- Tasklist: Tidak ada checklist formal, request user langsung
+- User request: pairing printer harus tetap konek kecuali disconnect manual; perlu settings di halaman hub printers + pairing/testing di halaman itu
+- Date started: 2026-05-21
+- Current status: Implemented
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Relevant source files
+
+### Progress
+#### Completed
+- [x] Refactor printer module menjadi singleton manager dengan state koneksi, saved paired device id, reconnect otomatis via `navigator.bluetooth.getDevices()`.
+- [x] Tambah halaman `Printers` untuk pair/connect, test print, dan disconnect manual.
+- [x] Tambah menu Hub ke halaman `Printers` serta route aplikasi `/printers`.
+- [x] Ubah flow pembayaran agar memakai koneksi printer existing (tidak request pairing berulang).
+
+### Validation Log
+- Command: pnpm --filter @pos/terminal-web type-check
+- Result: pass
+- Notes: Type-check POS terminal lulus setelah integrasi halaman Printer Hub & reconnect manager.
+
+### Continuation Notes
+Langkah berikutnya: simpan preferensi service/characteristic UUID per model printer agar lebih kompatibel lintas perangkat.
