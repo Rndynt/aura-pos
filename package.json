@@ -23,7 +23,7 @@
     "db:seed": "tsx --tsconfig apps/api/tsconfig.json apps/api/src/seed.ts",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "build:static:api": "mkdir -p apps/api/dist/public && cp -r dist/public/* apps/api/dist/public/"
+    "build:static:api": "mkdir -p apps/api/dist/public && if [ -d apps/pos-terminal-web/dist ]; then cp -r apps/pos-terminal-web/dist/* apps/api/dist/public/; elif [ -d dist/public ]; then cp -r dist/public/* apps/api/dist/public/; else echo 'Missing terminal web build output' >&2; find . -path '*/index.html' -o -path '*/assets/index-*.js' | sort >&2; exit 1; fi"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.15",
