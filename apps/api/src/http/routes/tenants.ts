@@ -38,6 +38,9 @@ router.get('/profile', TenantsController.getTenantProfile);
 // GET /api/tenants/features - Get active features
 router.get('/features', TenantsController.getActiveFeatures);
 
+// PATCH /api/tenants/modules - Update module config flags
+router.patch('/modules', TenantsController.updateModuleConfig);
+
 // POST /api/tenants/features/check - Check feature access
 router.post('/features/check', TenantsController.checkFeatureAccess);
 

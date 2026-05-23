@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PortraitOverlay } from "@/components/PortraitOverlay";
 import { useEffect, useState } from "react";
 import HomePage from "@/pages/home";
+import MarketplacePage from "@/pages/marketplace";
 import POSPage from "@/pages/pos";
 import OrdersPage from "@/pages/orders";
 import TablesManagementPage from "@/pages/tables-management";
@@ -46,6 +47,12 @@ const TablesManagementPageWithLayout = () => (
 const HomePageWithLayout = () => (
   <MainLayout hideBottomNav>
     <HomePage />
+  </MainLayout>
+);
+
+const MarketplacePageWithLayout = () => (
+  <MainLayout hideBottomNav>
+    <MarketplacePage />
   </MainLayout>
 );
 
@@ -178,6 +185,11 @@ function Router() {
       <Route path="/hub">
         <RequireAuth>
           <HomePageWithLayout />
+        </RequireAuth>
+      </Route>
+      <Route path="/marketplace">
+        <RequireAuth>
+          <MarketplacePageWithLayout />
         </RequireAuth>
       </Route>
       <Route path="/pos">

@@ -146,6 +146,57 @@ export const registerTenant = asyncHandler(async (req: Request, res: Response) =
 });
 
 /**
+ * PATCH /api/tenants/modules
+ * Update module config flags for the current tenant
+ */
+export const updateModuleConfig = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.tenantId!;
+  const { db } = await import('@pos/infrastructure/database');
+  const { tenantModuleConfigs } = await import('@shared/schema');
+  const { eq } = await import('drizzle-orm');
+
+  const bodySchema = z.object({
+    enableTableManagement: z.boolean().optional(),
+    enableKitchenTicket: z.boolean().optional(),
+    enableLoyalty: z.boolean().optional(),
+    enableDelivery: z.boolean().optional(),
+    enableInventory: z.boolean().optional(),
+    enableAppointments: z.boolean().optional(),
+    enableMultiLocation: z.boolean().optional(),
+  });
+
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+  }
+
+  const updates = parsed.data;
+
+  const existing = await db
+    .select()
+    .from(tenantModuleConfigs)
+    .where(eq(tenantModuleConfigs.tenantId, tenantId))
+    .limit(1);
+
+  if (existing.length === 0) {
+    await db.insert(tenantModuleConfigs).values({ tenantId, ...updates });
+  } else {
+    await db
+      .update(tenantModuleConfigs)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(tenantModuleConfigs.tenantId, tenantId));
+  }
+
+  const [updated] = await db
+    .select()
+    .from(tenantModuleConfigs)
+    .where(eq(tenantModuleConfigs.tenantId, tenantId))
+    .limit(1);
+
+  res.status(200).json({ success: true, data: updated });
+});
+
+/**
  * GET /api/tenants/profile
  * Get tenant profile with modules
  */

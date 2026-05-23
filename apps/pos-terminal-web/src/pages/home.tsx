@@ -9,7 +9,8 @@ import {
   Store, 
   Edit2, 
   LogOut,
-  Printer 
+  Printer,
+  ShoppingBag,
 } from "lucide-react";
 import { UnifiedBottomNav } from "@/components/navigation/UnifiedBottomNav";
 import { useToast } from "@/hooks/use-toast";
@@ -66,6 +67,14 @@ export default function HomePage() {
 
   const MENU_ITEMS = [
     {
+      id: 'marketplace',
+      title: 'Marketplace',
+      icon: ShoppingBag,
+      color: 'bg-violet-100 text-violet-600',
+      subtitle: 'Aktifkan fitur bisnis',
+      highlight: true,
+    },
+    {
       id: 'dashboard',
       title: 'Dashboard',
       icon: BarChart3,
@@ -118,6 +127,7 @@ export default function HomePage() {
 
   const handleNavigate = (menuId: string) => {
     const routes: Record<string, string> = {
+      marketplace: "/marketplace",
       dashboard: "/dashboard",
       products: "/products",
       stock: "/stock",
@@ -213,19 +223,31 @@ export default function HomePage() {
           <button
             key={item.id}
             onClick={() => handleNavigate(item.id)}
-            className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col items-start gap-3"
+            className={`p-4 rounded-2xl border shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col items-start gap-3 ${
+              (item as any).highlight
+                ? "bg-gradient-to-br from-violet-600 to-violet-700 border-violet-500 text-white"
+                : "bg-white border-slate-100"
+            }`}
             data-testid={`button-menu-${item.id}`}
           >
             <div
-              className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.color}`}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                (item as any).highlight ? "bg-white/20" : item.color
+              }`}
             >
-              <item.icon size={20} />
+              <item.icon size={20} className={(item as any).highlight ? "text-white" : ""} />
             </div>
             <div className="text-left">
-              <h4 className="font-bold text-slate-700" data-testid={`text-menu-title-${item.id}`}>
+              <h4
+                className={`font-bold ${(item as any).highlight ? "text-white" : "text-slate-700"}`}
+                data-testid={`text-menu-title-${item.id}`}
+              >
                 {item.title}
               </h4>
-              <p className="text-[10px] text-slate-400" data-testid={`text-menu-subtitle-${item.id}`}>
+              <p
+                className={`text-[10px] ${(item as any).highlight ? "text-white/70" : "text-slate-400"}`}
+                data-testid={`text-menu-subtitle-${item.id}`}
+              >
                 {item.subtitle}
               </p>
             </div>
