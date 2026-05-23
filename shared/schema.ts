@@ -289,6 +289,10 @@ export const orders = pgTable("orders", {
   closedAt: timestamp("closed_at"),
   // Cancellation reason (for audit trail)
   cancellationReason: text("cancellation_reason"),
+  // Sprint 4: Offline terminal sync metadata
+  sourceTerminalId: varchar("source_terminal_id", { length: 128 }),
+  clientCreatedAt: timestamp("client_created_at"),
+  localOrderId: varchar("local_order_id", { length: 128 }),
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => ({
@@ -301,6 +305,8 @@ export const orders = pgTable("orders", {
   tenantIdempotencyUnique: uniqueIndex("orders_tenant_idempotency_unique").on(table.tenantId, table.idempotencyKey),
   // P1.3: unique order number per tenant to prevent race condition duplicates
   tenantOrderNumberUnique: uniqueIndex("orders_tenant_order_number_unique").on(table.tenantId, table.orderNumber),
+  // Sprint 4: index for offline order lookup by terminal
+  sourceTerminalLocalOrderIdx: index("orders_source_terminal_local_order_idx").on(table.sourceTerminalId, table.localOrderId),
 }));
 
 export const insertOrderSchema = createInsertSchema(orders).omit({
@@ -456,3 +462,90 @@ export const insertTenantFeatureSchema = createInsertSchema(tenantFeatures).omit
 export const selectTenantFeatureSchema = createSelectSchema(tenantFeatures);
 export type InsertTenantFeature = z.infer<typeof insertTenantFeatureSchema>;
 export type TenantFeature = typeof tenantFeatures.$inferSelect;
+
+// ── Sprint 4: Terminal Registry ───────────────────────────────────────────────
+
+export const terminals = pgTable("terminals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  terminalCode: varchar("terminal_code", { length: 128 }).notNull(),
+  name: text("name").notNull().default("Cashier"),
+  deviceFingerprint: text("device_fingerprint"),
+  isActive: boolean("is_active").notNull().default(true),
+  lastSeenAt: timestamp("last_seen_at"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  tenantIdx: index("terminals_tenant_idx").on(table.tenantId),
+  tenantCodeUnique: uniqueIndex("terminals_tenant_code_unique").on(table.tenantId, table.terminalCode),
+}));
+
+export const insertTerminalSchema = createInsertSchema(terminals).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTerminal = z.infer<typeof insertTerminalSchema>;
+export type Terminal = typeof terminals.$inferSelect;
+
+// ── Sprint 4: Sync Batches ────────────────────────────────────────────────────
+
+export const syncBatches = pgTable("sync_batches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  terminalId: varchar("terminal_id"),
+  batchSize: integer("batch_size").notNull().default(0),
+  syncedCount: integer("synced_count").notNull().default(0),
+  replayedCount: integer("replayed_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  conflictCount: integer("conflict_count").notNull().default(0),
+  appVersion: varchar("app_version", { length: 64 }),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  tenantIdx: index("sync_batches_tenant_idx").on(table.tenantId),
+  terminalIdx: index("sync_batches_terminal_idx").on(table.terminalId),
+}));
+
+export const insertSyncBatchSchema = createInsertSchema(syncBatches).omit({ id: true, createdAt: true });
+export type InsertSyncBatch = z.infer<typeof insertSyncBatchSchema>;
+export type SyncBatch = typeof syncBatches.$inferSelect;
+
+// ── Sprint 4: Sync Events ─────────────────────────────────────────────────────
+
+export const syncEvents = pgTable("sync_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  terminalId: varchar("terminal_id"),
+  batchId: varchar("batch_id"),
+  entityType: varchar("entity_type", { length: 50 }).notNull().default("order"),
+  localEntityId: varchar("local_entity_id", { length: 128 }),
+  serverEntityId: varchar("server_entity_id"),
+  localOrderNumber: varchar("local_order_number", { length: 128 }),
+  serverOrderNumber: text("server_order_number"),
+  status: varchar("status", { length: 50 }).notNull(),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  tenantIdx: index("sync_events_tenant_idx").on(table.tenantId),
+  batchIdx: index("sync_events_batch_idx").on(table.batchId),
+  localEntityIdx: index("sync_events_local_entity_idx").on(table.localEntityId),
+}));
+
+export const insertSyncEventSchema = createInsertSchema(syncEvents).omit({ id: true, createdAt: true });
+export type InsertSyncEvent = z.infer<typeof insertSyncEventSchema>;
+export type SyncEvent = typeof syncEvents.$inferSelect;
+
+// ── Sprint 4: Server-Side Sync Conflicts ─────────────────────────────────────
+
+export const serverSyncConflicts = pgTable("server_sync_conflicts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  terminalId: varchar("terminal_id"),
+  localOrderId: varchar("local_order_id", { length: 128 }),
+  conflictType: varchar("conflict_type", { length: 50 }).notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  tenantIdx: index("server_sync_conflicts_tenant_idx").on(table.tenantId),
+  terminalIdx: index("server_sync_conflicts_terminal_idx").on(table.terminalId),
+}));
+
+export const insertServerSyncConflictSchema = createInsertSchema(serverSyncConflicts).omit({ id: true, createdAt: true });
+export type InsertServerSyncConflict = z.infer<typeof insertServerSyncConflictSchema>;
+export type ServerSyncConflict = typeof serverSyncConflicts.$inferSelect;

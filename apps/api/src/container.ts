@@ -38,6 +38,7 @@ import { ListOrderHistory } from '@pos/application/orders/ListOrderHistory';
 import { TransitionOrderStatus } from '@pos/application/orders/TransitionOrderStatus';
 import { CreateAndPayOrder } from '@pos/application/orders/CreateAndPayOrder';
 import { TransitionOrderFulfillmentStatus } from '@pos/application/orders/TransitionOrderFulfillmentStatus';
+import { SyncOfflineOrder } from '@pos/application/sync/SyncOfflineOrder';
 
 // Use Cases - Tenants
 import { GetActiveFeaturesForTenant } from '@pos/application/tenants/GetActiveFeaturesForTenant';
@@ -91,6 +92,8 @@ class Container {
   public readonly createAndPayOrder: CreateAndPayOrder;
   /** P0.3: kitchen/KDS fulfillment-only transitions */
   public readonly transitionOrderFulfillmentStatus: TransitionOrderFulfillmentStatus;
+  /** Sprint 4: batch offline order sync */
+  public readonly syncOfflineOrder: SyncOfflineOrder;
 
   // Tenant Use Cases
   public readonly getActiveFeaturesForTenant: GetActiveFeaturesForTenant;
@@ -166,6 +169,9 @@ class Container {
 
     // P0.2: True atomic create-and-pay (single DB transaction)
     this.createAndPayOrder = new CreateAndPayOrder(db);
+
+    // Sprint 4: Batch offline sync
+    this.syncOfflineOrder = new SyncOfflineOrder(db);
 
     // P0.3: Kitchen/KDS fulfillment-only transitions
     this.transitionOrderFulfillmentStatus = new TransitionOrderFulfillmentStatus(

@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Clock3, WifiOff } from "lucide-react";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { offlineDb } from "@pos/offline";
 import { useSyncEngine } from "@/hooks/useSyncEngine";
+import { useTerminalHeartbeat } from "@/hooks/useTerminalHeartbeat";
 
 export function SyncStatusWidget() {
   const [pendingCount, setPendingCount] = useState(0);
@@ -37,6 +38,7 @@ export function SyncStatusWidget() {
 
   const { isOnline } = useNetworkStatus(pendingCount);
   const { run, isSyncing } = useSyncEngine();
+  useTerminalHeartbeat();
 
   const severity: "green" | "yellow" | "red" | "gray" = !isOnline
     ? "gray"
