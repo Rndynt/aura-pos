@@ -23,6 +23,7 @@ type CartPanelProps = {
   onCharge: () => void;
   onPartialPayment?: () => void;
   onSaveDraft?: () => void;
+  onUpdateNote?: (id: string, note: string) => void;
   hasPartialPayment?: boolean;
   isProcessing?: boolean;
   customerName: string;
@@ -42,7 +43,7 @@ type CartPanelProps = {
 export function CartPanel({
   items, onUpdateQty, onRemove, onClear, getItemPrice,
   subtotal, taxRate, tax, serviceChargeRate, serviceCharge, total,
-  onCharge, onSaveDraft, isProcessing = false,
+  onCharge, onSaveDraft, onUpdateNote, isProcessing = false,
   customerName, setCustomerName, orderNumber,
   tableNumber, setTableNumber,
   orderType, setOrderType,
@@ -166,6 +167,7 @@ export function CartPanel({
               item={item}
               onUpdateQty={onUpdateQty}
               onRemove={onRemove}
+              onUpdateNote={onUpdateNote ?? (() => {})}
               getItemPrice={getItemPrice}
             />
           ))

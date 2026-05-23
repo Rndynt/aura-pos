@@ -1,14 +1,15 @@
 import type { CartItem as CartItemType } from "@/hooks/useCart";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, MessageSquare } from "lucide-react";
 
 type CartItemProps = {
   item: CartItemType;
   onUpdateQty: (id: string, qty: number) => void;
   onRemove: (id: string) => void;
+  onUpdateNote: (id: string, note: string) => void;
   getItemPrice: (item: CartItemType) => number;
 };
 
-export function CartItem({ item, onUpdateQty, getItemPrice }: CartItemProps) {
+export function CartItem({ item, onUpdateQty, onUpdateNote, getItemPrice }: CartItemProps) {
   const fmt = (n: number) =>
     new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
 
@@ -41,6 +42,19 @@ export function CartItem({ item, onUpdateQty, getItemPrice }: CartItemProps) {
         {optionLabel && (
           <p className="text-[10px] text-slate-400 leading-tight truncate">{optionLabel}</p>
         )}
+
+        {/* Note */}
+        <div className="flex items-center gap-1">
+          <MessageSquare size={9} className="text-slate-300 flex-shrink-0" />
+          <input
+            type="text"
+            value={item.note || ""}
+            onChange={e => onUpdateNote(item.id, e.target.value)}
+            placeholder="Catatan..."
+            className="bg-transparent w-full text-[10px] text-slate-500 focus:outline-none placeholder:text-slate-300"
+            data-testid={`input-item-note-${item.id}`}
+          />
+        </div>
 
         {/* Harga + qty */}
         <div className="flex items-center justify-between mt-0.5">

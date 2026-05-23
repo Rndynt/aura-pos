@@ -58,6 +58,7 @@ type MobileCartDrawerProps = {
   onCharge: () => void;
   onPartialPayment?: () => void;
   onSaveDraft?: () => void;
+  onUpdateNote?: (id: string, note: string) => void;
   hasPartialPayment?: boolean;
   isProcessing?: boolean;
   // New metadata props
@@ -92,6 +93,7 @@ export function MobileCartDrawer({
   onCharge,
   onPartialPayment,
   onSaveDraft,
+  onUpdateNote,
   hasPartialPayment = false,
   isProcessing = false,
   customerName,
@@ -280,6 +282,7 @@ export function MobileCartDrawer({
                       item={item}
                       onUpdateQty={onUpdateQty}
                       onRemove={onRemove}
+                      onUpdateNote={onUpdateNote ?? (() => {})}
                       getItemPrice={getItemPrice}
                     />
                   ))}

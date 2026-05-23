@@ -812,6 +812,7 @@ export default function POSPage() {
           onCharge={handleCharge}
           onPartialPayment={handlePartialPayment}
           onSaveDraft={handleSaveDraft}
+          onUpdateNote={cart.updateNote}
           hasPartialPayment={hasPartialPayment}
           isProcessing={isProcessingQuickCharge}
           customerName={cart.customerName}
@@ -861,6 +862,7 @@ export default function POSPage() {
         }}
         onPartialPayment={handlePartialPayment}
         onSaveDraft={handleSaveDraft}
+        onUpdateNote={cart.updateNote}
         hasPartialPayment={hasPartialPayment}
         isProcessing={isProcessingQuickCharge}
         customerName={cart.customerName}
