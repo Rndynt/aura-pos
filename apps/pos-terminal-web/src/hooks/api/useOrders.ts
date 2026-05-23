@@ -5,17 +5,13 @@ import { getActiveTenantId } from "@/lib/tenant";
 
 async function fetchWithTenantHeader(url: string) {
   const res = await fetch(url, {
-    headers: {
-      "x-tenant-id": getActiveTenantId(),
-    },
+    headers: { "x-tenant-id": getActiveTenantId() },
     credentials: "include",
   });
-
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
   }
-
   return res.json();
 }
 
@@ -29,12 +25,10 @@ async function postWithTenantHeader(url: string, data: unknown) {
     body: JSON.stringify(data),
     credentials: "include",
   });
-
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
   }
-
   return res.json();
 }
 
@@ -42,6 +36,9 @@ type OrderFilters = {
   status?: string;
   order_type_id?: string;
   table_number?: string;
+  startDate?: Date;
+  endDate?: Date;
+  limit?: number;
 };
 
 export function useOrders(filters?: OrderFilters) {
@@ -49,7 +46,10 @@ export function useOrders(filters?: OrderFilters) {
   if (filters?.status) queryParams.append("status", filters.status);
   if (filters?.order_type_id) queryParams.append("order_type_id", filters.order_type_id);
   if (filters?.table_number) queryParams.append("table_number", filters.table_number);
-  
+  if (filters?.startDate) queryParams.append("startDate", filters.startDate.toISOString());
+  if (filters?.endDate) queryParams.append("endDate", filters.endDate.toISOString());
+  if (filters?.limit) queryParams.append("limit", String(filters.limit));
+
   const queryString = queryParams.toString();
   const url = queryString ? `/api/orders?${queryString}` : "/api/orders";
 
@@ -84,6 +84,7 @@ type CreateOrderInput = {
   customer_name?: string;
   table_number?: string;
   notes?: string;
+  order_type_id?: string;
   initial_payment?: {
     amount: number;
     payment_method: "cash" | "card" | "ewallet" | "other";
