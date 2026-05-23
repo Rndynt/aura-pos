@@ -5,6 +5,7 @@
 #   2. ATAU paste labels ini di "Advanced → Docker Compose Labels"
 #
 # Yang penting: SATU kali setup ini = semua subdomain tenant langsung jalan
+# Traefik v3 uses plain regexp HostRegexp syntax, not old `{subdomain:...}` syntax.
 
 services:
   app:
@@ -14,8 +15,8 @@ services:
       - "traefik.enable=true"
 
       # ── Router: tangkap root domain DAN semua *.aurapos.my.id ─────────────
-      - "traefik.http.routers.aurapos.rule=Host(`aurapos.my.id`) || HostRegexp(`{subdomain:[a-z0-9][a-z0-9-]*}.aurapos.my.id`)"
-      - "traefik.http.routers.aurapos.entrypoints=web,websecure"
+      - "traefik.http.routers.aurapos.rule=Host(`aurapos.my.id`) || HostRegexp(`^[a-z0-9][a-z0-9-]*\\.aurapos\\.my\\.id$`)"
+      - "traefik.http.routers.aurapos.entrypoints=http,https"
       - "traefik.http.routers.aurapos.tls=true"
       - "traefik.http.routers.aurapos.tls.certresolver=letsencrypt"
 
