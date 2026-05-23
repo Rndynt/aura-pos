@@ -14,25 +14,23 @@ if (!DATABASE_URL) {
 const authSql = postgres(DATABASE_URL);
 export const authDb = drizzle(authSql, { schema: authSchema });
 
+const BASE_DOMAIN = (process.env.BASE_DOMAIN || 'aurapos.my.id').trim();
+const DEFAULT_BASE_URL = process.env.BETTER_AUTH_URL?.trim() || `https://${BASE_DOMAIN}`;
+const TRUSTED_ORIGIN_REGEX = new RegExp(`^https?:\\/\\/[a-z0-9-]+\\.${BASE_DOMAIN.replace(/\./g, '\\.')}$`);
+
 // Resolve the canonical base URL for better-auth.
-// In Replit the app is served over HTTPS via a proxy domain, so we must
-// use that domain — not localhost — otherwise session cookies are scoped
-// to 'localhost' and the browser silently drops them.
-const resolveBaseURL = (): string => {
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  }
-  if (process.env.BETTER_AUTH_URL) {
-    return process.env.BETTER_AUTH_URL;
-  }
-  return 'http://localhost:5000';
-};
+// Use the public domain, not localhost, so cookies and callbacks work behind the proxy.
+const resolveBaseURL = (): string => DEFAULT_BASE_URL;
 
-// Build trusted origins — always include Replit domains
-const buildTrustedOrigins = (): string[] => {
-  const origins: string[] = [];
+// Build trusted origins — allow the root domain and any tenant subdomain.
+const buildTrustedOrigins = (): Array<string | RegExp> => {
+  const origins: Array<string | RegExp> = [];
 
-  // Replit runtime domains (format: https://<id>.sisko.replit.dev)
+  origins.push(`https://${BASE_DOMAIN}`);
+  origins.push(`http://${BASE_DOMAIN}`);
+  origins.push(TRUSTED_ORIGIN_REGEX);
+
+  // Replit runtime domains (legacy dev support)
   if (process.env.REPLIT_DEV_DOMAIN) {
     origins.push(`https://${process.env.REPLIT_DEV_DOMAIN}`);
   }
@@ -42,12 +40,10 @@ const buildTrustedOrigins = (): string[] => {
     });
   }
 
-  // Custom base URL
   if (process.env.BETTER_AUTH_URL) {
     origins.push(process.env.BETTER_AUTH_URL);
   }
 
-  // localhost for local dev
   origins.push('http://localhost:5000');
 
   return origins;
@@ -68,6 +64,20 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: BASE_URL,
   trustedOrigins: buildTrustedOrigins(),
+  advanced: {
+    cookiePrefix: 'aurapos',
+    crossSubDomainCookies: {
+      enabled: true,
+      domain: `.${BASE_DOMAIN}`,
+    },
+    defaultCookieAttributes: {
+      domain: `.${BASE_DOMAIN}`,
+      sameSite: 'lax',
+      secure: true,
+      httpOnly: true,
+      path: '/',
+    },
+  },
   user: {
     additionalFields: {
       tenantId: {
