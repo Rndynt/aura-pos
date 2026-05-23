@@ -11,6 +11,10 @@ import { fileURLToPath } from "url";
 
 const app = express();
 
+// Trust proxy headers (Nginx, Cloudflare, etc.)
+// Required so req.hostname returns the real subdomain behind a proxy
+app.set('trust proxy', true);
+
 const databaseUrl = process.env.DATABASE_URL?.trim();
 
 if (!databaseUrl) {
