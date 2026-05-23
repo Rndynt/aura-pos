@@ -127,30 +127,32 @@
 
 ---
 
-## Sprint 3 — Offline Order & Payment ❌ NOT STARTED
+## Sprint 3 — Offline Order & Payment ✅ DONE
 
 ### Phase 7.1 — Local Order Service
 
-- [ ] `packages/offline/src/localOrderService.ts` — `createLocalOrder()`
-- [ ] `packages/offline/src/idempotency.ts` — idempotency key generator
-- [ ] `packages/offline/src/orderNumber.ts` — local order number: `OFF-{terminalId}-{yyyyMMdd}-{seq}`
-- [ ] Generate `localOrderId` (nanoid)
-- [ ] Save order + items + modifiers + payment to IndexedDB
-- [ ] Add entry to `sync_outbox`
-- [ ] Add print job to `local_print_jobs`
-- [ ] Return local order result to UI
-- [ ] No duplicate local order numbers
+- [x] `packages/offline/src/idempotency.ts` — `generateIdempotencyKey(terminalId)` — format `{terminalId}:{timestamp}:{random8}`
+- [x] `packages/offline/src/orderNumber.ts` — `generateLocalOrderNumber(tenantId, terminalId)` — format `OFF-{shortTerminal}-{YYYYMMDD}-{seq:04}`, per-tenant-per-day sequence stored in `sync_meta`
+- [x] `packages/offline/src/localOrderService.ts` — `createLocalOrder()` and `mirrorServerOrderLocally()`
+  - Generates `localId` (nanoid), `idempotencyKey`, `localOrderNumber`
+  - Computes pricing (subtotal, tax, service_charge, total) from items
+  - Saves `LocalOrder` + `LocalOrderItem[]` + `LocalPayment` in IndexedDB transaction
+  - Enqueues outbox entry targeting `POST /api/orders/create-and-pay` with full payload + `local_order_id`, `source_terminal_id`, `client_created_at`
+  - Returns `CreateLocalOrderResult` with `isLocal: true` flag
+  - No duplicate local order numbers (sequence per tenant/day)
 
 ### Phase 7.2 — Modify POS Charge Flow
 
-- [ ] `apps/pos-terminal-web/src/hooks/useOfflineOrderSubmit.ts`
-- [ ] **Online path**: submit to `/api/orders/create-and-pay` with `idempotency_key`, save mirror to local DB on success
-- [ ] **Offline path**: save local order → save local payment → enqueue sync → enqueue print → show local success with local order number
-- [ ] **Network-fail fallback**: if online submit fails (network error only), fall back to local order; do not lose cart
-- [ ] **API validation error**: do NOT fallback; show error to cashier
-- [ ] Cart cleared only after local/server order is successfully saved
-- [ ] Double-tap / double-click prevention on payment button
-- [ ] Wire `useOfflineOrderSubmit` into `pos.tsx` replacing direct `createAndPayMutation`
+- [x] `apps/pos-terminal-web/src/hooks/useOfflineOrderSubmit.ts` — `{ submitOrder, isSubmitting }`
+- [x] **Online path**: `fetch /api/orders/create-and-pay` with `x-idempotency-key` header → on success, mirror to `local_orders` (syncStatus: synced) + invalidate query cache
+- [x] **Offline path**: if fetch throws TypeError/network error → `createLocalOrder()` → return with `isLocal: true`
+- [x] **5xx fallback**: server error also triggers local fallback (500 = temporary, retryable)
+- [x] **API validation error**: 400/422 throw to UI — NO local fallback
+- [x] **Double-tap prevention**: `inFlightRef` guard + `isSubmitting` state; second call throws immediately
+- [x] Cart cleared only after `submitOrder` resolves successfully
+- [x] Toast shows "(OFFLINE)" title + "akan tersinkron saat online" description for local orders
+- [x] `useOfflineOrderSubmit` wired into `pos.tsx` — `createAndPayMutation` removed, `submitOrder` used in `handlePaymentMethodConfirm`
+- [x] `packages/offline/src/index.ts` exports `idempotency`, `orderNumber`, `localOrderService`
 
 ---
 

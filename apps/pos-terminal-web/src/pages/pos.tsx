@@ -14,7 +14,8 @@ import { LocalDraftOrdersSheet } from "@/components/pos/LocalDraftOrdersSheet";
 import type { PaymentMethod } from "@/hooks/useCart";
 import { useCart } from "@/hooks/useCart";
 import { useFeatures } from "@/hooks/useFeatures";
-import { useProducts, useCreateOrder, useUpdateOrder, useCreateKitchenTicket, useOrderTypes, useRecordPayment, useOrders, useCreateAndPay } from "@/lib/api/hooks";
+import { useProducts, useCreateOrder, useUpdateOrder, useCreateKitchenTicket, useOrderTypes, useRecordPayment, useOrders } from "@/lib/api/hooks";
+import { useOfflineOrderSubmit } from "@/hooks/useOfflineOrderSubmit";
 import type { Product, ProductVariant } from "@pos/domain/catalog/types";
 import type { SelectedOption, Order } from "@pos/domain/orders/types";
 import { Button } from "@/components/ui/button";
@@ -196,7 +197,7 @@ export default function POSPage() {
   const updateOrderMutation = useUpdateOrder();
   const createKitchenTicketMutation = useCreateKitchenTicket();
   const recordPaymentMutation = useRecordPayment();
-  const createAndPayMutation = useCreateAndPay();
+  const { submitOrder, isSubmitting: isOfflineSubmitting } = useOfflineOrderSubmit();
 
   const hasPartialPayment = hasFeature("partial_payment");
   const hasKitchenTicket = hasFeature("kitchen_ticket");
@@ -455,17 +456,18 @@ export default function POSPage() {
     setIsProcessingQuickCharge(true);
     try {
       const totalAmount = cfdTotal;
-      const orderResult = await createAndPayMutation.mutateAsync({
+      const orderResult = await submitOrder({
         items: cart.toBackendOrderItems(),
         tax_rate: cart.taxRate,
         service_charge_rate: cart.serviceChargeRate,
-        order_type_id: cart.selectedOrderTypeId,
+        order_type_id: cart.selectedOrderTypeId ?? undefined,
         customer_name: cfdCustomerName,
         table_number: cfdTableNumber,
         amount: totalAmount,
         payment_method: paymentMethod,
       });
-      const orderNumber = orderResult.order?.order_number || orderResult.order?.id;
+      const orderNumber = (orderResult.order as any)?.order_number || orderResult.order?.id;
+      const isLocal = (orderResult as any).isLocal === true;
       
       // Broadcast: pembayaran selesai
       sendToCFD({
@@ -483,8 +485,12 @@ export default function POSPage() {
       });
       
       toast({
-        title: "Pesanan berhasil dibuat & dibayar",
-        description: `Order #${orderNumber} - Total: Rp ${totalAmount.toLocaleString("id-ID")} (${paymentMethod})`,
+        title: isLocal
+          ? "Pesanan tersimpan (OFFLINE)"
+          : "Pesanan berhasil dibuat & dibayar",
+        description: isLocal
+          ? `Order #${orderNumber} disimpan lokal — akan tersinkron saat online`
+          : `Order #${orderNumber} - Total: Rp ${totalAmount.toLocaleString("id-ID")} (${paymentMethod})`,
       });
 
       if (shouldAutoPrintReceipt) {
