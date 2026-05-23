@@ -241,7 +241,7 @@ export function MobileCartDrawer({
                       className="h-10 min-w-[76px] max-w-[96px] flex-shrink-0 border border-slate-200 bg-white rounded-xl px-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-50 focus:border-blue-400 gap-1.5 transition-all"
                       data-testid="select-table-mobile"
                     >
-                      <span className="truncate">{tableNumber ? `Meja ${tableNumber}` : "Meja"}</span>
+                      <span className="truncate">{tableNumber || "–"}</span>
                     </SelectTrigger>
                     <SelectContent className="z-[100]">
                       {tablesLoading ? (

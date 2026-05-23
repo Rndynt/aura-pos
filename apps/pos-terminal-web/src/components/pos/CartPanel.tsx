@@ -140,7 +140,7 @@ export function CartPanel({
                 className="h-7 min-w-[64px] max-w-[80px] flex-shrink-0 border border-slate-200 bg-white rounded-md px-2 text-xs font-semibold text-slate-700 focus:ring-1 focus:ring-blue-100 focus:border-blue-400 gap-1 transition-all"
                 data-testid="select-table"
               >
-                <span className="truncate">{tableNumber ? `Meja ${tableNumber}` : "Meja"}</span>
+                <span className="truncate">{tableNumber || "–"}</span>
               </SelectTrigger>
               <SelectContent>
                 {tablesData?.tables?.filter(t => t.status !== "maintenance").map(t => (
