@@ -1,6 +1,92 @@
-import { ShoppingBag, LayoutGrid, UtensilsCrossed, ChefHat, Grip, LogOut, AlertTriangle, Printer } from "lucide-react";
+import {
+  ShoppingBag, LayoutGrid, UtensilsCrossed, ChefHat, Grip, LogOut,
+  AlertTriangle, Printer, ClipboardList, Wifi, WifiOff, RefreshCw,
+  CheckCircle2, Clock3, XCircle,
+} from "lucide-react";
 import { useLocation } from "wouter";
 import { useTenant } from "@/context/TenantContext";
+import { useEffect, useState, useCallback } from "react";
+import { offlineDb, runSyncEngine } from "@pos/offline";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+
+// ─── Compact sync status button for the sidebar ───────────────────────────────
+function SidebarSyncButton() {
+  const [pending, setPending]   = useState(0);
+  const [failed, setFailed]     = useState(0);
+  const [conflict, setConflict] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      const [p, f, c] = await Promise.all([
+        offlineDb.sync_outbox.where("status").anyOf("pending", "syncing").count(),
+        offlineDb.sync_outbox.where("status").equals("failed").count(),
+        offlineDb.sync_conflicts.count(),
+      ]);
+      if (mounted) { setPending(p); setFailed(f); setConflict(c); }
+    };
+    load().catch(() => undefined);
+    const t = setInterval(() => load().catch(() => undefined), 5000);
+    return () => { mounted = false; clearInterval(t); };
+  }, []);
+
+  const { isOnline } = useNetworkStatus(pending);
+
+  const handleSync = useCallback(async () => {
+    if (isSyncing || !isOnline) return;
+    setIsSyncing(true);
+    try { await runSyncEngine(); } catch { /* no-op */ } finally { setIsSyncing(false); }
+  }, [isSyncing, isOnline]);
+
+  const severity = !isOnline ? "gray"
+    : (failed > 0 || conflict > 0) ? "red"
+    : pending > 0 ? "yellow"
+    : "green";
+
+  const colorMap = {
+    green:  { dot: "bg-emerald-400",  icon: CheckCircle2, ring: "hover:bg-emerald-50" },
+    yellow: { dot: "bg-amber-400",    icon: Clock3,       ring: "hover:bg-amber-50"   },
+    red:    { dot: "bg-red-400",      icon: AlertTriangle,ring: "hover:bg-red-50"     },
+    gray:   { dot: "bg-slate-400",    icon: WifiOff,      ring: "hover:bg-slate-100"  },
+  }[severity];
+
+  const Icon = isSyncing ? RefreshCw : colorMap.icon;
+
+  const total = pending + failed + conflict;
+  const tooltipText = !isOnline ? "Offline"
+    : isSyncing ? "Sedang sync…"
+    : failed > 0 ? `${failed} gagal — klik untuk retry`
+    : conflict > 0 ? `${conflict} konflik`
+    : pending > 0 ? `${pending} menunggu sync`
+    : "Semua tersinkron";
+
+  return (
+    <button
+      onClick={handleSync}
+      title={tooltipText}
+      data-testid="button-sidebar-sync"
+      className={`group relative flex items-center justify-center w-11 h-11 rounded-xl transition-all duration-150 text-slate-400 ${colorMap.ring}`}
+    >
+      <Icon
+        size={20}
+        strokeWidth={1.8}
+        className={`${severity === "red" ? "text-red-500" : severity === "yellow" ? "text-amber-500" : severity === "green" ? "text-emerald-500" : "text-slate-400"} ${isSyncing ? "animate-spin" : ""}`}
+      />
+      {/* Badge count */}
+      {total > 0 && (
+        <span className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 rounded-full text-[10px] font-bold flex items-center justify-center text-white ${colorMap.dot}`}>
+          {total > 9 ? "9+" : total}
+        </span>
+      )}
+      {/* Tooltip */}
+      <span className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 z-50">
+        {tooltipText}
+        <span className="absolute -left-1 top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-800" />
+      </span>
+    </button>
+  );
+}
 
 // ─── Desktop icon-only sidebar ────────────────────────────────────────────────
 function SidebarItem({
@@ -88,6 +174,14 @@ export function Sidebar() {
         />
 
         <SidebarItem
+          icon={ClipboardList}
+          label="Order Offline"
+          isActive={location.startsWith("/local-orders")}
+          onClick={() => nav("/local-orders")}
+          testId="button-nav-local-orders"
+        />
+
+        <SidebarItem
           icon={AlertTriangle}
           label="Konflik Sync"
           isActive={location.startsWith("/sync-conflicts")}
@@ -103,6 +197,9 @@ export function Sidebar() {
           testId="button-nav-hub"
         />
       </nav>
+
+      {/* Sync status indicator */}
+      <SidebarSyncButton />
 
       {/* Logout */}
       <button
@@ -132,6 +229,7 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
     { path: "/tables",          icon: UtensilsCrossed,label: "Meja",             active: location.startsWith("/tables"),            show: showTables   },
     { path: "/kitchen",         icon: ChefHat,        label: "Dapur / Kitchen",  active: location.startsWith("/kitchen"),           show: showKitchen  },
     { path: "/printers",        icon: Printer,        label: "Printer Hub",      active: location.startsWith("/printers"),          show: true         },
+    { path: "/local-orders",    icon: ClipboardList,  label: "Order Offline",    active: location.startsWith("/local-orders"),      show: true         },
     { path: "/sync-conflicts",  icon: AlertTriangle,  label: "Konflik Sync",     active: location.startsWith("/sync-conflicts"),    show: true         },
     { path: "/hub",             icon: Grip,           label: "Hub / Manajemen",  active: isHub,                                     show: true         },
   ];
