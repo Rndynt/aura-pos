@@ -9,8 +9,7 @@ import { UnifiedBottomNav } from "@/components/navigation/UnifiedBottomNav";
 import { ProductOptionsDialog } from "@/components/pos/ProductOptionsDialog";
 import { PartialPaymentDialog } from "@/components/pos/PartialPaymentDialog";
 import { PaymentMethodDialog } from "@/components/pos/PaymentMethodDialog";
-import { DraftOrdersSheet } from "@/components/pos/DraftOrdersSheet";
-import { LocalDraftOrdersSheet } from "@/components/pos/LocalDraftOrdersSheet";
+import { CombinedDraftSheet } from "@/components/pos/CombinedDraftSheet";
 import type { PaymentMethod } from "@/hooks/useCart";
 import { useCart } from "@/hooks/useCart";
 import { useFeatures } from "@/hooks/useFeatures";
@@ -41,8 +40,7 @@ export default function POSPage() {
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
-  const [draftSheetOpen, setDraftSheetOpen] = useState(false);
-  const [localDraftSheetOpen, setLocalDraftSheetOpen] = useState(false);
+  const [combinedDraftOpen, setCombinedDraftOpen] = useState(false);
   const [partialPaymentDialogOpen, setPartialPaymentDialogOpen] = useState(false);
   const [isSubmittingPartialPayment, setIsSubmittingPartialPayment] = useState(false);
   const [isProcessingQuickCharge, setIsProcessingQuickCharge] = useState(false);
@@ -863,7 +861,7 @@ export default function POSPage() {
         onAddToCart={handleAddToCart}
         orders={orders}
         onUpdateOrderStatus={handleUpdateOrderStatus}
-        onOpenDraftSheet={() => { setDraftSheetOpen(true); setLocalDraftSheetOpen(true); }}
+        onOpenDraftSheet={() => setCombinedDraftOpen(true)}
       />
 
       {/* Cart Panel - Hidden on mobile, shown on tablet (md) and up */}
@@ -962,20 +960,15 @@ export default function POSPage() {
         />
       )}
 
-      {/* Draft Orders Sheet */}
-      <LocalDraftOrdersSheet
-        open={localDraftSheetOpen}
-        onOpenChange={setLocalDraftSheetOpen}
-        onResumeLocalDraft={handleResumeLocalDraft}
-      />
-
-      <DraftOrdersSheet
-        open={draftSheetOpen}
-        onOpenChange={setDraftSheetOpen}
+      {/* Combined Draft Orders Sheet */}
+      <CombinedDraftSheet
+        open={combinedDraftOpen}
+        onOpenChange={setCombinedDraftOpen}
         onContinueOrder={(orderId) => {
           cart.clearCart();
           setLocation(`/pos?continueOrderId=${orderId}`);
         }}
+        onResumeLocalDraft={handleResumeLocalDraft}
       />
 
       {/* Product Options Dialog */}

@@ -12,6 +12,8 @@ import { useTenant } from "@/context/TenantContext";
 import { useFeatures } from "@/hooks/useFeatures";
 import { useOpenOrders } from "@/lib/api/tableHooks";
 import { useCategories } from "@/hooks/api/useCategories";
+import { useQuery } from "@tanstack/react-query";
+import { listLocalDraftOrders } from "@pos/offline";
 
 const DEFAULT_CATEGORY = "All";
 
@@ -77,7 +79,14 @@ export function ProductArea({
   const { data: openOrdersData } = useOpenOrders();
   const { data: categories = [] } = useCategories();
   const orderedCategoryNames = useMemo(() => categories.map((c) => c.name), [categories]);
-  const draftCount = (openOrdersData?.orders ?? []).filter((o) => o.paymentStatus !== "paid").length;
+  const serverDraftCount = (openOrdersData?.orders ?? []).filter((o) => o.paymentStatus !== "paid").length;
+  const { tenantId } = useTenant();
+  const { data: localDrafts = [] } = useQuery({
+    queryKey: ["local-drafts", tenantId],
+    queryFn: () => listLocalDraftOrders(tenantId),
+    refetchInterval: 30_000,
+  });
+  const draftCount = serverDraftCount + localDrafts.length;
 
   const categoryNames = useMemo(() => getCategories(products, orderedCategoryNames), [products, orderedCategoryNames]);
 
