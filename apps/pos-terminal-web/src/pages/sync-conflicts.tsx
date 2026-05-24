@@ -75,10 +75,7 @@ function ConflictCard({ conflict, tenantId }: { conflict: SyncConflict; tenantId
 
   const resolve = useMutation({
     mutationFn: (resolution: "resolved" | "ignored") =>
-      apiRequest(`/api/sync/conflicts/${conflict.id}/resolve`, {
-        method: "PATCH",
-        body: JSON.stringify({ resolution, resolved_by: "owner" }),
-      }),
+      apiRequest("PATCH", `/api/sync/conflicts/${conflict.id}/resolve`, { resolution, resolved_by: "owner" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sync/conflicts"] });
       toast({ title: "Konflik diperbarui" });
@@ -150,7 +147,7 @@ function ConflictCard({ conflict, tenantId }: { conflict: SyncConflict; tenantId
                 </Button>
               </>
             )}
-            {conflict.conflictData && (
+            {!!conflict.conflictData && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -165,7 +162,7 @@ function ConflictCard({ conflict, tenantId }: { conflict: SyncConflict; tenantId
         </div>
 
         {/* Expanded conflict data */}
-        {expanded && conflict.conflictData && (
+        {expanded && !!conflict.conflictData && (
           <div className="mt-3 ml-7 p-3 bg-slate-50 rounded-lg text-xs font-mono text-slate-600 overflow-auto max-h-48">
             <pre>{JSON.stringify(conflict.conflictData, null, 2)}</pre>
           </div>
