@@ -67,14 +67,10 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-39f6cb97'], (function (workbox) { 'use strict';
+define(['./workbox-6e50e443'], (function (workbox) { 'use strict';
 
-  self.addEventListener('message', event => {
-    if (event.data && event.data.type === 'SKIP_WAITING') {
-      self.skipWaiting();
-    }
-  });
-
+  self.skipWaiting();
+  workbox.clientsClaim();
   /**
    * The precacheAndRoute() method efficiently caches and responds to
    * requests for URLs in the manifest.
@@ -85,7 +81,7 @@ define(['./workbox-39f6cb97'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "/index.html",
-    "revision": "0.040g0qnv8k8"
+    "revision": "0.msq6vlt4rng"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("/index.html"), {
@@ -99,25 +95,44 @@ define(['./workbox-39f6cb97'], (function (workbox) { 'use strict';
     "networkTimeoutSeconds": 3,
     plugins: []
   }), 'GET');
-  workbox.registerRoute(/^\/api\/catalog\/products/, new workbox.NetworkFirst({
+  workbox.registerRoute(/\/api\/catalog\/products/, new workbox.NetworkFirst({
     "cacheName": "api-catalog-cache",
     "networkTimeoutSeconds": 4,
     plugins: [new workbox.CacheableResponsePlugin({
       statuses: [0, 200]
+    }), new workbox.ExpirationPlugin({
+      maxEntries: 5,
+      maxAgeSeconds: 86400
     })]
   }), 'GET');
-  workbox.registerRoute(/^\/api\/tenant\/features/, new workbox.NetworkFirst({
-    "cacheName": "api-tenant-features-cache",
+  workbox.registerRoute(/\/api\/catalog\/categories/, new workbox.NetworkFirst({
+    "cacheName": "api-catalog-categories-cache",
     "networkTimeoutSeconds": 4,
     plugins: [new workbox.CacheableResponsePlugin({
       statuses: [0, 200]
+    }), new workbox.ExpirationPlugin({
+      maxEntries: 5,
+      maxAgeSeconds: 86400
     })]
   }), 'GET');
-  workbox.registerRoute(/^\/api\/order-types/, new workbox.NetworkFirst({
+  workbox.registerRoute(/\/api\/orders\/order-types/, new workbox.NetworkFirst({
     "cacheName": "api-order-types-cache",
     "networkTimeoutSeconds": 4,
     plugins: [new workbox.CacheableResponsePlugin({
       statuses: [0, 200]
+    }), new workbox.ExpirationPlugin({
+      maxEntries: 5,
+      maxAgeSeconds: 86400
+    })]
+  }), 'GET');
+  workbox.registerRoute(/\/api\/tenants\/features/, new workbox.NetworkFirst({
+    "cacheName": "api-features-cache",
+    "networkTimeoutSeconds": 4,
+    plugins: [new workbox.CacheableResponsePlugin({
+      statuses: [0, 200]
+    }), new workbox.ExpirationPlugin({
+      maxEntries: 5,
+      maxAgeSeconds: 86400
     })]
   }), 'GET');
 

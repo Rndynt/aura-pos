@@ -1,84 +1,46 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { RefreshCw, CheckCircle } from "lucide-react";
 
-declare global {
-  interface Window {
-    __SW_REGISTRATION__?: ServiceWorkerRegistration;
-  }
-}
-
+/**
+ * PwaUpdatePrompt — shows a brief toast when a new service worker has taken
+ * control (autoUpdate mode: SW skips waiting automatically, then triggers
+ * controllerchange which reloads the page in most cases).
+ *
+ * With registerType:"autoUpdate" + skipWaiting:true the old "waiting worker"
+ * pattern is no longer needed. Instead we simply show an info toast just
+ * before the reload fires so the user understands why the screen flashed.
+ */
 export function PwaUpdatePrompt() {
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+  const [updated, setUpdated] = useState(false);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
-    const checkForWaiting = (reg: ServiceWorkerRegistration) => {
-      if (reg.waiting) {
-        setWaitingWorker(reg.waiting);
-        setShowPrompt(true);
-      }
-    };
-
-    navigator.serviceWorker.getRegistration().then((reg) => {
-      if (!reg) return;
-      checkForWaiting(reg);
-
-      reg.addEventListener("updatefound", () => {
-        const newWorker = reg.installing;
-        if (!newWorker) return;
-        newWorker.addEventListener("statechange", () => {
-          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-            setWaitingWorker(newWorker);
-            setShowPrompt(true);
-          }
-        });
-      });
-    });
-
     let refreshing = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
+    const handleControllerChange = () => {
       if (refreshing) return;
       refreshing = true;
-      window.location.reload();
-    });
+      setUpdated(true);
+      setTimeout(() => window.location.reload(), 800);
+    };
+
+    navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
+    return () => {
+      navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+    };
   }, []);
 
-  const handleUpdate = () => {
-    if (!waitingWorker) return;
-    waitingWorker.postMessage({ type: "SKIP_WAITING" });
-    setShowPrompt(false);
-  };
-
-  if (!showPrompt) return null;
+  if (!updated) return null;
 
   return (
     <div
-      role="alert"
+      role="status"
       data-testid="pwa-update-prompt"
-      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border border-slate-700 text-sm max-w-sm w-full"
+      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border border-slate-700 text-sm max-w-sm w-full animate-in fade-in slide-in-from-bottom-4"
     >
-      <RefreshCw className="w-4 h-4 shrink-0 text-blue-400" />
-      <span className="flex-1">Versi baru tersedia. Perbarui aplikasi?</span>
-      <Button
-        size="sm"
-        variant="outline"
-        className="text-white border-slate-600 hover:bg-slate-700 shrink-0"
-        onClick={handleUpdate}
-        data-testid="pwa-update-confirm"
-      >
-        Perbarui
-      </Button>
-      <button
-        onClick={() => setShowPrompt(false)}
-        className="text-slate-400 hover:text-white"
-        aria-label="Tutup"
-        data-testid="pwa-update-dismiss"
-      >
-        <X className="w-4 h-4" />
-      </button>
+      <CheckCircle className="w-4 h-4 shrink-0 text-green-400" />
+      <span className="flex-1">Aplikasi diperbarui. Memuat ulang…</span>
+      <RefreshCw className="w-4 h-4 shrink-0 text-blue-400 animate-spin" />
     </div>
   );
 }

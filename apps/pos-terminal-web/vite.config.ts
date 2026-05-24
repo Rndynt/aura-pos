@@ -9,10 +9,12 @@ export default defineConfig({
     react(),
     runtimeErrorOverlay(),
     VitePWA({
-      registerType: "prompt",
+      registerType: "autoUpdate",
       includeAssets: ["favicon.png", "icons/icon.svg"],
       manifest: false,
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,png,svg,woff2}"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
@@ -26,36 +28,50 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: /^\/api\/catalog\/products/,
+            urlPattern: /\/api\/catalog\/products/,
             handler: "NetworkFirst",
             options: {
               cacheName: "api-catalog-cache",
               networkTimeoutSeconds: 4,
               cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 5, maxAgeSeconds: 24 * 60 * 60 },
             },
           },
           {
-            urlPattern: /^\/api\/tenant\/features/,
+            urlPattern: /\/api\/catalog\/categories/,
             handler: "NetworkFirst",
             options: {
-              cacheName: "api-tenant-features-cache",
+              cacheName: "api-catalog-categories-cache",
               networkTimeoutSeconds: 4,
               cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 5, maxAgeSeconds: 24 * 60 * 60 },
             },
           },
           {
-            urlPattern: /^\/api\/order-types/,
+            urlPattern: /\/api\/orders\/order-types/,
             handler: "NetworkFirst",
             options: {
               cacheName: "api-order-types-cache",
               networkTimeoutSeconds: 4,
               cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 5, maxAgeSeconds: 24 * 60 * 60 },
+            },
+          },
+          {
+            urlPattern: /\/api\/tenants\/features/,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "api-features-cache",
+              networkTimeoutSeconds: 4,
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 5, maxAgeSeconds: 24 * 60 * 60 },
             },
           },
         ],
       },
       devOptions: {
         enabled: true,
+        type: "module",
       },
     }),
     ...(process.env.NODE_ENV !== "production" &&
