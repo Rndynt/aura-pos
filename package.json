@@ -14,7 +14,7 @@
     "dev:turbo": "turbo run dev",
     "build": "turbo run build && pnpm run build:static:api",
     "build:legacy": "vite build && esbuild apps/api/src/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
-    "start": "NODE_ENV=production node dist/index.js",
+    "start": "NODE_ENV=production node apps/api/dist/index.js",
     "check": "turbo run type-check",
     "type-check": "turbo run type-check",
     "lint": "turbo run lint",

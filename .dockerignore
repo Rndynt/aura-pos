@@ -1,0 +1,38 @@
+# Dependencies — reinstalled inside Docker
+node_modules
+.pnpm-store
+apps/*/node_modules
+packages/*/node_modules
+
+# Previous build output — rebuilt inside Docker
+dist
+apps/*/dist
+apps/pos-terminal-web/.vite
+dev-dist
+
+# Secrets / local config
+.env
+.env.local
+.env.*.local
+
+# Version control
+.git
+.github
+.gitignore
+.gitattributes
+
+# Replit-specific
+.replit
+replit.nix
+.local
+attached_assets
+
+# Docs & markdown (not needed at runtime)
+docs
+*.md
+!README.md
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
