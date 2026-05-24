@@ -208,16 +208,18 @@
 
 ---
 
-## Sprint 6 — Print Queue [ ] TODO
+## Sprint 6 — Print Queue [x] DONE
 
 ### Phase 11.1 — Local Print Job Queue
 
 - [x] `local_print_jobs` table defined in IndexedDB schema
-- [x] `LocalPrintJob` type with all required fields
-- [ ] `printQueue.ts` service: `enqueuePrintJob`, `getPendingPrintJobs`, `markPrinted`, `markPrintFailed`, `retryPrintJob`
-- [ ] Print jobs enqueued automatically after every successful order (local or server)
-- [ ] `PrintQueuePanel.tsx` UI: list pending/failed jobs, reprint, mark printed
-- [ ] Kitchen ticket print job support
+- [x] `LocalPrintJob` type with all required fields (`serverOrderId`, `orderNumber`, `lastError`, `printedAt` added)
+- [x] `printQueue.ts` service: `enqueuePrintJob`, `getPendingPrintJobs`, `getAllPrintJobs`, `getPrintJobStats`, `markPrinting`, `markPrinted`, `markPrintFailed`, `retryPrintJob`, `cancelPrintJob`, `deletePrintJob`
+- [x] Print jobs enqueued automatically after every successful order (`pos.tsx` payment flow)
+- [x] `PrintQueuePanel.tsx` UI: list all jobs, status badges, reprint, retry, cancel, delete
+- [x] `LocalDraftOrdersSheet.tsx` enhanced — existing component retained (already complete)
+- [x] `PrintQueuePanel` integrated into Printer Hub (`/printers`) page
+- [ ] Kitchen ticket print job support (requires kitchen ticket feature work)
 
 ### Phase 11.2 — Printer Provider Abstraction
 
@@ -397,7 +399,7 @@
 - [x] Cart does not disappear after refresh/crash (IndexedDB persistence)
 - [x] Offline order can be created (`createLocalOrder`)
 - [x] Offline payment recorded in local DB
-- [ ] Receipt can be printed or added to print queue (Sprint 6)
+- [x] Receipt can be printed or added to print queue (Sprint 6 ✅)
 - [x] All offline transactions enter outbox (`enqueueOutbox`)
 - [x] Sync safe from duplicate order/payment (idempotency key + unique DB index)
 - [x] Idempotency key sent from frontend (`x-idempotency-key` header)

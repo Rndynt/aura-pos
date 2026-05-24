@@ -4,6 +4,7 @@ import { ArrowLeft, Bluetooth, CheckCircle2, Link2Off, Printer } from "lucide-re
 import { bluetoothReceiptPrinter } from "@/lib/receiptPrinter";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { PrintQueuePanel } from "@/components/offline/PrintQueuePanel";
 
 export default function PrintersPage() {
   const [, setLocation] = useLocation();
@@ -90,6 +91,12 @@ export default function PrintersPage() {
               <Link2Off className="mr-2" size={16} /> Disconnect Manual
             </Button>
           </div>
+        </div>
+      </div>
+
+      <div className="p-4">
+        <div className="bg-white rounded-2xl border border-slate-200 p-4">
+          <PrintQueuePanel />
         </div>
       </div>
     </div>

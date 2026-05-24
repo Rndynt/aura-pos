@@ -29,7 +29,7 @@ import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import { useCustomerDisplaySender, toCFDItem } from "@/hooks/useCustomerDisplay";
 import { bluetoothReceiptPrinter } from "@/lib/receiptPrinter";
 import { queryClient } from "@/lib/queryClient";
-import { saveLocalDraftOrder } from "@pos/offline";
+import { saveLocalDraftOrder, enqueuePrintJob, markPrinting, markPrinted, markPrintFailed, getOrCreateTerminalIdentity } from "@pos/offline";
 import { OfflineCacheBanner } from "@/components/offline/OfflineCacheBanner";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
@@ -493,46 +493,64 @@ export default function POSPage() {
           : `Order #${orderNumber} - Total: Rp ${totalAmount.toLocaleString("id-ID")} (${paymentMethod})`,
       });
 
+      const receiptPayload = {
+        orderNumber: String(orderNumber ?? cfdOrderNumber),
+        tenantName,
+        customerName: cfdCustomerName,
+        tableNumber: cfdTableNumber,
+        paymentMethod,
+        createdAt: new Date(),
+        subtotal: cfdSubtotal,
+        tax: cfdTax,
+        serviceCharge: cfdServiceCharge,
+        total: cfdTotal,
+        items: cfdItems.map((item) => ({
+          name: item.name,
+          qty: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.itemTotal,
+        })),
+      };
+
+      let printJobId: string | null = null;
+      try {
+        const qTenantId = getActiveTenantId();
+        const terminal = await getOrCreateTerminalIdentity(qTenantId);
+        const job = await enqueuePrintJob({
+          tenantId: qTenantId,
+          terminalId: terminal.terminalId,
+          localOrderId: (orderResult.order as any)?.localId,
+          orderNumber: String(orderNumber ?? cfdOrderNumber),
+          type: "receipt",
+          payload: receiptPayload,
+        });
+        printJobId = job.id;
+      } catch {
+        // Non-critical — print queue is best-effort
+      }
+
       if (shouldAutoPrintReceipt) {
         try {
+          if (printJobId) await markPrinting(printJobId).catch(() => undefined);
           await bluetoothReceiptPrinter.reconnectIfPossible().catch(() => false);
-          await bluetoothReceiptPrinter.print({
-            orderNumber: String(orderNumber ?? cfdOrderNumber),
-            tenantName,
-            customerName: cfdCustomerName,
-            tableNumber: cfdTableNumber,
-            paymentMethod,
-            createdAt: new Date(),
-            subtotal: cfdSubtotal,
-            tax: cfdTax,
-            serviceCharge: cfdServiceCharge,
-            total: cfdTotal,
-            items: cfdItems.map((item) => ({
-              name: item.name,
-              qty: item.quantity,
-              unitPrice: item.unitPrice,
-              total: item.itemTotal,
-            })),
-          });
-
+          await bluetoothReceiptPrinter.print(receiptPayload);
+          if (printJobId) await markPrinted(printJobId).catch(() => undefined);
           toast({
             title: "Struk tercetak",
             description: `Order #${orderNumber} berhasil dicetak ke printer bluetooth`,
           });
         } catch (printError) {
+          if (printJobId) await markPrintFailed(printJobId, printError instanceof Error ? printError.message : "Print failed").catch(() => undefined);
           toast({
             title: "Pembayaran sukses, cetak struk gagal",
-            description:
-              printError instanceof Error
-                ? printError.message
-                : "Silakan cek koneksi printer bluetooth lalu cetak ulang.",
+            description: "Struk disimpan di antrian cetak — buka Printer Hub untuk cetak ulang.",
             variant: "destructive",
           });
         }
       } else {
         toast({
-          title: "Pembayaran sukses, auto-print tidak aktif",
-          description: "Feature receipt_printer nonaktif dan belum ada printer yang dipair.",
+          title: "Pembayaran sukses",
+          description: "Struk tersimpan di antrian cetak. Buka Printer Hub untuk cetak.",
         });
       }
       
