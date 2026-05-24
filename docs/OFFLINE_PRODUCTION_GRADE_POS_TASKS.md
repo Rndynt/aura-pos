@@ -1,415 +1,592 @@
 # AuraPoS — Production Grade Offline POS Task List
 
-> **Last updated:** May 2026  
+> **Last updated:** May 2026
 > **Legend:** `[x]` = implemented & merged, `[~]` = partially / stub only, `[ ]` = not yet started.
 
 ---
 
-## Baseline Strengths (Already in Codebase)
+## 0. Goal
 
-- [x] TypeScript monorepo: `apps/pos-terminal-web`, `apps/api`, `packages/domain`, `packages/application`, `packages/infrastructure`, `shared/schema.ts`
-- [x] POS terminal: product browsing, cart, mobile drawer, desktop cart panel, product option dialog, payment dialog, partial payment, save draft, continue order, order queue, kitchen status
-- [x] Backend: order schema, order items, modifiers, payment, kitchen ticket, tables, tenant features
-- [x] `CreateAndPayOrder` uses DB transaction (create order + insert payment + update status)
-- [x] `RecordPayment` uses transaction + row lock `FOR UPDATE` to prevent concurrent race
-- [x] Web Bluetooth receipt printer manager (reconnect, pairing, ESC/POS, chunk writing)
-- [x] POS page uses `useCreateAndPay`, `useRecordPayment`, `useCreateKitchenTicket`, `useOrders`
+Make AuraPoS a production-grade offline-first POS PWA that remains usable by cashiers when the internet is down, and safely synchronizes back to the server when the connection returns.
+
+**Final target:**
+
+- POS terminal can open without internet.
+- Products, categories, order types, tables, and tenant features are available offline.
+- Cashiers can create orders, payments, drafts, and print receipts while offline.
+- Offline data is stored safely in IndexedDB.
+- All offline transactions are added to a sync queue.
+- Sync is safe from duplicate orders and duplicate payments using idempotency keys.
+- There is conflict handling for price changes, stock, inactive products, and payments.
+- There is a print queue for receipts and kitchen tickets.
+- There is a clear sync status UI for cashiers.
+- Backend is ready to receive retries from multiple terminals without creating duplicates.
+- There are unit tests, integration tests, E2E tests, and recovery tests.
 
 ---
 
-## Sprint 1 — Offline Foundation ✅ COMPLETE
+## 1. Current Codebase Baseline
 
-### Phase 2.1 — PWA Foundation
+### 1.1 Existing Strength
 
-- [x] `vite-plugin-pwa` installed and configured in `apps/pos-terminal-web/vite.config.ts`
-- [x] `manifest.webmanifest` created (`standalone`, `landscape`, blue theme, `/pos` start URL)
-- [x] PWA icon: `icon.svg` (`purpose: "any maskable"`, `sizes: "any"`)
-- [x] Service worker registered with `registerType: "prompt"`
-- [x] Workbox config: `navigateFallback: "/index.html"`, NetworkFirst pages cache
+- [x] TypeScript monorepo with `apps/pos-terminal-web`, `apps/api`, `packages/domain`, `packages/application`, `packages/infrastructure`, and `shared/schema.ts`.
+- [x] POS terminal: product browsing, cart, mobile drawer, desktop cart panel, product option dialog, payment dialog, partial payment, save draft, continue order, order queue, kitchen status action.
+- [x] Backend: order schema, order items, modifiers, payment, kitchen ticket, tables, tenant features.
+- [x] `CreateAndPayOrder` uses DB transaction (create order + insert payment + update status).
+- [x] `RecordPayment` uses transaction + row lock `FOR UPDATE` for concurrent safety.
+- [x] Web Bluetooth receipt printer (reconnect, pairing, ESC/POS, chunk writing).
+- [x] POS page uses `useCreateAndPay`, `useRecordPayment`, `useCreateKitchenTicket`, `useOrders`.
+
+### 1.2 Gap Status (as of Sprint 4 complete)
+
+- [x] PWA service worker via `vite-plugin-pwa` — configured.
+- [x] `dexie` and `nanoid` — in `packages/offline` and `apps/pos-terminal-web`.
+- [x] Cart saved to IndexedDB via `cartStore.ts`.
+- [x] Frontend uses `useOfflineOrderSubmit` — local-first with outbox queue.
+- [x] `sync_outbox`, `local_orders`, `local_payments`, `print_jobs` — IndexedDB schema.
+- [x] Sync engine — `runSyncEngine()` in `packages/offline/src/syncEngine.ts`.
+- [x] Offline conflict types — `conflictTypes.ts` frontend + backend mirror.
+- [x] Cashier sync status — `SyncStatusWidget.tsx` in main layout.
+
+---
+
+## Phase 1 — Define Offline Architecture ✅ COMPLETE
+
+### 1.1 Create Offline Architecture Document
+
+- [x] `docs/OFFLINE_ARCHITECTURE.md` created
+- [x] Application modes: `online`, `offline`, `syncing`, `degraded`, `conflict`
+- [x] Data sources: Server PostgreSQL → source of truth, IndexedDB → local working DB, Outbox → mutation queue
+- [x] Core principles: `localId`, `idempotencyKey`, print queue, sync status semantics
+- [x] Conflict policy: price, product, stock, payment, order, tenant config, table
+- [x] Offline limits defined
+- [x] Recovery behavior defined
+- [x] Data flow diagram included
+
+---
+
+## Phase 2 — PWA Foundation ✅ COMPLETE
+
+### 2.1 Install PWA Dependencies
+
+- [x] `dexie ^4.0.8` in `packages/offline/package.json`
+- [x] `nanoid ^5.1.6` in `packages/offline/package.json`
+- [x] `vite-plugin-pwa ^0.21.1` in `apps/pos-terminal-web/package.json`
+- [x] `VitePWA` configured in `vite.config.ts`: workbox, NetworkFirst cache, navigateFallback
+- [x] `manifest.webmanifest` — standalone, landscape, blue theme, `/pos` start URL
+- [x] PWA icons: `icon.svg` (any/maskable), `icon-192.png` (192×192), `icon-512.png` (512×512)
+- [x] Service worker registered in `main.tsx` with `updatefound` listener
+- [x] `PwaUpdatePrompt.tsx` — "Versi baru tersedia. Perbarui aplikasi?" toast with Perbarui/Dismiss
+- [x] `PwaUpdatePrompt` wired into `App.tsx` (renders outside router, always visible)
 - [x] `devOptions.enabled: true` for dev testing
-- [ ] PWA icons: explicit `192x192` and `512x512` PNG files (SVG is sufficient for modern browsers)
-- [ ] "New version available" update prompt shown to user
-- [ ] Dedicated offline fallback page (currently redirects to index.html)
+- [ ] Dedicated offline fallback HTML page (currently `navigateFallback: "/index.html"`)
 
-### Phase 2.2 — Offline Detection
+### 2.2 Add Offline Detection
 
-- [x] `useNetworkStatus.ts` — tracks `navigator.onLine`, `lastOnlineAt`, `lastOfflineAt`, derives `mode: online|offline|syncing`
-- [x] `NetworkStatusBadge.tsx` — shows Online / Offline / Syncing with icon + count
-- [x] `SyncStatusWidget.tsx` — pending/failed/conflict counts, last sync time, color-coded, manual sync trigger
-- [x] Both components integrated in `MainLayout`
-- [x] `OfflineCacheBanner.tsx` — shows cache age and stale warning in offline mode
+- [x] `useNetworkStatus.ts` — `navigator.onLine`, `lastOnlineAt`, `lastOfflineAt`, `mode: online|offline|syncing`
+- [x] `NetworkStatusBadge.tsx` — Online / Offline / Syncing badge with icon + count
+- [x] `SyncStatusWidget.tsx` — pending/failed/conflict counts, last sync time, color badges, manual sync trigger
+- [x] Both integrated in `MainLayout.tsx`
+- [x] `OfflineCacheBanner.tsx` — stale catalog warning with timestamp
 
 ---
 
-## Sprint 2 — Local Catalog and Cart ✅ COMPLETE
+## Phase 3 — Local Database / IndexedDB ✅ COMPLETE
 
-### Phase 3 — `@pos/offline` Package & IndexedDB
+### 3.1 Create Offline Package
 
-- [x] Package `packages/offline/` with `package.json`, `tsconfig.json`, `index.ts`
-- [x] Dexie-based `AuraPosOfflineDb` in `db.ts` — DB name: `AuraPoSOfflineDB`
-- [x] All required tables defined with indexes:
-  - `local_tenants`, `local_features`, `local_products`, `local_categories`
-  - `local_order_types`, `local_tables`, `local_terminal`, `local_cart_sessions`
-  - `local_orders`, `local_order_items`, `local_order_payments`, `local_print_jobs`
-  - `sync_outbox`, `sync_attempts`, `sync_conflicts`, `sync_meta`
-- [x] All entity types defined in `types.ts`: `SyncStatus`, `LocalOrder`, `LocalOrderItem`, `LocalPayment`, `LocalPrintJob`, `SyncOutboxItem`, `SyncConflict`, `TerminalIdentity`
+- [x] `packages/offline/package.json` — `@pos/offline`, dexie + nanoid deps
+- [x] `packages/offline/src/db.ts` — `AuraPosOfflineDb extends Dexie`, singleton `offlineDb`
+- [x] `packages/offline/src/schema.ts` — `OFFLINE_DB_NAME = "AuraPoSOfflineDB"`, `OFFLINE_DB_VERSION = 1`
+- [x] `packages/offline/src/types.ts` — all entity types exported
+- [x] `packages/offline/src/index.ts` — re-exports all modules
+- [x] Tables with indexes: `local_tenants`, `local_features`, `local_products`, `local_categories`, `local_order_types`, `local_tables`, `local_terminal`, `local_cart_sessions`, `local_orders`, `local_order_items`, `local_order_payments`, `local_print_jobs`, `sync_outbox`, `sync_attempts`, `sync_conflicts`, `sync_meta`
 
-### Phase 4.1 — Terminal Identity
+### 3.2 Define Local Entity Types
 
-- [x] `terminal.ts`: `getOrCreateTerminalIdentity(tenantId)` — persists in IndexedDB + localStorage
+- [x] `SyncStatus` union: `local_only | pending_sync | syncing | synced | failed | conflict | cancelled`
+- [x] `TerminalIdentity` — `terminalId`, `tenantId`, `terminalName`, timestamps
+- [x] `LocalProduct`, `LocalOrder`, `LocalOrderItem`, `LocalPayment`, `LocalPrintJob`
+- [x] `SyncOutboxItem` — full shape with backoff fields
+- [x] `SyncConflict` — `conflictType`, `syncStatus`, timestamps
+- [x] All entities have `tenantId` ✅
+- [x] All mutation entities have `idempotencyKey` ✅
+- [x] All entities have `syncStatus` ✅
+
+---
+
+## Phase 4 — Terminal Identity ✅ COMPLETE
+
+### 4.1 Create Terminal Registration (Frontend)
+
+- [x] `packages/offline/src/terminal.ts` — `getOrCreateTerminalIdentity(tenantId)`
 - [x] Terminal ID format: `TERM-{shortTenantId}-{nanoid(6)}`
-- [x] `useTerminalIdentity.ts` hook
-- [x] Terminal name defaults to "Cashier 1"
-- [ ] UI setting to rename terminal (e.g. "Front Cashier", "Bar Tablet")
+- [x] Persisted in IndexedDB (`local_terminal`) + `localStorage` fallback
+- [x] `useTerminalIdentity.ts` — React hook
+- [x] `useTerminalHeartbeat.ts` — registers on backend, heartbeat every 5 min
+- [ ] Terminal name UI setting (currently defaults to "Cashier 1")
 
-### Phase 5.1 — Catalog Cache
+### 4.2 Backend Terminal Registry
 
-- [x] `catalogCache.ts`: `saveCachedProducts`, `getCachedProducts`, `saveCachedCategories`, `getCachedCategories`
-- [x] `updateCatalogCachedAt` / `getCatalogCachedAt` / `isCatalogStale`
-- [x] Cache stale threshold: 6 h banner, 24 h full stale
-- [ ] Checksum/version-based cache invalidation
-- [ ] Inactive products blocked from cart when local cache knows they are inactive
-
-### Phase 5.2 — Tenant Features and Order Types Cache
-
-- [x] `tenantCache.ts`: `saveCachedOrderTypes`, `getCachedOrderTypes`, `saveCachedFeatures`, `getCachedFeatures`
-- [x] `updateTenantCachedAt` / `getTenantCachedAt` / `isTenantCacheStale`
-- [x] Feature gates still work offline using cached config
-- [ ] Table list cached to IndexedDB (offline table selection)
-- [ ] Tax/service charge config cached separately
-
-### Phase 6.1 — Cart Persistence (IndexedDB)
-
-- [x] `cartStore.ts`: `loadCartSession`, `saveCartSession`, `clearCartSession`
-- [x] `migrateLegacySession` — migrates from `sessionStorage` to IndexedDB
-- [x] Cart TTL: 24 h with auto-expiry
-- [x] `useCart.ts` updated to load from IndexedDB on mount
-
-### Phase 6.2 — Local Drafts / Held Orders
-
-- [x] `draftOrders.ts`: `listLocalDraftOrders`, `saveLocalDraftOrder`, `deleteLocalDraftOrder`
-- [x] Draft stored in `local_cart_sessions` with `draft:` prefix
-- [ ] `LocalDraftOrdersSheet.tsx` UI (resume/delete held orders panel)
+- [x] `TerminalsController.ts` — register, list, heartbeat, deactivate endpoints
+- [x] `POST /api/terminals/register` (idempotent find-or-create)
+- [x] `PATCH /api/terminals/:id/heartbeat`
+- [x] `GET /api/terminals`
+- [x] `PATCH /api/terminals/:id/deactivate`
+- [ ] `terminals` DB table migration (Sprint 7)
+- [ ] Admin UI to view/deactivate terminals
 
 ---
 
-## Sprint 3 — Offline Order and Payment ✅ COMPLETE
+## Phase 5 — Local Catalog Cache ✅ COMPLETE
 
-### Phase 7.1 — Local Order Service
+### 5.1 Cache Products Locally
 
-- [x] `localOrderService.ts`: `createLocalOrder` — full atomic Dexie transaction
-- [x] Saves `local_orders`, `local_order_items`, `local_order_payments` in one transaction
-- [x] Enqueues to `sync_outbox` with correct shape
-- [x] `mirrorServerOrderLocally` — mirrors online order to local DB for local orders page
-- [x] `idempotency.ts`: `generateIdempotencyKey(terminalId)` — format `{terminalId}:{ts}:{random}`
-- [x] `orderNumber.ts`: `generateLocalOrderNumber` — format `OFF-{shortTerminal}-{YYYYMMDD}-{seq:04}`
-- [x] Day sequence stored in `sync_meta`; no duplicates within terminal+day
+- [x] `packages/offline/src/catalogCache.ts` — `saveCachedProducts`, `getCachedProducts`, `updateCatalogCachedAt`, `isCatalogStale`
+- [x] `useProducts.ts` — saves to IndexedDB on fetch, reads from cache when offline
+- [x] `lastSyncedAt` stored in `sync_meta`
+- [x] Staleness check: default 24h, banner warning at 6h
+- [x] `OfflineCacheBanner.tsx` — stale warning with last sync time
+- [ ] Per-product stock tracking cache (Phase 17)
+- [ ] Inactive product enforcement from local cache
 
-### Phase 7.2 — POS Charge Flow (Offline-Aware)
+### 5.2 Cache Tenant Features and Order Types
 
-- [x] `useOfflineOrderSubmit.ts` hook:
-  - Online: POSTs to `/api/orders/create-and-pay` with `x-idempotency-key` header
-  - Offline: saves to local DB + outbox
-  - Network/5xx error: falls back to local (cart not lost)
-  - Validation error (400/422): throws immediately, no fallback
-- [x] Double-submit guard: `inFlightRef` prevents concurrent payment
-- [x] Cart cleared only after local/server order is successfully saved
-- [x] `isLocal: true` flag returned for local orders
+- [x] `packages/offline/src/tenantCache.ts` — `saveCachedOrderTypes`, `getCachedOrderTypes`, `saveCachedFeatures`, `getCachedFeatures`
+- [x] Order types read from IndexedDB when offline
+- [x] Features read from IndexedDB when offline
+- [ ] Tax/service charge config cache
+- [ ] Table list cache (Phase 15)
 
 ---
 
-## Sprint 4 — Sync Engine ✅ COMPLETE
+## Phase 6 — Replace Cart Persistence ✅ COMPLETE
 
-### Phase 8.1 — Outbox Table and Service
+### 6.1 Move Cart from sessionStorage to IndexedDB
 
-- [x] `outbox.ts`: `enqueueOutbox`, `dequeuePendingOutbox`, `markOutboxSyncing`, `markOutboxSynced`, `markOutboxFailed`, `markOutboxConflict`
-- [x] Exponential backoff: `2^attempts * 1000ms`, capped at 5 minutes
-- [x] `resetOutboxForManualRetry` — manual retry from UI
-- [x] Max 8 attempts before permanent failure
+- [x] `packages/offline/src/cartStore.ts` — `loadCartSession`, `saveCartSession`, `clearCartSession`
+- [x] `migrateLegacySession()` — migrates from `sessionStorage` to IndexedDB
+- [x] Cart TTL: 24 hours, tied to `tenantId`
+- [ ] Cart recovery UI prompt on reload
 
-### Phase 8.2 — Sync Engine
+### 6.2 Add Held Orders / Local Drafts
 
-- [x] `syncEngine.ts`: `runSyncEngine` — processes pending outbox items
-- [x] Order-creates batched and sent to `/api/sync/offline-orders` (≤ 25 per chunk)
-- [x] Other outbox items synced individually
-- [x] Handles: 200/201 (synced), 409/422 (conflict), 5xx (retry), network error (retry)
-- [x] `useSyncEngine.ts` hook: auto-runs on app open, online event, 30 s interval
-- [x] Manual trigger via `SyncStatusWidget`
-- [x] Local→server ID mapping updated on sync
-
-### Phase 4.2 — Backend Terminal Registry
-
-- [x] `terminals` table in `shared/schema.ts`
-- [x] `TerminalsController.ts`: `registerTerminal`, `heartbeatTerminal`, `listTerminals`, `deactivateTerminal`
-- [x] Routes: `POST /api/terminals/register`, `GET /api/terminals`, `PATCH /api/terminals/:id/heartbeat`, `PATCH /api/terminals/:id/deactivate`
-- [x] `useTerminalHeartbeat.ts` — registers on mount, heartbeat every 5 minutes
-- [ ] Admin UI to list/deactivate terminals
-- [ ] Inactive terminal blocked from syncing in `SyncController`
-
-### Phase 9.1 — Backend Idempotency
-
-- [x] `idempotency_key` unique index on `orders(tenant_id, idempotency_key)`
-- [x] `CreateAndPayOrder` handles duplicate key as replay (200)
-- [x] `x-idempotency-key` header sent from frontend on every create-and-pay
-- [ ] `source_terminal_id` and `local_order_id` stored as audit columns on server order
-- [ ] Explicit `idempotent_replay: true` flag in response
-
-### Phase 9.2 — Offline Sync Endpoint
-
-- [x] `SyncController.ts`: `syncOfflineOrders`, `listSyncBatches`, `listSyncConflicts`, `resolveConflict`, `listSyncEvents`
-- [x] Routes: `POST /api/sync/offline-orders`, `GET /api/sync/batches`, `GET /api/sync/conflicts`, `PATCH /api/sync/conflicts/:id/resolve`, `GET /api/sync/events`
-- [x] Batch of up to 50 orders; partial success supported
-- [x] `SyncOfflineOrder` use case in `packages/application/sync/`
-
-### Phase 9.3 — Sync Audit Tables
-
-- [x] `sync_batches` table — one row per batch
-- [x] `sync_events` table — per-item audit
-- [x] `server_sync_conflicts` table — server-side conflict records
-- [x] Migrations: `0008_offline_sync_engine.sql`, `0009_sprint5_conflicts.sql`
-- [ ] Admin UI for sync batch history
-- [ ] Admin UI for per-terminal sync health dashboard
+- [x] `packages/offline/src/draftOrders.ts` — `listLocalDraftOrders`, `saveLocalDraftOrder`, `deleteLocalDraftOrder`
+- [x] Draft stored in `local_cart_sessions` with `draft:` prefix key
+- [x] Draft fields: id, tenantId, customerName, tableNumber, items, total, timestamps
+- [ ] `LocalDraftOrdersSheet.tsx` — browse/resume drafts in POS UI
+- [ ] Draft → order conversion flow in POS page
 
 ---
 
-## Sprint 5 — Conflict Handling ✅ COMPLETE
+## Phase 7 — Offline Order Creation ✅ COMPLETE
 
-### Phase 10.1 — Conflict Types
+### 7.1 Create Local Order Service
 
-- [x] `conflictTypes.ts` (frontend + backend): `ConflictType`, `ConflictSeverity`, `ResolverPolicy`
-- [x] Severity: `warning`, `needs_review`, `blocking`
-- [x] Policy: `auto_accept`, `audit_note`, `manual_review`, `retry`, `discard`
-- [x] `conflictLabel()` — Indonesian labels for each conflict type
+- [x] `packages/offline/src/localOrderService.ts` — `createLocalOrder()`, `mirrorServerOrderLocally()`
+- [x] `packages/offline/src/idempotency.ts` — `generateIdempotencyKey(terminalId)`
+- [x] `packages/offline/src/orderNumber.ts` — `generateLocalOrderNumber(tenantId, terminalId)`
+- [x] Local order number format: `OFF-{shortTerminalId}-{YYYYMMDD}-{seq:04}`
+- [x] Sequence in `sync_meta`, per tenant per day, collision-free
+- [x] Atomic IndexedDB transaction: order + items + payment
+- [x] Outbox entry enqueued immediately after local save
+- [x] Pricing: subtotal, tax_amount, service_charge_amount, total_amount
 
-### Phase 10.2 — Price Conflict Policy
+### 7.2 Modify POS Charge Flow
 
-- [x] `SyncOfflineOrder` detects price delta on sync
+- [x] `useOfflineOrderSubmit.ts` — unified online/offline submit hook
+- [x] Online path: POST to `/api/orders/create-and-pay` + `idempotency_key` header; mirror to local on success
+- [x] Offline/error path: `createLocalOrder()` → outbox → local order number shown
+- [x] Error discrimination: TypeError / 5xx → local fallback; 400/422 → rethrow (user must fix)
+- [x] Double-submit guard: `inFlightRef`
+- [x] Cart cleared only after durable save
+- [x] `pos.tsx` uses `useOfflineOrderSubmit`
+
+---
+
+## Phase 8 — Sync Outbox Engine ✅ COMPLETE
+
+### 8.1 Create Outbox Table and Service
+
+- [x] `packages/offline/src/outbox.ts` — full outbox CRUD
+- [x] `enqueueOutbox()` — nanoid ID, status: pending
+- [x] `dequeuePendingOutbox(limit)` — respects `nextRetryAt`
+- [x] `markOutboxSyncing/Synced/Failed/Conflict()`
+- [x] `resetOutboxForManualRetry()`
+- [x] Exponential backoff: `2^attempts * 1000ms`, max 5 min
+- [x] Max 8 retries before permanent failure
+
+### 8.2 Implement Sync Engine
+
+- [x] `packages/offline/src/syncEngine.ts` — `runSyncEngine(token?)`
+- [x] `useSyncEngine.ts` — React hook with `lockRef` (no parallel sync)
+- [x] Triggers: app open, online event, manual click, 30s interval while online
+- [x] Order creates batch-synced via `/api/sync/offline-orders` (≤25/batch)
+- [x] Groups by `(tenantId, terminalId)` for batch
+- [x] Maps `localOrderId → serverId/serverOrderNumber` on success
+- [x] HTTP handling: 200/201 → synced, 409/422 → conflict, 5xx/network → failed/retry
+- [x] Returns `{ processed, synced, failed, conflicts }`
+
+---
+
+## Phase 9 — Backend Idempotency and Offline APIs ✅ COMPLETE
+
+### 9.1 Standardize Idempotency Key
+
+- [x] `x-idempotency-key` header sent from `useOfflineOrderSubmit`
+- [x] `idempotency_key` in batch sync payload
+- [x] Backend unique index: `(tenant_id, idempotency_key)` on orders
+- [x] `source_terminal_id`, `client_created_at`, `local_order_id` in payload
+- [x] Response: `idempotent_replay`, `server_order_id`, `server_order_number`, `local_order_id`, `sync_status`
+- [ ] Compound index `(tenant_id, source_terminal_id, local_order_id)` — Sprint 7
+
+### 9.2 Create Offline Sync Endpoint ✅ COMPLETE
+
+- [x] `SyncController.ts` — full implementation
+- [x] `POST /api/sync/offline-orders` — batch (≤50), Zod-validated
+- [x] Per-item processing: 1 failure does not abort batch
+- [x] Returns per-item: `synced | replayed | conflict | failed`
+- [x] SSE `emitOrderQueueChanged` on successful sync
+- [x] `GET /api/sync/batches`, `GET /api/sync/conflicts`, `GET /api/sync/events`
+- [x] `PATCH /api/sync/conflicts/:id/resolve`
+
+### 9.3 Add Sync Audit Tables ✅ COMPLETE
+
+- [x] `sync_batches` — batch-level audit
+- [x] `sync_events` — per-item audit
+- [x] `server_sync_conflicts` — conflict records with resolution fields
+- [x] `SyncOfflineOrder` use case writes to all three tables
+- [ ] Admin UI for audit log (Sprint 7)
+
+---
+
+## Phase 10 — Conflict Handling ✅ COMPLETE (Engine + Policy)
+
+### 10.1 Define Conflict Types ✅
+
+- [x] `packages/offline/src/conflictTypes.ts` — frontend
+- [x] `packages/application/sync/conflictTypes.ts` — backend mirror
+- [x] 11 types: PRODUCT_INACTIVE, PRODUCT_NOT_FOUND, PRICE_CHANGED, STOCK_INSUFFICIENT, ORDER_DUPLICATE, PAYMENT_DUPLICATE, TENANT_FEATURE_DISABLED, ORDER_TYPE_DISABLED, TABLE_UNAVAILABLE, TERMINAL_INACTIVE, SYNC_CONFLICT
+- [x] `ConflictSeverity`: warning | needs_review | blocking
+- [x] `ResolverPolicy`: auto_accept | audit_note | manual_review | retry | discard
+- [x] `conflictLabel()` — Indonesian UI labels
+
+### 10.2 Price Conflict Policy ✅
+
+- [x] `SyncOfflineOrder` detects price drift vs server catalog
 - [x] Default policy: `audit_note` — accept offline price, flag for review
-- [x] Conflict data stored in `server_sync_conflicts`
-- [ ] Tenant-configurable price acceptance policy (strict vs lenient)
+- [x] Conflict recorded in `server_sync_conflicts`
+- [ ] Per-tenant policy config (Sprint 7)
 
-### Phase 10.3 — Stock Conflict Policy
+### 10.3 Stock Conflict Policy ✅
 
-- [x] `SyncOfflineOrder` detects stock shortfall
-- [x] Default policy: `audit_note` — allow negative stock, flag for review
-- [x] Conflict data stored in `server_sync_conflicts`
-- [ ] Inventory movement ledger written on every sync (Sprint 8)
-
-### Conflict Resolution UI
-
-- [x] `sync-conflicts.tsx` page — full conflict management UI
-- [x] `ConflictCard` component — severity badge, resolution actions, expandable conflict data
-- [x] Filters: by resolution status, severity, conflict type
-- [x] Resolve / Ignore actions per conflict
-- [x] Summary counts: pending, blocking, total
-- [x] TypeScript errors fixed: `apiRequest` signature, `unknown` ReactNode casts
-- [ ] Route registered in navigation (sidebar / settings menu)
-- [ ] Link from `SyncStatusWidget` when `conflictCount > 0`
+- [x] `SyncOfflineOrder` checks stock during sync
+- [x] `STOCK_INSUFFICIENT` — severity: warning, policy: audit_note
+- [x] Allows negative stock, records audit note
+- [x] `inventory_movements` ledger written on sync
+- [ ] Soft reservation per terminal (Phase 17.2)
 
 ---
 
-## Sprint 6 — Print Queue [x] DONE
+## Phase 11 — Print Queue ✅ COMPLETE (Engine)
 
-### Phase 11.1 — Local Print Job Queue
+### 11.1 Create Local Print Job Queue
 
-- [x] `local_print_jobs` table defined in IndexedDB schema
-- [x] `LocalPrintJob` type with all required fields (`serverOrderId`, `orderNumber`, `lastError`, `printedAt` added)
-- [x] `printQueue.ts` service: `enqueuePrintJob`, `getPendingPrintJobs`, `getAllPrintJobs`, `getPrintJobStats`, `markPrinting`, `markPrinted`, `markPrintFailed`, `retryPrintJob`, `cancelPrintJob`, `deletePrintJob`
-- [x] Print jobs enqueued automatically after every successful order (`pos.tsx` payment flow)
-- [x] `PrintQueuePanel.tsx` UI: list all jobs, status badges, reprint, retry, cancel, delete
-- [x] `LocalDraftOrdersSheet.tsx` enhanced — existing component retained (already complete)
-- [x] `PrintQueuePanel` integrated into Printer Hub (`/printers`) page
-- [ ] Kitchen ticket print job support (requires kitchen ticket feature work)
+- [x] `packages/offline/src/printQueue.ts` — full print job engine
+- [x] `local_print_jobs` table in IndexedDB
+- [x] `enqueuePrintJob()`, `getPendingPrintJobs()`, `getAllPrintJobs()`, `getPrintJobStats()`
+- [x] Status: `pending → printing → printed | failed | cancelled`
+- [x] `markPrinting/Printed/PrintFailed()`, `retryPrintJob()`, `cancelPrintJob()`
+- [ ] `PrintQueuePanel.tsx` — UI to browse/reprint/cancel
+- [ ] Auto-print worker polling `getPendingPrintJobs()` on interval
 
-### Phase 11.2 — Printer Provider Abstraction
+### 11.2 Improve Printer Support Matrix
 
-- [x] `BluetoothPrinterManager` exists (ESC/POS, reconnect, chunk writing)
-- [ ] `PrinterProvider` interface: `connect()`, `print(payload)`, `disconnect()`
-- [ ] `BluetoothPrinterProvider` wrapping existing manager
-- [ ] `BrowserPrintProvider` (fallback: `window.print()` or iframe)
-- [ ] `usePrinter` hook with active provider selection
+- [x] `BluetoothPrinterProvider` — existing Web Bluetooth implementation
+- [ ] `PrinterProvider` interface abstraction (Sprint 6)
+- [ ] `BrowserPrintProvider` — window.print() fallback
+- [ ] `NetworkPrinterProvider` — LAN/IP (future)
 
 ---
 
-## Sprint 7 — Security and Production [ ] TODO
+## Phase 12 — Offline Order Queue UI ✅ COMPLETE (Basic)
 
-### Phase 16.1 — Tenant Header Hardening
+### 12.1 Add Local Orders Page
 
-- [x] Subdomain resolution: `{slug}.aurapos.my.id`
-- [x] CORS allows `*.aurapos.my.id` and Replit domains
+- [x] `/local-orders` page and route in `App.tsx`
+- [x] `LocalOrderList.tsx` — filter by status, search by order number
+- [ ] Detail view per order (items, payment, sync history)
+- [ ] Per-order retry sync button
+- [ ] Per-order reprint button
+- [ ] Cancel local order before sync
+
+### 12.2 Add Sync Status Widget ✅ COMPLETE
+
+- [x] `SyncStatusWidget.tsx` — pending/failed/conflict counts, color-coded, manual sync trigger
+- [x] Mounted in `MainLayout.tsx`
+- [x] `/sync-conflicts` page with resolve/ignore UI for owner/manager
+
+---
+
+## Phase 13 — Service Worker Caching Strategy ✅ COMPLETE (Basic)
+
+### 13.1 App Shell Cache
+
+- [x] Workbox `globPatterns`: `**/*.{js,css,html,png,svg,woff2}`
+- [x] `navigateFallback: "/index.html"` — SPA offline fallback
+- [x] NetworkFirst for navigate requests
+- [ ] Explicit pre-caching for `/pos`, `/kitchen-display`
+
+### 13.2 API Cache Strategy
+
+- [x] GET catalog/features/order-types: fetched online, saved to IndexedDB (not SW cache)
+- [x] POST/PATCH/DELETE: not cached by SW — go through outbox
+- [ ] SW cache version invalidation (auto-handled by Workbox revision hashing)
+
+---
+
+## Phase 14 — Backend Order Lifecycle Hardening ✅ COMPLETE (Existing)
+
+- [x] Lifecycle: DRAFT → CONFIRMED → IN_PROGRESS → COMPLETED
+- [x] Payment status: unpaid → partial → paid
+- [x] `CreateAndPayOrder` atomic (create + pay)
+- [x] Kitchen mode does not close financial order
+- [ ] `pending_sync` order status for server-side (currently in sync tables, not order.status)
+- [ ] Lifecycle transition unit tests
+
+---
+
+## Phase 15 — Table Management Offline [ ] NOT STARTED
+
+- [ ] Save table list to `local_tables` in IndexedDB
+- [ ] Local table status: available, occupied_local, reserved, dirty, unknown
+- [ ] Offline dine-in can select table from local cache
+- [ ] Backend detects TABLE_UNAVAILABLE conflict during sync
+- [ ] Admin resolution UI: keep/move/clear table
+
+---
+
+## Phase 16 — Auth, Tenant, and RBAC Hardening [ ] NOT STARTED
+
 - [ ] `ALLOW_TENANT_HEADER=false` env flag for production
-- [ ] Tenant resolved from authenticated session/JWT in production
-- [ ] Terminal registration required before sync (auth gate)
-
-### Phase 16.2 — RBAC
-
-- [ ] Roles: `owner`, `manager`, `cashier`, `kitchen`, `viewer`
-- [ ] Cashier: create order/payment only
-- [ ] Kitchen: update fulfillment status only
-- [ ] Manager: resolve conflict, refund, void
-- [ ] Owner: manage terminals, tenant settings
-- [ ] Role stored in `user.role` (Better Auth `admin` plugin present)
-
-### Phase 16.3 — Offline Session Policy
-
+- [ ] Tenant from subdomain or authenticated session only in production
+- [ ] RBAC roles: owner, manager, cashier, kitchen, viewer
+- [ ] Per-endpoint permission enforcement
 - [ ] Offline session token with expiry
 - [ ] Local cashier PIN unlock
-- [ ] Cashier ID stored in every local order
-
-### Phase 21 — Observability and Audit
-
-- [ ] `audit_logs` table: every order/payment/refund/void/sync action
-- [ ] Actor: `userId`, `terminalId`, `tenantId`
-- [ ] Frontend offline log export (support bundle JSON)
+- [ ] Device deactivation from backend
 
 ---
 
-## Sprint 8 — Inventory Production Grade [ ] TODO
+## Phase 17 — Inventory Production Grade [~] PARTIAL
 
-### Phase 17.1 — Inventory Ledger
-
-- [ ] `inventory_movements` table: `id`, `tenant_id`, `product_id`, `quantity_delta`, `movement_type`, `order_id`, `actor_id`, `created_at`
-- [ ] Movement types: `sale`, `return`, `adjustment`, `reservation`, `offline_sale`
-- [ ] Stock decrement in transaction on every order (online and sync)
-- [ ] Offline sale sync writes `offline_sale` movement
-
-### Phase 17.2 — Stock Reservation (Optional)
-
-- [ ] Soft reservation per terminal in IndexedDB
-- [ ] Hard reservation confirmed during sync
-- [ ] Oversell conflict marked for admin review
+- [x] `inventory_movements` table in schema
+- [x] Movement written by `SyncOfflineOrder` on successful sync (type: `offline_sale`)
+- [ ] Movement by `CreateAndPayOrder` for online sales
+- [ ] Movement by refund/void
+- [ ] `inventory_items` dedicated table (not relying on `products.stockQty`)
+- [ ] `inventory_stock_snapshots` table
+- [ ] Soft stock reservation per terminal
 
 ---
 
-## Sprint 9 — Refund and Void [ ] TODO
+## Phase 18 — Refund, Void, and Correction [ ] NOT STARTED
 
-### Phase 18.1 — Void Flow
-
-- [ ] Void local unsynced order (`syncStatus: "cancelled"`)
-- [ ] Void synced order requires manager permission + reason
-- [ ] Void creates audit log entry
-
-### Phase 18.2 — Refund Flow
-
-- [ ] `refunds` table: full/partial/item-level refund
-- [ ] Refund creates reverse payment and stock movements
-- [ ] Manager approval required
+- [ ] Void unsynced local order
+- [ ] Void synced order (manager permission + audit trail)
+- [ ] `refunds` table: full/partial/item-level
+- [ ] Reverse payment + stock movement on refund
+- [ ] Manager approval flow
 
 ---
 
-## Sprint 10 — Offline Kitchen Display [ ] TODO
+## Phase 19 — Customer Display Offline ✅ COMPLETE (Existing)
 
-### Phase 20.1 — Local KDS Queue
-
-- [ ] Kitchen display reads local orders not yet synced
-- [ ] POS sends local kitchen ticket to local queue
-- [ ] KDS status updates enter outbox
+- [x] BroadcastChannel / localStorage event — no server dependency
+- [x] POS broadcasts cart/payment/completed state to customer display
+- [ ] Payment QR / static info cache for offline display
 
 ---
 
-## Sprint 11 — Testing [ ] TODO
+## Phase 20 — Kitchen Display Offline [ ] NOT STARTED
 
-### Phase 22.1 — Unit Tests
+- [ ] KDS reads local orders not yet synced
+- [ ] POS sends kitchen ticket to local queue
+- [ ] KDS updates local status → outbox
+- [ ] Fallback: printed kitchen ticket for separate device scenario
+
+---
+
+## Phase 21 — Observability and Audit [~] PARTIAL
+
+- [x] `sync_batches` — batch-level backend audit
+- [x] `sync_events` — per-item backend audit
+- [x] `server_sync_conflicts` — conflict records
+- [ ] Frontend local logs (network changes, sync events, print failures)
+- [ ] JSON log export / Support bundle
+- [ ] General `audit_logs` table for all POS actions
+
+---
+
+## Phase 22 — Testing [ ] NOT STARTED
+
+### 22.1 Unit Tests
 
 - [ ] Idempotency key generator
-- [ ] Local order number generator (sequence, daily reset)
-- [ ] Cart persistence (load, save, expiry, migration)
+- [ ] Local order number generator (sequence, collision)
+- [ ] Cart persistence (load/save/expire)
 - [ ] Outbox enqueue/dequeue/backoff
-- [ ] Sync engine retry logic
-- [ ] Price/stock conflict resolver
+- [ ] Sync retry and backoff logic
+- [ ] Price conflict resolver
+- [ ] Stock conflict resolver
+- [ ] Print queue state machine
 
-### Phase 22.2 — Backend Integration Tests
+### 22.2 Backend Integration Tests
 
-- [ ] `createAndPay` idempotency (duplicate key → 200 replay)
+- [ ] `createAndPay` idempotency (same key → same result)
+- [ ] Duplicate idempotency key returns replay
 - [ ] Batch offline sync (50 orders)
-- [ ] Tenant isolation (cross-tenant → 403)
+- [ ] Tenant isolation (cross-tenant blocked)
 - [ ] Inactive terminal rejected
-- [ ] Concurrent payment double-submit (row lock)
+- [ ] Stock conflict detection
+- [ ] Payment double submit (row lock)
+- [ ] Concurrent payment race
 
-### Phase 22.3 — E2E Offline Tests (Playwright)
+### 22.3 E2E Offline Tests (Playwright)
 
-- [ ] Load app online, cache app, go offline, open `/pos`
-- [ ] Create order offline → reload → order persists
-- [ ] Go online → sync succeeds → no duplicate
-- [ ] Go offline during payment → fallback to local, cart not lost
-- [ ] Price conflict scenario
-- [ ] Stock conflict scenario
+- [ ] Load online → go offline → open /pos → works
+- [ ] Create order offline
+- [ ] Create payment offline
+- [ ] Print receipt offline
+- [ ] Reload → order still in local orders
+- [ ] Go online → sync succeeds
+- [ ] Network dies mid-payment → fallback local, no loss
+- [ ] Duplicate sync retry → no duplicate order
+- [ ] Price changed conflict
+- [ ] Stock conflict
 - [ ] Printer failed → reprint later
 
 ---
 
-## Sprint 12 — Production Deployment [ ] TODO
+## Phase 23 — Production Deployment [ ] NOT STARTED
 
-### Phase 23.1 — CI
-
-- [ ] Type-check + lint + unit test in CI pipeline
-- [ ] Integration tests in CI
-- [ ] Build PWA with service worker verification
-- [ ] Playwright E2E
-
-### Phase 23.2 — Database Migration
-
-- [x] Migration `0008_offline_sync_engine.sql` — terminals + sync tables
-- [x] Migration `0009_sprint5_conflicts.sql` — server_sync_conflicts
-- [ ] Migration for `inventory_movements`, `refunds`, `audit_logs`
-
-### Phase 23.3 — Feature Flag Rollout
-
-- [ ] Offline mode behind feature flag: `offline_pos_v1`
-- [ ] Enable for dev tenant only first
-- [ ] Monitor: pending count, failed count, conflict rate, duplicate replay count
-- [ ] Enable globally after stable pilot
+- [ ] CI: type-check, lint, unit, integration, build PWA, Playwright E2E
+- [ ] Fail build if SW not generated or migration not synced
+- [ ] DB migrations: terminals, sync_batches, sync_events, sync_conflicts, inventory_movements, refunds, audit_logs
+- [ ] Feature flag: `offline_pos_v1` — enable per tenant
+- [ ] Monitor: pending/failed/conflict rates, duplicate replays, print failures
 
 ---
 
-## Sprint 13 — UX Polish [ ] TODO
+## Phase 24 — UI/UX Production Details [~] PARTIAL
 
-### Phase 24 — Offline Warning UX
-
-- [x] `OfflineCacheBanner` — cache age, stale warning
-- [x] `NetworkStatusBadge` — Online / Offline / Syncing
-- [x] `SyncStatusWidget` — pending/failed/conflict counts with manual sync
-- [ ] Full offline mode banner: "Offline mode is active. Transactions will sync when internet returns."
-- [ ] "A new version is available. Refresh?" update prompt (PWA service worker update flow)
-- [ ] Safe checkout button: clear loading state + local order number before server number
+- [x] `NetworkStatusBadge` — Online/Offline/Syncing with icon
+- [x] `SyncStatusWidget` — pending/failed/conflict counts, color-coded
+- [x] `OfflineCacheBanner` — stale catalog warning
+- [x] `PwaUpdatePrompt` — "Versi baru tersedia" toast with Perbarui/Dismiss
+- [x] `inFlightRef` prevents double-submit in payment
+- [x] Loading state via `isSubmitting` in POS payment button
+- [x] Local order number shown immediately on offline success
+- [ ] Full-width offline banner in POS header
+- [ ] Draft orders browse/resume sheet
+- [ ] Print queue panel
 
 ---
 
-## Sprint 14 — Documentation [ ] TODO
+## Phase 25 — Documentation ✅ COMPLETE
 
-### Phase 25 — Documentation
+- [x] `docs/OFFLINE_ARCHITECTURE.md` — modes, data sources, principles, conflict policy, data flow
+- [x] `docs/dev/OFFLINE_ENGINE.md` — package structure, data flow, DB schema
+- [x] `docs/dev/SYNC_PROTOCOL.md` — outbox lifecycle, HTTP protocol, retry/backoff
+- [x] `docs/dev/IDEMPOTENCY.md` — key format, rules, backend enforcement
+- [x] `docs/dev/CONFLICT_RESOLUTION.md` — types, severity, resolver policy, backend flow
+- [x] `docs/user/OFFLINE_MODE_GUIDE.md` — how to use POS offline (Indonesian)
+- [x] `docs/user/PRINTER_GUIDE.md` — printer pairing and troubleshooting (Indonesian)
+- [x] `docs/user/SYNC_ERROR_GUIDE.md` — sync errors and conflict resolution (Indonesian)
 
-- [x] `docs/OFFLINE_ARCHITECTURE.md` — complete architecture document
-- [x] `docs/dev/OFFLINE_ENGINE.md` — complete developer guide
-- [x] `docs/dev/SYNC_PROTOCOL.md` — complete sync protocol spec
-- [x] `docs/dev/IDEMPOTENCY.md` — complete idempotency guide
-- [x] `docs/dev/CONFLICT_RESOLUTION.md` — complete conflict resolution guide
-- [x] `docs/OFFLINE_PRODUCTION_GRADE_POS_TASKS.md` — this file (master task list)
-- [ ] `docs/user/OFFLINE_MODE_GUIDE.md` — cashier user guide
-- [ ] `docs/user/PRINTER_GUIDE.md` — Bluetooth printer pairing and reprint
-- [ ] `docs/user/SYNC_ERROR_GUIDE.md` — retry sync, resolve conflict steps
+---
+
+## Recommended Implementation Order
+
+### Sprint 1 — Offline Foundation ✅ COMPLETE
+
+- [x] PWA plugin + manifest + service worker + update prompt
+- [x] Network status badge + sync status widget
+- [x] `@pos/offline` package with Dexie schema
+- [x] Terminal identity + heartbeat
+- [x] Documentation files (arch + dev + user)
+
+### Sprint 2 — Local Catalog and Cart ✅ COMPLETE
+
+- [x] Cache products/categories/features/order types
+- [x] Replace cart sessionStorage with IndexedDB
+- [x] Local drafts/held orders (engine complete)
+
+### Sprint 3 — Offline Order and Payment ✅ COMPLETE
+
+- [x] Local order service (createLocalOrder, pricing, idempotency)
+- [x] Local payment record
+- [x] POS uses useOfflineOrderSubmit
+- [x] Local order number (OFF-...)
+- [x] Idempotency key from frontend
+
+### Sprint 4 — Sync Engine ✅ COMPLETE
+
+- [x] Outbox (enqueue, dequeue, backoff, retry)
+- [x] Sync engine (batch order sync, individual item sync)
+- [x] Manual retry + sync status UI
+- [x] Backend `/api/sync/offline-orders`
+- [x] `/sync-conflicts` page with resolve UI
+
+### Sprint 5 — Conflict and Inventory ✅ COMPLETE (Engine)
+
+- [x] Conflict types (frontend + backend)
+- [x] Price conflict detection + audit_note policy
+- [x] Stock conflict detection
+- [x] Inventory movement ledger on sync
+- [ ] Per-tenant conflict policy config
+
+### Sprint 6 — Printer and Kitchen [ ] PENDING
+
+- [ ] `PrinterProvider` abstraction interface
+- [ ] `PrintQueuePanel.tsx` — browse/reprint/cancel
+- [ ] Auto-print worker
+- [ ] `BrowserPrintProvider` fallback
+- [ ] Offline kitchen queue
+
+### Sprint 7 — Security and Production [ ] PENDING
+
+- [ ] Terminal registry DB migration
+- [ ] RBAC / tenant header hardening
+- [ ] General audit logs
+- [ ] CI/E2E offline tests (Playwright)
+- [ ] Feature flag `offline_pos_v1`
+- [ ] Pilot rollout
 
 ---
 
 ## Definition of Done — Production Grade Offline POS
 
-- [x] App can be installed as PWA (manifest + service worker)
-- [x] `/pos` can be opened and refreshed offline (Workbox app shell)
-- [x] Products/categories/order types/features available offline (IndexedDB cache)
-- [x] Cart does not disappear after refresh/crash (IndexedDB persistence)
-- [x] Offline order can be created (`createLocalOrder`)
-- [x] Offline payment recorded in local DB
-- [x] Receipt can be printed or added to print queue (Sprint 6 ✅)
-- [x] All offline transactions enter outbox (`enqueueOutbox`)
-- [x] Sync safe from duplicate order/payment (idempotency key + unique DB index)
-- [x] Idempotency key sent from frontend (`x-idempotency-key` header)
-- [x] Price/stock/product conflicts handled (conflict types + policies + UI)
-- [x] Cashier can see pending/failed/conflict sync (`SyncStatusWidget`)
-- [x] Admin can audit sync (`sync-conflicts.tsx` page)
-- [x] Tenant isolation safe (tenant middleware on all routes)
-- [x] Terminal can be registered/deactivated (`TerminalsController`)
-- [ ] Inventory uses movement ledger (Sprint 8)
-- [ ] Refund/void has audit trail (Sprint 9)
-- [ ] Offline E2E tests pass (Sprint 11)
-- [ ] Rollout uses feature flag (Sprint 12)
-- [ ] User documentation complete (Sprint 14)
+| Requirement | Status |
+|---|---|
+| App installable as PWA | ✅ |
+| `/pos` openable and refreshable offline | ✅ |
+| Products/categories/features available offline | ✅ |
+| Cart survives refresh/crash | ✅ |
+| Offline order creation | ✅ |
+| Offline payment recording | ✅ |
+| Receipt added to print queue | ✅ (engine) |
+| All offline transactions in outbox | ✅ |
+| Sync safe from duplicate order/payment | ✅ |
+| Idempotency key from frontend | ✅ |
+| Price/stock/product conflicts handled | ✅ (engine) |
+| Cashier sees pending/failed/conflict | ✅ |
+| Admin can audit sync | ✅ (backend API) |
+| Tenant isolation safe | ✅ |
+| Terminal registration/deactivation | ✅ (backend) |
+| Inventory movement ledger | ✅ (on sync) |
+| Refund/void audit trail | ❌ Sprint 7 |
+| Offline E2E tests pass | ❌ Sprint 7 |
+| Feature flag rollout | ❌ Sprint 7 |
+| User documentation | ✅ |
+| Developer documentation | ✅ |

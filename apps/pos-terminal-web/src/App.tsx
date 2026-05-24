@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PortraitOverlay } from "@/components/PortraitOverlay";
+import { PwaUpdatePrompt } from "@/components/offline/PwaUpdatePrompt";
 import { useEffect, useState } from "react";
 import HomePage from "@/pages/home";
 import MarketplacePage from "@/pages/marketplace";
@@ -288,6 +289,7 @@ function App() {
           <ToastProvider>
             <Router />
             <PortraitOverlay />
+            <PwaUpdatePrompt />
           </ToastProvider>
         </TooltipProvider>
       </TenantProvider>

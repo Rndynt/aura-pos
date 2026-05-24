@@ -6,7 +6,8 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
-    "dexie": "^4.0.8"
+    "dexie": "^4.0.8",
+    "nanoid": "^5.1.6"
   },
   "scripts": {
     "type-check": "tsc -p tsconfig.json --noEmit"
