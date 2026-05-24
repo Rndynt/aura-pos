@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useTables, useOpenOrders } from "@/lib/api/tableHooks";
 import { useCart } from "@/hooks/useCart";
 import { getActiveTenantId } from "@/lib/tenant";
+import { queryClient } from "@/lib/queryClient";
 import {
   Search,
   X,
@@ -77,6 +78,20 @@ export default function TablesManagementPage() {
 
   const tables = tablesData?.tables || [];
   const orders = ordersData?.orders || [];
+
+  // ── Real-time update via SSE — invalidate tables & open orders on any change ─
+  useEffect(() => {
+    const es = new EventSource("/api/orders/queue/stream", { withCredentials: true });
+    const onUpdate = () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tables"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/open"] });
+    };
+    es.addEventListener("order_queue_updated", onUpdate as EventListener);
+    return () => {
+      es.removeEventListener("order_queue_updated", onUpdate as EventListener);
+      es.close();
+    };
+  }, []);
 
   const getActualTableStatus = (table: Table): TableStatus => {
     if (table.status === "maintenance") return "maintenance";

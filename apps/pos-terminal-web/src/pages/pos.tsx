@@ -115,6 +115,8 @@ export default function POSPage() {
     const es = new EventSource("/api/orders/queue/stream", { withCredentials: true });
     const onUpdate = () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/open"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tables"] });
     };
 
     es.addEventListener("order_queue_updated", onUpdate as EventListener);

@@ -19,6 +19,14 @@ export function serveStatic(app: Express) {
     );
   }
 
+  // sw.js must never be cached by the browser so updates propagate immediately
+  app.get("/sw.js", (_req, res) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.sendFile(path.resolve(distPath, "sw.js"));
+  });
+
   app.use(express.static(distPath));
 
   app.use("*", (_req, res) => {
