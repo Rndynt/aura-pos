@@ -15,6 +15,9 @@ import {
   CheckCircle2,
   Smartphone,
   ClipboardList,
+  Building2,
+  ChevronDown,
+  MapPin,
 } from "lucide-react";
 import { UnifiedBottomNav } from "@/components/navigation/UnifiedBottomNav";
 import { useToast } from "@/hooks/use-toast";
@@ -22,6 +25,7 @@ import { useTenant } from "@/context/TenantContext";
 import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
+import { useOutlet } from "@/context/OutletContext";
 
 type CurrentUser = {
   id: string;
@@ -63,6 +67,8 @@ export default function HomePage() {
   const { tenantId } = useTenant();
   const { data: profile, isLoading: profileLoading } = useTenantProfile(tenantId);
   const { user, loading: userLoading } = useCurrentUser();
+  const { activeOutlet, outlets, setActiveOutlet, isLoading: outletLoading } = useOutlet();
+  const [showOutletPicker, setShowOutletPicker] = useState(false);
 
   const storeName = profile?.tenant?.name ?? "—";
   const storeInitials = storeName !== "—" ? getInitials(storeName) : "..";
@@ -115,6 +121,13 @@ export default function HomePage() {
       subtitle: 'Lihat laporan penjualan',
     },
     {
+      id: 'outlets',
+      title: 'Cabang',
+      icon: Building2,
+      color: 'bg-teal-100 text-teal-600',
+      subtitle: 'Kelola outlet & cabang',
+    },
+    {
       id: 'store',
       title: 'Profil Toko',
       icon: Store,
@@ -148,6 +161,7 @@ export default function HomePage() {
       store: "/store-profile",
       printers: "/printers",
       "local-orders": "/local-orders",
+      outlets: "/outlets",
     };
 
     const route = routes[menuId];
@@ -233,6 +247,90 @@ export default function HomePage() {
             <Edit2 size={16} />
           </button>
         </div>
+      </div>
+
+      {/* Outlet Switcher */}
+      <div className="px-4 pb-3">
+        <button
+          onClick={() => setShowOutletPicker((v) => !v)}
+          className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 text-left hover:border-blue-300 hover:shadow-sm transition-all"
+          data-testid="button-outlet-switcher"
+        >
+          <div className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Building2 size={16} className="text-teal-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            {outletLoading ? (
+              <Skeleton className="h-4 w-32" />
+            ) : (
+              <>
+                <p className="text-xs font-semibold text-slate-500">Cabang Aktif</p>
+                <p className="text-sm font-bold text-slate-800 truncate">
+                  {activeOutlet?.name ?? "—"}
+                  {activeOutlet?.address && (
+                    <span className="font-normal text-slate-400 ml-1.5 text-xs">
+                      <MapPin size={10} className="inline -mt-0.5" /> {activeOutlet.address}
+                    </span>
+                  )}
+                </p>
+              </>
+            )}
+          </div>
+          <ChevronDown
+            size={16}
+            className={`text-slate-400 transition-transform flex-shrink-0 ${showOutletPicker ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        {/* Dropdown list */}
+        {showOutletPicker && outlets.length > 1 && (
+          <div className="mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+            {outlets.map((o) => (
+              <button
+                key={o.id}
+                onClick={() => { setActiveOutlet(o); setShowOutletPicker(false); }}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors ${
+                  o.id === activeOutlet?.id ? "bg-blue-50" : ""
+                }`}
+                data-testid={`button-outlet-pick-${o.id}`}
+              >
+                <Building2 size={14} className={o.id === activeOutlet?.id ? "text-blue-500" : "text-slate-400"} />
+                <span className={`text-sm font-semibold ${o.id === activeOutlet?.id ? "text-blue-700" : "text-slate-700"}`}>
+                  {o.name}
+                </span>
+                {o.isDefault && (
+                  <span className="ml-auto text-[10px] font-bold bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">UTAMA</span>
+                )}
+                {o.id === activeOutlet?.id && (
+                  <CheckCircle2 size={14} className="ml-auto text-blue-500" />
+                )}
+              </button>
+            ))}
+            <div className="border-t border-slate-100">
+              <button
+                onClick={() => { setShowOutletPicker(false); setLocation("/outlets"); }}
+                className="w-full text-center text-xs font-semibold text-blue-600 py-3 hover:bg-blue-50 transition-colors"
+                data-testid="button-outlet-manage"
+              >
+                Kelola Cabang →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showOutletPicker && outlets.length <= 1 && (
+          <div className="mt-1 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="border-t border-slate-100">
+              <button
+                onClick={() => { setShowOutletPicker(false); setLocation("/outlets"); }}
+                className="w-full text-center text-xs font-semibold text-blue-600 py-3 hover:bg-blue-50 transition-colors"
+                data-testid="button-outlet-manage-single"
+              >
+                Kelola Cabang →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Menu Grid */}

@@ -18,8 +18,8 @@ export function errorHandler(
 ): void {
   const isDevelopment = process.env.NODE_ENV === 'development';
   
-  // Determine status code
-  const statusCode = err.statusCode || 500;
+  // Determine status code — ensure it is always a number
+  const statusCode = Number(err.statusCode) || 500;
   
   // Prepare error response
   const errorResponse: any = {

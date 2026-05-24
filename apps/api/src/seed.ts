@@ -12,12 +12,12 @@ import { db } from '@pos/infrastructure/database';
 import {
   tenants, products, productCategories, productOptionGroups, productOptions,
   tenantFeatures, tenantModuleConfigs, tables, orders, orderItems,
-  orderTypes, tenantOrderTypes, businessTypes,
+  orderTypes, tenantOrderTypes, businessTypes, outlets,
 } from '@shared/schema';
 import type {
   InsertTenant, InsertProduct, InsertProductOptionGroup, InsertProductOption,
   InsertTenantFeature, InsertTenantModuleConfig, InsertTable, InsertOrderType,
-  InsertTenantOrderType, InsertBusinessType,
+  InsertTenantOrderType, InsertBusinessType, InsertOutlet,
 } from '@shared/schema';
 import { sql, eq } from 'drizzle-orm';
 import { auth } from './lib/auth';
@@ -42,6 +42,7 @@ async function clearDatabase() {
       order_items, orders, tenant_order_types, order_types,
       product_options, product_option_groups, products, product_categories,
       tenant_features, tenant_module_configs, "tables",
+      outlet_product_configs, user_outlet_assignments, outlets,
       tenants, business_types
     CASCADE
   `);
@@ -135,6 +136,18 @@ async function seedThamada(createdOrderTypes: any[]) {
   } as InsertTenant).returning();
   console.log(`✅ Tenant: ${tenant.name} (${tenant.id})\n`);
 
+  // Default outlet
+  const [thamadaOutlet] = await db.insert(outlets).values({
+    tenantId: tenant.id,
+    name: 'Cabang Utama',
+    slug: 'main',
+    address: 'Jl. Sudirman No. 45, Jakarta Pusat 10220',
+    phone: '+62812-9988-7766',
+    isDefault: true,
+    isActive: true,
+  } as InsertOutlet).returning();
+  console.log(`✅ Default outlet: ${thamadaOutlet.name} (${thamadaOutlet.id})\n`);
+
   // Owner account — dibuat setelah tenant agar bisa langsung di-link
   console.log('👤 Owner account...');
   await createOwnerAccount({
@@ -187,13 +200,13 @@ async function seedThamada(createdOrderTypes: any[]) {
   console.log('🪑 Seeding tables...');
   const tableData: InsertTable[] = [
     ...['1','2','3','4','5','6','7','8'].map(n => ({
-      tenantId: tenant.id, tableNumber: n, tableName: `Meja ${n}`,
+      tenantId: tenant.id, outletId: thamadaOutlet.id, tableNumber: n, tableName: `Meja ${n}`,
       floor: 'Ground Floor', capacity: n <= '4' ? 2 : 4, status: 'available' as const,
     })),
-    { tenantId: tenant.id, tableNumber: 'V1', tableName: 'VIP Booth 1', floor: '2nd Floor', capacity: 6, status: 'available' as const },
-    { tenantId: tenant.id, tableNumber: 'V2', tableName: 'VIP Booth 2', floor: '2nd Floor', capacity: 6, status: 'available' as const },
-    { tenantId: tenant.id, tableNumber: 'T1', tableName: 'Teras 1',     floor: 'Outdoor',   capacity: 4, status: 'available' as const },
-    { tenantId: tenant.id, tableNumber: 'T2', tableName: 'Teras 2',     floor: 'Outdoor',   capacity: 4, status: 'available' as const },
+    { tenantId: tenant.id, outletId: thamadaOutlet.id, tableNumber: 'V1', tableName: 'VIP Booth 1', floor: '2nd Floor', capacity: 6, status: 'available' as const },
+    { tenantId: tenant.id, outletId: thamadaOutlet.id, tableNumber: 'V2', tableName: 'VIP Booth 2', floor: '2nd Floor', capacity: 6, status: 'available' as const },
+    { tenantId: tenant.id, outletId: thamadaOutlet.id, tableNumber: 'T1', tableName: 'Teras 1',     floor: 'Outdoor',   capacity: 4, status: 'available' as const },
+    { tenantId: tenant.id, outletId: thamadaOutlet.id, tableNumber: 'T2', tableName: 'Teras 2',     floor: 'Outdoor',   capacity: 4, status: 'available' as const },
   ];
   await db.insert(tables).values(tableData);
   console.log(`✅ ${tableData.length} tables created\n`);
@@ -396,6 +409,18 @@ async function seedNusantara(createdOrderTypes: any[]) {
   } as InsertTenant).returning();
   console.log(`✅ Tenant: ${tenant.name} (${tenant.id})\n`);
 
+  // Default outlet
+  const [nusantaraOutlet] = await db.insert(outlets).values({
+    tenantId: tenant.id,
+    name: 'Cabang Utama',
+    slug: 'main',
+    address: 'Jl. Braga No. 12, Bandung Kota 40111',
+    phone: '+62822-1234-5678',
+    isDefault: true,
+    isActive: true,
+  } as InsertOutlet).returning();
+  console.log(`✅ Default outlet: ${nusantaraOutlet.name} (${nusantaraOutlet.id})\n`);
+
   // Owner account — dibuat setelah tenant agar bisa langsung di-link
   console.log('👤 Owner account...');
   await createOwnerAccount({
@@ -445,12 +470,12 @@ async function seedNusantara(createdOrderTypes: any[]) {
   // Tables — lesehan/warung style, fewer tables
   console.log('🪑 Seeding tables...');
   const tableData: InsertTable[] = [
-    { tenantId: tenant.id, tableNumber: 'A', tableName: 'Meja A — Pojok Bambu', floor: 'Indoor', capacity: 4, status: 'available' as const },
-    { tenantId: tenant.id, tableNumber: 'B', tableName: 'Meja B — Tengah',      floor: 'Indoor', capacity: 4, status: 'available' as const },
-    { tenantId: tenant.id, tableNumber: 'C', tableName: 'Meja C — Dekat Kasir', floor: 'Indoor', capacity: 2, status: 'available' as const },
-    { tenantId: tenant.id, tableNumber: 'D', tableName: 'Meja D — Lesehan',     floor: 'Indoor', capacity: 6, status: 'available' as const },
-    { tenantId: tenant.id, tableNumber: 'L1', tableName: 'Lesehan 1',           floor: 'Outdoor', capacity: 8, status: 'available' as const },
-    { tenantId: tenant.id, tableNumber: 'L2', tableName: 'Lesehan 2',           floor: 'Outdoor', capacity: 8, status: 'available' as const },
+    { tenantId: tenant.id, outletId: nusantaraOutlet.id, tableNumber: 'A', tableName: 'Meja A — Pojok Bambu', floor: 'Indoor', capacity: 4, status: 'available' as const },
+    { tenantId: tenant.id, outletId: nusantaraOutlet.id, tableNumber: 'B', tableName: 'Meja B — Tengah',      floor: 'Indoor', capacity: 4, status: 'available' as const },
+    { tenantId: tenant.id, outletId: nusantaraOutlet.id, tableNumber: 'C', tableName: 'Meja C — Dekat Kasir', floor: 'Indoor', capacity: 2, status: 'available' as const },
+    { tenantId: tenant.id, outletId: nusantaraOutlet.id, tableNumber: 'D', tableName: 'Meja D — Lesehan',     floor: 'Indoor', capacity: 6, status: 'available' as const },
+    { tenantId: tenant.id, outletId: nusantaraOutlet.id, tableNumber: 'L1', tableName: 'Lesehan 1',           floor: 'Outdoor', capacity: 8, status: 'available' as const },
+    { tenantId: tenant.id, outletId: nusantaraOutlet.id, tableNumber: 'L2', tableName: 'Lesehan 2',           floor: 'Outdoor', capacity: 8, status: 'available' as const },
   ];
   await db.insert(tables).values(tableData);
   console.log(`✅ ${tableData.length} tables created\n`);

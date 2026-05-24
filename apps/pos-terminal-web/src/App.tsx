@@ -30,7 +30,9 @@ import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import RegisterTenantPage from "@/pages/register-tenant";
 import { TenantProvider, useTenant } from "@/context/TenantContext";
+import { OutletProvider } from "@/context/OutletContext";
 import { MainLayout } from "@/components/layout/MainLayout";
+import OutletsPage from "@/pages/outlets";
 
 const POSPageWithLayout = () => (
   <MainLayout hideBottomNav>
@@ -119,6 +121,12 @@ const LocalOrdersPageWithLayout = () => (
 const SyncConflictsPageWithLayout = () => (
   <MainLayout>
     <SyncConflictsPage />
+  </MainLayout>
+);
+
+const OutletsPageWithLayout = () => (
+  <MainLayout>
+    <OutletsPage />
   </MainLayout>
 );
 
@@ -276,6 +284,11 @@ function Router() {
           <StoreProfilePageWithLayout />
         </RequireAuth>
       </Route>
+      <Route path="/outlets">
+        <RequireAuth>
+          <OutletsPageWithLayout />
+        </RequireAuth>
+      </Route>
       {/* Customer Facing Display — tidak butuh auth, full-screen tanpa layout */}
       <Route path="/display" component={CustomerDisplayPage} />
       {/* Kitchen Display Standalone — publik, API key auth, tanpa layout app */}
@@ -292,14 +305,16 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TenantProvider>
-        <TooltipProvider>
-          <ToastProvider>
-            <Router />
-            <PortraitOverlay />
-            <PwaUpdatePrompt />
-            <PwaInstallPrompt />
-          </ToastProvider>
-        </TooltipProvider>
+        <OutletProvider>
+          <TooltipProvider>
+            <ToastProvider>
+              <Router />
+              <PortraitOverlay />
+              <PwaUpdatePrompt />
+              <PwaInstallPrompt />
+            </ToastProvider>
+          </TooltipProvider>
+        </OutletProvider>
       </TenantProvider>
     </QueryClientProvider>
   );
