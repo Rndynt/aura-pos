@@ -3,7 +3,19 @@ import '../register-paths.ts';
 import express, { type Request, Response, NextFunction } from "express";
 import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
 import { auth, authDb } from "./lib/auth";
-import { setupVite, serveStatic, log } from "./vite";
+// `log` is duplicated here so this file has no static dependency on ./vite.
+// ./vite imports vite.config.ts → vite-plugin-pwa (a devDependency).
+// A static top-level import would crash the production server at startup.
+// Instead, ./vite is loaded dynamically only in the branch that needs it.
+function log(message: string, source = "express") {
+  const formattedTime = new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+  console.log(`${formattedTime} [${source}] ${message}`);
+}
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import path from "path";
@@ -220,8 +232,13 @@ app.use((req, res, next) => {
   });
 
   if (app.get("env") === "development") {
+    // Dynamic import keeps vite.ts (and its transitive vite-plugin-pwa
+    // dependency) out of the module graph at production startup.
+    const { setupVite } = await import("./vite.js");
     await setupVite(app, server);
   } else {
+    // serveStatic.ts has zero Vite/devDependency imports — safe in production.
+    const { serveStatic } = await import("./serveStatic.js");
     serveStatic(app);
   }
 
