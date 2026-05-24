@@ -3,6 +3,7 @@ import { Sidebar } from "@/components/pos/Sidebar";
 import { UnifiedBottomNav } from "@/components/navigation/UnifiedBottomNav";
 import { useTerminalIdentity } from "@/hooks/useTerminalIdentity";
 import { usePrintWorker } from "@/hooks/usePrintWorker";
+import { SyncStatusWidget } from "@/components/offline/SyncStatusWidget";
 import { getPrintJobStats } from "@pos/offline";
 import { getActiveTenantId } from "@/lib/tenant";
 import { Printer } from "lucide-react";
@@ -44,9 +45,10 @@ export function MainLayout({ children, cartCount = 0, onCartClick, hideBottomNav
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        {/* Print alert strip — only shown when there are pending/failed print jobs */}
-        {hasPrintAlert && (
-          <div className="flex-shrink-0 flex justify-end px-4 pt-2">
+        {/* Top status strip — sync widget (always) + print alert (conditional) */}
+        <div className="flex-shrink-0 flex items-center justify-end gap-2 px-4 pt-2">
+          <SyncStatusWidget />
+          {hasPrintAlert && (
             <button
               onClick={() => setLocation("/printers")}
               data-testid="button-print-status-badge"
@@ -61,8 +63,8 @@ export function MainLayout({ children, cartCount = 0, onCartClick, hideBottomNav
                 <span>{pendingPrintCount} antrian cetak</span>
               )}
             </button>
-          </div>
-        )}
+          )}
+        </div>
 
         <main className="flex-1 overflow-hidden">
           {children}

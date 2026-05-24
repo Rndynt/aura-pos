@@ -61,15 +61,18 @@ Server PostgreSQL  ──► source of truth
 | `local_order_types` | `id` | Order type cache |
 | `local_tables` | `id` | Table list cache |
 | `local_terminal` | `terminalId` | Terminal identity |
-| `local_cart_sessions` | `id` | Active cart + held drafts |
+| `local_cart_sessions` | `id` | Active cart + held drafts (draft: prefix) |
 | `local_orders` | `localId` | Local order records |
 | `local_order_items` | `id` | Items per local order |
 | `local_order_payments` | `id` | Payments per local order |
 | `local_print_jobs` | `id` | Pending print jobs |
+| `local_kitchen_tickets` | `id` | Offline kitchen display tickets |
 | `sync_outbox` | `id` | Durable mutation queue |
 | `sync_attempts` | `id` | Per-attempt audit log |
 | `sync_conflicts` | `id` | Local conflict records |
 | `sync_meta` | `key` | Sequence counters, cache timestamps |
+
+Database name: `AuraPoSOfflineDB`, current version: **2**
 
 ---
 
@@ -87,6 +90,7 @@ Server PostgreSQL  ──► source of truth
 | `ORDER_TYPE_DISABLED` | blocking | `discard` | Manual resolution required |
 | `TABLE_UNAVAILABLE` | warning | `audit_note` | Admin assigns or moves table |
 | `TERMINAL_INACTIVE` | blocking | `discard` | Reactivate terminal from admin |
+| `SYNC_CONFLICT` | needs_review | `manual_review` | Owner/manager action required |
 
 All conflict records are stored in `server_sync_conflicts` (server) and `sync_conflicts` (local IndexedDB).
 
@@ -98,9 +102,11 @@ All conflict records are stored in `server_sync_conflicts` (server) and `sync_co
 |-------|------------------|-------------|
 | Max offline duration | 24 hours | Warning banner; no hard block |
 | Max pending orders per terminal | 500 | Outbox size warning |
-| Product cache size | Entire active catalog | Full snapshot per tenant |
+| Product cache max age | 24 hours (full); 6 hours (warning banner) | `isCatalogStale()` |
+| Batch sync size | 50 orders per request | Enforced by `SyncOfflineOrder` |
+| Sync retry max | 8 attempts per outbox item | Backoff up to 5 min; then manual-only |
 | Stock-sensitive offline sell | Allowed with `audit_note` | Conflict logged on sync |
-| Offline session expiry | 8 hours (cashier shift) | PIN re-entry prompt (planned) |
+| Offline session expiry | 8 hours (cashier shift) | PIN re-entry prompt (planned Sprint 7) |
 
 ---
 
@@ -115,6 +121,7 @@ All conflict records are stored in `server_sync_conflicts` (server) and `sync_co
 | Partial sync failure | Succeeded items marked `synced`; failed items remain `pending` for retry with backoff |
 | Sync conflict | Item marked `conflict` in outbox and `server_sync_conflicts`; requires manual review |
 | Auth session expiry | Offline transactions preserved in IndexedDB; cashier must re-login before next sync |
+| Device lost / stolen | Terminal can be deactivated from admin; backend rejects all future syncs from it |
 
 ---
 
@@ -133,33 +140,64 @@ useOfflineOrderSubmit.submitOrder()
         │              │              clearCartSession()
         │              │              return { isLocal: false }
         │              │
+        │              ├──[400/422]──► throw validation error (NO local fallback)
+        │              │
         │              └──[network/5xx]──► fallback to local
         │
-        └──[offline / fallback]──► createLocalOrder()
-                                   ├── Save local_orders  (Dexie txn)
-                                   ├── Save local_order_items
-                                   ├── Save local_order_payments
-                                   ├── enqueueOutbox()
+        └──[offline / network fallback]──► createLocalOrder()
+                                   ├── Generate localId (nanoid)
+                                   ├── Generate idempotencyKey
+                                   ├── Generate localOrderNumber (OFF-...)
+                                   ├── Compute pricing (subtotal + tax + service)
+                                   ├── Dexie transaction:
+                                   │   ├── local_orders.put(order)
+                                   │   ├── local_order_items.bulkPut(items)
+                                   │   └── local_order_payments.put(payment)
+                                   ├── enqueueOutbox(orderPayload)
                                    └── clearCartSession()
-                                       return { isLocal: true }
+                                       return { isLocal: true, order_number: "OFF-..." }
 
 Later, when online:
         │
-useSyncEngine.run()
+useSyncEngine.run() (triggered on: mount / window.online / 30s interval / manual)
         │
         ▼
 runSyncEngine()
-        ├── dequeuePendingOutbox(25)
-        ├── Group order-creates by tenant+terminal
+        ├── dequeuePendingOutbox(25) — filters nextRetryAt <= now
+        ├── Group order-creates by (tenantId, terminalId)
         ├── POST /api/sync/offline-orders (batch ≤ 25)
-        │   + idempotency_key per order
+        │   body: { terminal_id, orders: [{ local_order_id, idempotency_key, items, ... }] }
         │   │
-        │   ├──[synced]──► markOutboxSynced(); update local_orders.serverId
-        │   ├──[replayed]──► markOutboxSynced(); no duplicate created
-        │   ├──[conflict]──► markOutboxConflict(); store in server_sync_conflicts
-        │   └──[failed]──► markOutboxFailed(); exponential backoff
+        │   Per-item result:
+        │   ├──[synced]──► markOutboxSynced(); local_orders.update(serverId, serverOrderNumber, syncStatus="synced")
+        │   ├──[replayed]──► same as synced (idempotency hit — no duplicate)
+        │   ├──[conflict]──► markOutboxConflict(); local_orders.update(syncStatus="conflict")
+        │   └──[failed]──► markOutboxFailed(); exponential backoff applied
         │
-        └── Update sync_meta.last_sync_at
+        └── sync_meta.last_sync_at updated
+```
+
+---
+
+## Print Flow
+
+```
+Order success (local or server)
+        │
+        ▼
+enqueuePrintJob({ type: "receipt", payload: receiptData })
+        │
+        ▼
+local_print_jobs  (IndexedDB, status: "pending")
+        │
+usePrintWorker (polls every 8s)
+        │
+        ├──[printer available]──► markPrinting → print() → markPrinted
+        │
+        └──[printer unavailable / error]──► markPrintFailed (retryCount++)
+                                           after 3 auto-retries: manual-only
+                                           cashier sees "X cetak gagal" in layout
+                                           → click → /printers → reprint
 ```
 
 ---
@@ -174,3 +212,37 @@ runSyncEngine()
 | `/api/*` POST/PATCH/DELETE | Not intercepted | Goes to fetch; handled by outbox if offline |
 
 The service worker **never intercepts mutation requests**. The outbox pattern handles all write durability.
+
+---
+
+## Multi-Terminal Considerations
+
+When multiple terminals operate offline simultaneously on the same tenant:
+
+- Each terminal has a unique `terminalId` → unique idempotency key space
+- Local order numbers are per-terminal-per-day (`OFF-{terminal}-{date}-{seq}`)
+- Table assignment can conflict (same table claimed by two offline terminals)
+  - Detected as `TABLE_UNAVAILABLE` conflict during sync
+  - Policy: `audit_note` — order is created, conflict stored for review
+- Kitchen tickets from offline terminals are stored locally and sync independently
+- No cross-terminal real-time sync in pure offline scenarios (expected limitation)
+
+---
+
+## Security Considerations
+
+- All sync endpoints require valid tenant context (subdomain or `x-tenant-id` header)
+- `x-tenant-id` header is disabled in production (`ALLOW_TENANT_HEADER=false`) — planned Sprint 7
+- Terminal deactivation blocks all future syncs from that terminal's `terminalId`
+- Idempotency keys prevent duplicate orders even from compromised/buggy terminals
+- IndexedDB data is isolated per browser origin — no cross-tenant data leakage possible
+
+---
+
+## Known Limitations (Current Sprints 1–5)
+
+- Table offline status not yet fully persisted/reconciled (schema exists, write logic pending)
+- Inventory movement ledger not yet implemented (Phase 17)
+- RBAC enforcement on backend routes not yet complete (Phase 16)
+- Offline session PIN unlock not yet implemented (Phase 16)
+- E2E automated tests not yet written (Phase 22)
