@@ -266,6 +266,8 @@ export function useCreateOrder() {
     mutationFn: (data) => mutateWithTenantHeader("POST", "/api/orders", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/open"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tables"] });
     },
   });
 }

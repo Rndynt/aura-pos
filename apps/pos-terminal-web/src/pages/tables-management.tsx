@@ -81,7 +81,8 @@ export default function TablesManagementPage() {
 
   // ── Real-time update via SSE — invalidate tables & open orders on any change ─
   useEffect(() => {
-    const es = new EventSource("/api/orders/queue/stream", { withCredentials: true });
+    const tid = getActiveTenantId();
+    const es = new EventSource(`/api/orders/queue/stream?tenant_id=${encodeURIComponent(tid)}`, { withCredentials: true });
     const onUpdate = () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders/open"] });

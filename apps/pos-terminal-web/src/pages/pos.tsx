@@ -109,10 +109,10 @@ export default function POSPage() {
   });
   const orders: Order[] = ordersData?.orders || [];
 
+  // SSE selalu aktif tanpa peduli feature flag — supaya draft/meja selalu real-time
   useEffect(() => {
-    if (!isOrderQueueEnabled) return;
-
-    const es = new EventSource("/api/orders/queue/stream", { withCredentials: true });
+    const tid = getActiveTenantId();
+    const es = new EventSource(`/api/orders/queue/stream?tenant_id=${encodeURIComponent(tid)}`, { withCredentials: true });
     const onUpdate = () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders/open"] });
@@ -125,7 +125,7 @@ export default function POSPage() {
       es.removeEventListener("order_queue_updated", onUpdate as EventListener);
       es.close();
     };
-  }, [isOrderQueueEnabled]);
+  }, []);
 
   // Fetch order types for tenant
   const { data: orderTypes, isLoading: orderTypesLoading } = useOrderTypes();
