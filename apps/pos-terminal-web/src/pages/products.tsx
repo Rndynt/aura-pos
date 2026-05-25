@@ -54,7 +54,8 @@ export default function ProductsPage() {
   const [insertBeforeId, setInsertBeforeId] = useState<string | "end" | null>(null);
   const [localCategories, setLocalCategories] = useState<Array<{ id: string; name: string; items: any[] }>>([]);
 
-  const { data: products = [], isLoading: isLoadingProducts } = useProducts();
+  // Management page always fetches all products (outlet availability filter only applies in POS)
+  const { data: products = [], isLoading: isLoadingProducts } = useProducts({ includeUnavailable: true });
   const { data: categories = [] } = useCategories();
   const { data: variants = [], isLoading: isLoadingVariants } = useVariantsLibrary();
   const { data: outletsData } = useOutlets();
@@ -932,36 +933,35 @@ export default function ProductsPage() {
                                     )}
                                   </div>
 
-                                  {/* Outlet availability — single badge when a filter is active */}
-                                  {hasMultiOutlet && selectedOutletId && (() => {
-                                    const key = `${selectedOutletId}:${product.id}`;
-                                    const isAvail = outletConfigMap.has(key) ? outletConfigMap.get(key)! : true;
-                                    const isToggling = togglingOutletProduct.has(key);
-                                    return (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleToggleOutletProduct(selectedOutletId, product.id, isAvail);
-                                        }}
-                                        disabled={isToggling}
-                                        data-testid={`outlet-badge-${selectedOutletId}-${product.id}`}
-                                        className={`mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-lg border transition-all cursor-pointer select-none ${
-                                          isToggling
-                                            ? "opacity-50 cursor-wait bg-slate-50 border-slate-200 text-slate-400"
-                                            : isAvail
-                                            ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
-                                            : "bg-red-50 border-red-200 text-red-500 hover:bg-red-100"
-                                        }`}
-                                      >
-                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isAvail ? "bg-emerald-500" : "bg-red-400"}`} />
-                                        {isAvail ? "Tersedia" : "Tidak tersedia"}
-                                      </button>
-                                    );
-                                  })()}
                                 </div>
                               </div>
 
-                              <div className="pl-4 border-l border-slate-100 flex flex-col items-center gap-1">
+                              {/* ── Right-side control ─────────────────────────────────
+                                  When a specific outlet is selected → toggle controls
+                                  outlet availability for that branch.
+                                  When "Semua Cabang" (no filter) → toggle controls
+                                  global active status.
+                              ─────────────────────────────────────────────────────── */}
+                              {hasMultiOutlet && selectedOutletId ? (() => {
+                                const key = `${selectedOutletId}:${product.id}`;
+                                const isAvail = outletConfigMap.has(key) ? outletConfigMap.get(key)! : true;
+                                const isToggling = togglingOutletProduct.has(key);
+                                const outletName = allOutlets.find(o => o.id === selectedOutletId)?.name ?? "Cabang";
+                                return (
+                                  <div className="pl-4 border-l border-slate-100 flex flex-col items-center gap-1 min-w-[52px]">
+                                    <ToggleSwitch
+                                      checked={isAvail}
+                                      onChange={() => handleToggleOutletProduct(selectedOutletId, product.id, isAvail)}
+                                      isLoading={isToggling}
+                                      data-testid={`toggle-outlet-${selectedOutletId}-${product.id}`}
+                                    />
+                                    <span className="text-[9px] text-center font-semibold leading-tight text-slate-400 max-w-[52px] truncate">
+                                      {outletName}
+                                    </span>
+                                  </div>
+                                );
+                              })() : (
+                              <div className="pl-4 border-l border-slate-100 flex flex-col items-center gap-1 min-w-[52px]">
                                 <ToggleSwitch
                                   checked={isActive}
                                   onChange={(val) =>
@@ -970,7 +970,9 @@ export default function ProductsPage() {
                                   isLoading={loadingProductToggles.has(product.id)}
                                   data-testid={`toggle-product-${product.id}`}
                                 />
+                                <span className="text-[9px] font-semibold text-slate-400">Global</span>
                               </div>
+                              )}
                             </div>
                           );
                         })}

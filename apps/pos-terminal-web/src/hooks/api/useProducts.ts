@@ -61,17 +61,28 @@ interface ProductsResponse {
   data: { products: Product[]; total: number };
 }
 
-export function useProducts() {
+export interface UseProductsOptions {
+  /** Pass true on management pages so ALL products are returned regardless of outlet availability */
+  includeUnavailable?: boolean;
+}
+
+export function useProducts(options?: UseProductsOptions) {
   const tenantId = getActiveTenantId();
   const outletId = getActiveOutletId();
+  const url = options?.includeUnavailable
+    ? "/api/catalog/products?includeUnavailable=true"
+    : "/api/catalog/products";
   return useQuery<Product[]>({
-    queryKey: ["/api/catalog/products", tenantId, outletId],
+    queryKey: ["/api/catalog/products", tenantId, outletId, options?.includeUnavailable ?? false],
     queryFn: async () => {
       try {
-        const response: ProductsResponse = await fetchWithTenantHeader("/api/catalog/products");
+        const response: ProductsResponse = await fetchWithTenantHeader(url);
         const products: Product[] = response.data?.products ?? (response as any) ?? [];
-        saveCachedProducts(tenantId, products).catch(() => undefined);
-        updateCatalogCachedAt(tenantId).catch(() => undefined);
+        // Only cache the outlet-filtered version (POS catalog)
+        if (!options?.includeUnavailable) {
+          saveCachedProducts(tenantId, products).catch(() => undefined);
+          updateCatalogCachedAt(tenantId).catch(() => undefined);
+        }
         return products;
       } catch (err) {
         const cached = await getCachedProducts(tenantId) as Product[];

@@ -23,6 +23,8 @@ export const listProducts = asyncHandler(async (req: Request, res: Response) => 
   const querySchema = z.object({
     category: z.string().optional(),
     isActive: z.enum(['true', 'false']).optional().transform(val => val ? val === 'true' : undefined),
+    // Management mode: skip outlet availability filter (shows all products for config)
+    includeUnavailable: z.enum(['true', 'false']).optional().transform(val => val === 'true'),
   });
 
   const parsed = querySchema.safeParse(req.query);
@@ -30,7 +32,7 @@ export const listProducts = asyncHandler(async (req: Request, res: Response) => 
     throw createError('Invalid query parameters', 400, 'VALIDATION_ERROR');
   }
 
-  const { category, isActive } = parsed.data;
+  const { category, isActive, includeUnavailable } = parsed.data;
   const outletId = req.outletId;
 
   // Execute use case
@@ -40,9 +42,10 @@ export const listProducts = asyncHandler(async (req: Request, res: Response) => 
     isActive,
   });
 
-  // Filter by outlet availability: exclude products explicitly marked unavailable at this outlet
+  // Filter by outlet availability: exclude products explicitly marked unavailable at this outlet.
+  // Skip when includeUnavailable=true (management pages need all products for configuration).
   let filteredProducts = result.products;
-  if (outletId && filteredProducts.length > 0) {
+  if (outletId && !includeUnavailable && filteredProducts.length > 0) {
     const productIds = filteredProducts.map(p => p.id);
     const unavailableRows = await db
       .select({ productId: outletProductConfigs.productId })
