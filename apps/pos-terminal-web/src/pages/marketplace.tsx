@@ -625,7 +625,7 @@ export default function MarketplacePage() {
           body: JSON.stringify({ [mItem.moduleConfigKey]: newVal }),
         });
         if (!res.ok) throw new Error();
-        await queryClient.invalidateQueries({ queryKey: ["/api/tenants/profile"] });
+        await queryClient.invalidateQueries({ queryKey: ["/api/tenants/profile", tenantId] });
         toast({ title: newVal ? `${item.title} diaktifkan` : `${item.title} dinonaktifkan` });
       } else {
         const fItem = item as FeatureItem;
