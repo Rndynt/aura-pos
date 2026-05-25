@@ -114,6 +114,7 @@ const MODULE_CATALOG: ModuleItem[] = [
     iconColor: "text-pink-600",
     requiredPlan: "growth",
     badge: "Populer",
+    comingSoon: true,
     bundledFeatures: [],
   },
   {
@@ -144,6 +145,7 @@ const MODULE_CATALOG: ModuleItem[] = [
     iconBg: "bg-violet-100",
     iconColor: "text-violet-600",
     requiredPlan: "growth",
+    comingSoon: true,
     bundledFeatures: [],
   },
   {
