@@ -8,8 +8,8 @@ import { z } from 'zod';
 import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { db } from '@pos/infrastructure/database';
-import { productCategories } from '@shared/schema';
-import { and, eq } from 'drizzle-orm';
+import { productCategories, outletProductConfigs } from '@shared/schema';
+import { and, eq, inArray } from 'drizzle-orm';
 
 /**
  * GET /api/catalog/products
@@ -31,6 +31,7 @@ export const listProducts = asyncHandler(async (req: Request, res: Response) => 
   }
 
   const { category, isActive } = parsed.data;
+  const outletId = req.outletId;
 
   // Execute use case
   const result = await container.getProducts.execute({
@@ -39,11 +40,31 @@ export const listProducts = asyncHandler(async (req: Request, res: Response) => 
     isActive,
   });
 
+  // Filter by outlet availability: exclude products explicitly marked unavailable at this outlet
+  let filteredProducts = result.products;
+  if (outletId && filteredProducts.length > 0) {
+    const productIds = filteredProducts.map(p => p.id);
+    const unavailableRows = await db
+      .select({ productId: outletProductConfigs.productId })
+      .from(outletProductConfigs)
+      .where(
+        and(
+          eq(outletProductConfigs.outletId, outletId),
+          eq(outletProductConfigs.isAvailable, false),
+          inArray(outletProductConfigs.productId, productIds),
+        ),
+      );
+    if (unavailableRows.length > 0) {
+      const unavailableIds = new Set(unavailableRows.map(r => r.productId));
+      filteredProducts = filteredProducts.filter(p => !unavailableIds.has(p.id));
+    }
+  }
+
   res.status(200).json({
     success: true,
     data: {
-      products: result.products,
-      total: result.total,
+      products: filteredProducts,
+      total: filteredProducts.length,
     },
   });
 });

@@ -1,0 +1,2 @@
+- [Plan tier naming mismatch](plan-tier-naming.md) — marketplace uses free/growth/pro; domain type uses free/starter/professional/enterprise; standardized on free/growth/pro in API
+- [Tenant plan_tier field casing](tenant-field-casing.md) — domain Tenant type uses snake_case plan_tier, not planTier; always access as profile.tenant.plan_tier in frontend

@@ -498,8 +498,10 @@ export default function MarketplacePage() {
   const [selected, setSelected] = useState<CatalogItem | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [showPlans, setShowPlans] = useState(false);
+  const [switchingPlan, setSwitchingPlan] = useState<PlanTier | null>(null);
 
-  const currentPlan: PlanTier = (profile?.tenant?.planTier as PlanTier) ?? "free";
+  // plan_tier uses snake_case in the domain type — planTier (camelCase) is the DB column alias
+  const currentPlan: PlanTier = (profile?.tenant?.plan_tier as PlanTier) ?? "free";
 
   // Build active feature codes Set from API
   const activeFeatureCodes = new Set(
@@ -523,6 +525,30 @@ export default function MarketplacePage() {
   const activeFeatures = FEATURE_CATALOG.filter(isFeatureActive).length;
   const totalActive = activeModules + activeFeatures;
   const totalItems = MODULE_CATALOG.length + FEATURE_CATALOG.length;
+
+  const handleSwitchPlan = async (tier: PlanTier) => {
+    if (tier === currentPlan) return;
+    setSwitchingPlan(tier);
+    try {
+      const res = await fetch("/api/tenants/plan", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-tenant-id": getActiveTenantId() },
+        body: JSON.stringify({ plan_tier: tier }),
+      });
+      if (!res.ok) throw new Error("Gagal mengganti paket");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/tenants/profile", tenantId] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/tenants/features", tenantId] }),
+      ]);
+      const planName = PLANS.find((p) => p.tier === tier)?.name ?? tier;
+      toast({ title: `Paket ${planName} aktif`, description: "Fitur baru sudah bisa digunakan." });
+      setShowPlans(false);
+    } catch {
+      toast({ title: "Gagal", description: "Coba lagi beberapa saat.", variant: "destructive" });
+    } finally {
+      setSwitchingPlan(null);
+    }
+  };
 
   const handleToggle = async (item: CatalogItem) => {
     if (!canActivate(item)) { setShowPlans(true); return; }
@@ -928,18 +954,26 @@ export default function MarketplacePage() {
                           </p>
                         </div>
                         {isCurrent ? (
-                          <span className="text-[11px] font-black bg-slate-200 text-slate-600 px-2.5 py-1 rounded-xl">
-                            Paket Kamu
+                          <span className="text-[11px] font-black bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-xl">
+                            ✓ Aktif
                           </span>
                         ) : (
                           <button
-                            className={`text-xs font-black px-3 py-1.5 rounded-xl text-white ${
-                              plan.tier === "growth"
+                            onClick={() => handleSwitchPlan(plan.tier)}
+                            disabled={switchingPlan !== null}
+                            className={`flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-xl text-white ${
+                              plan.tier === "free"
+                                ? "bg-slate-500 hover:bg-slate-600"
+                                : plan.tier === "growth"
                                 ? "bg-blue-500 hover:bg-blue-600"
                                 : "bg-violet-500 hover:bg-violet-600"
-                            } transition-colors`}
+                            } transition-colors disabled:opacity-60`}
+                            data-testid={`button-select-plan-${plan.tier}`}
                           >
-                            Pilih
+                            {switchingPlan === plan.tier ? (
+                              <span className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                            ) : null}
+                            {switchingPlan === plan.tier ? "Memproses..." : "Pilih"}
                           </button>
                         )}
                       </div>

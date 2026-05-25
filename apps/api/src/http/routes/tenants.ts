@@ -41,6 +41,9 @@ router.get('/features', TenantsController.getActiveFeatures);
 // PATCH /api/tenants/modules - Update module config flags
 router.patch('/modules', TenantsController.updateModuleConfig);
 
+// PATCH /api/tenants/plan - Switch subscription plan tier + sync plan_default features
+router.patch('/plan', TenantsController.updatePlanTier);
+
 // POST /api/tenants/features/toggle - Toggle a single feature on/off
 router.post('/features/toggle', TenantsController.toggleFeature);
 

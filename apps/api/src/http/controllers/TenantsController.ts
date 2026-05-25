@@ -5,13 +5,38 @@
 
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import type { BusinessType } from '@pos/core';
 import { auth, authDb } from '../../lib/auth';
 import { user as authUser } from '../../lib/auth-schema';
 import { fromNodeHeaders } from 'better-auth/node';
+import { db } from '@pos/infrastructure/database';
+import { tenants, tenantFeatures } from '@shared/schema';
+
+// ─── Plan → Feature mapping (must stay in sync with marketplace.tsx PLANS) ────
+const PLAN_FEATURE_MAP: Record<string, string[]> = {
+  free: [
+    'product_variants', 'partial_payment', 'discounts', 'order_queue',
+    'receipt_printer', 'sales_reports',
+  ],
+  growth: [
+    'product_variants', 'partial_payment', 'discounts', 'order_queue',
+    'receipt_printer', 'sales_reports',
+    'kitchen_ticket', 'kitchen_display', 'kitchen_printer',
+    'order_notifications', 'analytics_dashboard', 'label_printer', 'barcode_scanner',
+    'inventory_tracking', 'inventory_reports',
+  ],
+  pro: [
+    'product_variants', 'partial_payment', 'discounts', 'order_queue',
+    'receipt_printer', 'sales_reports',
+    'kitchen_ticket', 'kitchen_display', 'kitchen_printer',
+    'order_notifications', 'analytics_dashboard', 'label_printer', 'barcode_scanner',
+    'inventory_tracking', 'inventory_reports',
+    'payment_gateway', 'api_integration', 'online_booking', 'calendar_sync',
+  ],
+};
 
 /**
  * GET /api/tenants/features
@@ -233,6 +258,62 @@ export const updateModuleConfig = asyncHandler(async (req: Request, res: Respons
     .limit(1);
 
   res.status(200).json({ success: true, data: updated });
+});
+
+/**
+ * PATCH /api/tenants/plan
+ * Switch plan tier and sync all plan_default features accordingly
+ */
+export const updatePlanTier = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.tenantId!;
+
+  const bodySchema = z.object({
+    plan_tier: z.enum(['free', 'growth', 'pro']),
+  });
+
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw createError('Invalid plan tier. Must be one of: free, growth, pro', 400, 'VALIDATION_ERROR');
+  }
+
+  const { plan_tier } = parsed.data;
+  const newFeatures = PLAN_FEATURE_MAP[plan_tier] ?? [];
+
+  // 1. Update plan tier on tenant row
+  await db
+    .update(tenants)
+    .set({ planTier: plan_tier, updatedAt: new Date() })
+    .where(eq(tenants.id, tenantId));
+
+  // 2. Remove all existing plan_default features (clean slate for this plan)
+  await db
+    .delete(tenantFeatures)
+    .where(
+      and(
+        eq(tenantFeatures.tenantId, tenantId),
+        eq(tenantFeatures.source, 'plan_default'),
+      ),
+    );
+
+  // 3. Insert fresh plan_default features for the new plan
+  if (newFeatures.length > 0) {
+    await db.insert(tenantFeatures).values(
+      newFeatures.map((fc) => ({
+        tenantId,
+        featureCode: fc,
+        source: 'plan_default' as const,
+        isActive: true,
+      })),
+    );
+  }
+
+  res.status(200).json({
+    success: true,
+    data: {
+      plan_tier,
+      activated_features: newFeatures,
+    },
+  });
 });
 
 /**
