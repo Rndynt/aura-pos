@@ -41,6 +41,7 @@ type ModuleItem = {
   badge?: string;
   /** Feature codes that are part of this module bundle */
   bundledFeatures: Array<{ code: string; label: string }>;
+  comingSoon?: boolean;
 };
 
 type FeatureItem = {
@@ -55,6 +56,7 @@ type FeatureItem = {
   requiredPlan: PlanTier;
   category: string;
   badge?: string;
+  comingSoon?: boolean;
 };
 
 type CatalogItem = ModuleItem | FeatureItem;
@@ -177,6 +179,7 @@ const MODULE_CATALOG: ModuleItem[] = [
     requiredPlan: "pro",
     badge: "Pro",
     bundledFeatures: [],
+    comingSoon: true,
   },
 ];
 
@@ -223,6 +226,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Alert bunyi & visual saat order baru masuk atau status berubah.",
     longDesc: "Notifikasi audio dan visual untuk semua tipe order (bukan hanya dapur). Kasir tidak melewatkan pesanan yang baru dibuat atau butuh perhatian.",
     icon: Bell, iconBg: "bg-yellow-100", iconColor: "text-yellow-600", requiredPlan: "growth",
+    comingSoon: true,
   },
   // Hardware & Cetak
   {
@@ -231,6 +235,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Cetak struk thermal ke pelanggan saat transaksi selesai.",
     longDesc: "Integrasi printer thermal untuk struk pelanggan. Struk mencakup item, harga, diskon, pajak, metode bayar, dan info toko.",
     icon: Printer, iconBg: "bg-slate-100", iconColor: "text-slate-600", requiredPlan: "free",
+    comingSoon: true,
   },
   {
     type: "feature", featureCode: "label_printer",
@@ -238,6 +243,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Cetak label harga, barcode, atau stiker pakaian & produk.",
     longDesc: "Cetak label produk dengan barcode, harga, dan nama. Cocok untuk laundry (tag pakaian), retail (label harga), atau usaha dengan banyak SKU.",
     icon: QrCode, iconBg: "bg-teal-100", iconColor: "text-teal-600", requiredPlan: "growth",
+    comingSoon: true,
   },
   {
     type: "feature", featureCode: "barcode_scanner",
@@ -245,6 +251,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Scan produk langsung dari kamera atau scanner USB/Bluetooth.",
     longDesc: "Tambahkan produk ke keranjang dengan scan barcode. Mendukung scanner USB, Bluetooth, dan kamera perangkat. Proses checkout retail jadi lebih cepat.",
     icon: PackageSearch, iconBg: "bg-purple-100", iconColor: "text-purple-600", requiredPlan: "growth",
+    comingSoon: true,
   },
   // Laporan & Analitik
   {
@@ -253,6 +260,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Ringkasan omzet harian, mingguan, dan bulanan dengan export.",
     longDesc: "Laporan penjualan lengkap: omzet per periode, produk terlaris, metode pembayaran, dan tren penjualan. Export ke PDF atau Excel.",
     icon: BarChart3, iconBg: "bg-blue-100", iconColor: "text-blue-600", requiredPlan: "free",
+    comingSoon: true,
   },
   {
     type: "feature", featureCode: "analytics_dashboard",
@@ -260,6 +268,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Grafik real-time, KPI bisnis, & insight penjualan interaktif.",
     longDesc: "Dashboard visual dengan grafik omzet, chart produk terlaris, rata-rata nilai transaksi, dan insight bisnis. Update real-time, bisa filter per periode.",
     icon: PieChart, iconBg: "bg-violet-100", iconColor: "text-violet-600", requiredPlan: "growth", badge: "Baru",
+    comingSoon: true,
   },
   // Integrasi Eksternal
   {
@@ -268,6 +277,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Terima QRIS, Virtual Account, GoPay, OVO, & kartu kredit.",
     longDesc: "Integrasi payment gateway: QRIS, Virtual Account, GoPay, OVO, ShopeePay, dan kartu kredit. Rekonsiliasi otomatis ke laporan penjualan.",
     icon: Banknote, iconBg: "bg-green-100", iconColor: "text-green-600", requiredPlan: "pro", badge: "Pro",
+    comingSoon: true,
   },
   {
     type: "feature", featureCode: "api_integration",
@@ -275,6 +285,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Hubungkan AuraPOS ke sistem ERP, marketplace, atau akuntansi.",
     longDesc: "API key & webhook untuk integrasi dengan sistem eksternal (ERP, marketplace, akuntansi). Dokumentasi REST API lengkap tersedia.",
     icon: Webhook, iconBg: "bg-slate-100", iconColor: "text-slate-600", requiredPlan: "pro", badge: "Pro",
+    comingSoon: true,
   },
   {
     type: "feature", featureCode: "online_booking",
@@ -282,6 +293,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Halaman booking publik via link atau QR code untuk pelanggan.",
     longDesc: "Halaman booking online yang bisa dibagikan ke pelanggan. Mereka pilih layanan, tanggal, jam — langsung masuk ke kalender appointment toko.",
     icon: Globe, iconBg: "bg-cyan-100", iconColor: "text-cyan-600", requiredPlan: "pro",
+    comingSoon: true,
   },
   {
     type: "feature", featureCode: "calendar_sync",
@@ -289,6 +301,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Sync appointment ke Google Calendar atau iCal secara otomatis.",
     longDesc: "Appointment otomatis tersync ke Google Calendar atau iCal. Reminder email & WhatsApp ke pelanggan terkirim otomatis.",
     icon: CalendarClock, iconBg: "bg-indigo-100", iconColor: "text-indigo-600", requiredPlan: "pro",
+    comingSoon: true,
   },
 ];
 
@@ -340,25 +353,43 @@ function ModuleCard({
   item: ModuleItem; isActive: boolean; unlocked: boolean;
   isToggling: boolean; onToggle: () => void; onSelect: () => void;
 }) {
+  const comingSoon = item.comingSoon;
   return (
-    <div className={`bg-white rounded-2xl border-2 transition-all duration-200 overflow-hidden ${
-      isActive ? "border-emerald-200 shadow-md shadow-emerald-50"
+    <div className={`bg-white rounded-2xl border-2 transition-all duration-200 overflow-hidden relative ${
+      comingSoon ? "border-slate-100"
+      : isActive ? "border-emerald-300 shadow-md shadow-emerald-50"
       : unlocked ? "border-slate-200 hover:border-slate-300 hover:shadow-md"
       : "border-slate-100 opacity-60"
     }`}>
-      <button className="w-full text-left p-4" onClick={onSelect}>
+      {/* ── Coming Soon overlay ── */}
+      {comingSoon && (
+        <div className="absolute inset-0 z-10 bg-white/80 backdrop-blur-[1px] flex flex-col items-center justify-center gap-1.5 rounded-2xl">
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+            Segera Hadir
+          </span>
+          <span className="text-[10px] text-slate-400">Sedang dalam pengembangan</span>
+        </div>
+      )}
+
+      <button className="w-full text-left p-4" onClick={comingSoon ? undefined : onSelect}>
         <div className="flex items-start justify-between mb-3">
           <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${item.iconBg}`}>
             <item.icon size={18} className={item.iconColor} />
           </div>
           <div className="flex items-center gap-1.5">
-            {item.badge && (
+            {/* Active status badge — prominent green pill */}
+            {isActive && !comingSoon && (
+              <span className="flex items-center gap-1 text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-full">
+                <CheckCircle2 size={9} /> Aktif
+              </span>
+            )}
+            {item.badge && !isActive && (
               <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
                 item.badge === "Pro" ? "bg-violet-50 text-violet-600 border-violet-200"
                 : "bg-orange-50 text-orange-600 border-orange-200"
               }`}>{item.badge}</span>
             )}
-            {!unlocked && <Lock size={11} className="text-slate-300" />}
+            {!unlocked && !comingSoon && <Lock size={11} className="text-slate-300" />}
           </div>
         </div>
         <h3 className="font-black text-slate-800 text-sm mb-1">{item.title}</h3>
@@ -378,7 +409,7 @@ function ModuleCard({
       </button>
 
       <div className={`px-4 py-3 flex items-center justify-between border-t ${
-        isActive ? "bg-emerald-50/50 border-emerald-100" : "bg-slate-50/50 border-slate-100"
+        isActive && !comingSoon ? "bg-emerald-50/50 border-emerald-100" : "bg-slate-50/50 border-slate-100"
       }`}>
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
           item.requiredPlan === "free" ? "bg-slate-100 text-slate-500"
@@ -387,19 +418,22 @@ function ModuleCard({
         }`}>
           {item.requiredPlan === "free" ? "Gratis" : item.requiredPlan === "growth" ? "Growth" : "Pro"}
         </span>
-        {unlocked ? (
+        {comingSoon ? (
+          <span className="text-[10px] font-bold text-slate-400 italic">Coming soon</span>
+        ) : unlocked ? (
           <button
             onClick={(e) => { e.stopPropagation(); onToggle(); }}
             disabled={isToggling}
             className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl transition-all active:scale-95 ${
-              isActive ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-              : "bg-slate-800 text-white hover:bg-slate-700"
+              isActive
+                ? "bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600"
+                : "bg-slate-800 text-white hover:bg-slate-700"
             } ${isToggling ? "opacity-60" : ""}`}
           >
             {isToggling ? (
               <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
             ) : isActive ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-            {isActive ? "Aktif" : "Aktifkan"}
+            {isActive ? "Nonaktifkan" : "Aktifkan"}
           </button>
         ) : (
           <button
@@ -420,33 +454,51 @@ function FeatureCard({
   item: FeatureItem; isActive: boolean; unlocked: boolean;
   isToggling: boolean; onToggle: () => void; onSelect: () => void;
 }) {
+  const comingSoon = item.comingSoon;
   return (
-    <div className={`bg-white rounded-2xl border-2 transition-all duration-200 overflow-hidden ${
-      isActive ? "border-emerald-200 shadow-md shadow-emerald-50"
+    <div className={`bg-white rounded-2xl border-2 transition-all duration-200 overflow-hidden relative ${
+      comingSoon ? "border-slate-100"
+      : isActive ? "border-emerald-300 shadow-md shadow-emerald-50"
       : unlocked ? "border-slate-200 hover:border-slate-300 hover:shadow-md"
       : "border-slate-100 opacity-60"
     }`}>
-      <button className="w-full text-left p-4" onClick={onSelect}>
+      {/* ── Coming Soon overlay ── */}
+      {comingSoon && (
+        <div className="absolute inset-0 z-10 bg-white/80 backdrop-blur-[1px] flex flex-col items-center justify-center gap-1.5 rounded-2xl">
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+            Segera Hadir
+          </span>
+          <span className="text-[10px] text-slate-400">Sedang dalam pengembangan</span>
+        </div>
+      )}
+
+      <button className="w-full text-left p-4" onClick={comingSoon ? undefined : onSelect}>
         <div className="flex items-start justify-between mb-3">
           <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${item.iconBg}`}>
             <item.icon size={18} className={item.iconColor} />
           </div>
           <div className="flex items-center gap-1.5">
-            {item.badge && (
+            {/* Active status badge — prominent green pill */}
+            {isActive && !comingSoon && (
+              <span className="flex items-center gap-1 text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-full">
+                <CheckCircle2 size={9} /> Aktif
+              </span>
+            )}
+            {item.badge && !isActive && (
               <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
                 item.badge === "Pro" ? "bg-violet-50 text-violet-600 border-violet-200"
                 : item.badge === "Baru" ? "bg-emerald-50 text-emerald-600 border-emerald-200"
                 : "bg-orange-50 text-orange-600 border-orange-200"
               }`}>{item.badge}</span>
             )}
-            {!unlocked && <Lock size={11} className="text-slate-300" />}
+            {!unlocked && !comingSoon && <Lock size={11} className="text-slate-300" />}
           </div>
         </div>
         <h3 className="font-black text-slate-800 text-sm mb-1">{item.title}</h3>
         <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">{item.description}</p>
       </button>
       <div className={`px-4 py-3 flex items-center justify-between border-t ${
-        isActive ? "bg-emerald-50/50 border-emerald-100" : "bg-slate-50/50 border-slate-100"
+        isActive && !comingSoon ? "bg-emerald-50/50 border-emerald-100" : "bg-slate-50/50 border-slate-100"
       }`}>
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
           item.requiredPlan === "free" ? "bg-slate-100 text-slate-500"
@@ -455,19 +507,22 @@ function FeatureCard({
         }`}>
           {item.requiredPlan === "free" ? "Gratis" : item.requiredPlan === "growth" ? "Growth" : "Pro"}
         </span>
-        {unlocked ? (
+        {comingSoon ? (
+          <span className="text-[10px] font-bold text-slate-400 italic">Coming soon</span>
+        ) : unlocked ? (
           <button
             onClick={(e) => { e.stopPropagation(); onToggle(); }}
             disabled={isToggling}
             className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl transition-all active:scale-95 ${
-              isActive ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-              : "bg-slate-800 text-white hover:bg-slate-700"
+              isActive
+                ? "bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600"
+                : "bg-slate-800 text-white hover:bg-slate-700"
             } ${isToggling ? "opacity-60" : ""}`}
           >
             {isToggling ? (
               <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
             ) : isActive ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-            {isActive ? "Aktif" : "Aktifkan"}
+            {isActive ? "Nonaktifkan" : "Aktifkan"}
           </button>
         ) : (
           <button
@@ -503,9 +558,12 @@ export default function MarketplacePage() {
   // plan_tier uses snake_case in the domain type — planTier (camelCase) is the DB column alias
   const currentPlan: PlanTier = (profile?.tenant?.plan_tier as PlanTier) ?? "free";
 
-  // Build active feature codes Set from API
+  // Build active feature codes Set from API.
+  // getActiveFeatures endpoint already filters to is_active=true records only —
+  // the FeatureCheck domain type uses `enabled`, not `is_active`, so we must NOT
+  // re-filter here or the Set would always be empty.
   const activeFeatureCodes = new Set(
-    activeFeaturesList.filter((f) => f.is_active).map((f) => f.feature_code)
+    activeFeaturesList.map((f: any) => f.feature_code)
   );
 
   // Module active check: moduleConfig uses camelCase keys
@@ -521,10 +579,13 @@ export default function MarketplacePage() {
     item.type === "module" ? isModuleActive(item as ModuleItem) : isFeatureActive(item as FeatureItem);
   const canActivate = (item: CatalogItem) => PLAN_RANK[item.requiredPlan] <= PLAN_RANK[currentPlan];
 
-  const activeModules = MODULE_CATALOG.filter(isModuleActive).length;
-  const activeFeatures = FEATURE_CATALOG.filter(isFeatureActive).length;
+  // Only count non-comingSoon items in totals (coming soon items aren't activatable yet)
+  const availableModules = MODULE_CATALOG.filter((m) => !m.comingSoon);
+  const availableFeatures = FEATURE_CATALOG.filter((f) => !f.comingSoon);
+  const activeModules = availableModules.filter(isModuleActive).length;
+  const activeFeatures = availableFeatures.filter(isFeatureActive).length;
   const totalActive = activeModules + activeFeatures;
-  const totalItems = MODULE_CATALOG.length + FEATURE_CATALOG.length;
+  const totalItems = availableModules.length + availableFeatures.length;
 
   const handleSwitchPlan = async (tier: PlanTier) => {
     if (tier === currentPlan) return;
@@ -622,7 +683,7 @@ export default function MarketplacePage() {
           <div className="flex gap-1">
             {(["modul", "fitur"] as TabType[]).map((tab) => {
               const count = tab === "modul" ? activeModules : activeFeatures;
-              const total = tab === "modul" ? MODULE_CATALOG.length : FEATURE_CATALOG.length;
+              const total = tab === "modul" ? availableModules.length : availableFeatures.length;
               return (
                 <button
                   key={tab}
