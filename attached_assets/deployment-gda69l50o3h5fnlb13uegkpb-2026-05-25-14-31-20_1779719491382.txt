@@ -1,0 +1,157 @@
+2026-May-25 14:18:46.458500 Docker 29.4.3 with BuildKit and Buildx detected on deployment server (localhost).
+2026-May-25 14:18:46.481733 Starting deployment of Rndynt/AuraPoS:main to localhost.
+2026-May-25 14:18:46.825863 Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-25 14:18:50.127483 ----------------------------------------
+2026-May-25 14:18:50.179672 Importing Rndynt/AuraPoS:main (commit sha 48add4e8e91fbc410fa866173f3ae394bae4eb91) to /artifacts/gda69l50o3h5fnlb13uegkpb.
+2026-May-25 14:18:57.802133 Generating nixpacks configuration with: nixpacks plan -f json --env 'NIXPACKS_NODE_VERSION=22' --env 'COOLIFY_URL=https://n12lywn11oyw1wz0ziv0corq.69.197.164.221.sslip.io' --env 'COOLIFY_FQDN=n12lywn11oyw1wz0ziv0corq.69.197.164.221.sslip.io' --env 'COOLIFY_BRANCH=main' --env 'COOLIFY_RESOURCE_UUID=n12lywn11oyw1wz0ziv0corq' --build-cmd 'pnpm build' --start-cmd 'mkdir -p apps/api/dist/public; cp -r dist/public/* apps/api/dist/public/ 2>/dev/null||true; NODE_ENV=production node apps/api/dist/index.js' --install-cmd 'npm install -g pnpm@10.28.1 && pnpm install --frozen-lockfile' /artifacts/gda69l50o3h5fnlb13uegkpb
+2026-May-25 14:18:58.745817 Found application type: node.
+2026-May-25 14:18:58.764399 If you need further customization, please check the documentation of Nixpacks: https://nixpacks.com/docs/providers/node
+2026-May-25 14:19:01.123215 ----------------------------------------
+2026-May-25 14:19:01.143601 ⚠️ Build-time environment variable warning: NODE_ENV=production
+2026-May-25 14:19:01.174410 Affects: Node.js/npm/yarn/bun/pnpm
+2026-May-25 14:19:01.203576 Issue: Skips devDependencies installation which are often required for building (webpack, typescript, etc.)
+2026-May-25 14:19:01.230103 Recommendation: Uncheck "Available at Buildtime" or use "development" during build
+2026-May-25 14:19:01.281084
+2026-May-25 14:19:01.309547 💡 Tips to resolve build issues:
+2026-May-25 14:19:01.354359 1. Set these variables as "Runtime only" in the environment variables settings
+2026-May-25 14:19:01.415982 2. Use different values for build-time (e.g., NODE_ENV=development for build)
+2026-May-25 14:19:01.490906 3. Consider using multi-stage Docker builds to separate build and runtime environments
+2026-May-25 14:19:01.581359 ----------------------------------------
+2026-May-25 14:19:01.654444 Building docker image started.
+2026-May-25 14:19:01.690225 To check the current progress, click on Show Debug Logs.
+2026-May-25 14:28:32.513836 Building docker image completed.
+2026-May-25 14:28:33.463476 ----------------------------------------
+2026-May-25 14:28:33.495765 Rolling update started.
+2026-May-25 14:28:36.411101 New container started.
+2026-May-25 14:28:36.469129 Waiting for healthcheck to pass on the new container.
+2026-May-25 14:28:36.509420 Healthcheck URL (inside the container): GET: http://localhost:8080/health
+2026-May-25 14:28:36.551949 Waiting for the start period (60 seconds) before starting healthcheck.
+2026-May-25 14:29:37.203412 Attempt 1 of 10 | Healthcheck status: "starting"
+2026-May-25 14:29:37.234521 Healthcheck logs: (no logs) | Return code: 1
+2026-May-25 14:29:42.706222 Attempt 2 of 10 | Healthcheck status: "starting"
+2026-May-25 14:29:42.742010 Healthcheck logs: (no logs) | Return code: 1
+2026-May-25 14:29:48.346924 Attempt 3 of 10 | Healthcheck status: "starting"
+2026-May-25 14:29:48.375544 Healthcheck logs: (no logs) | Return code: 1
+2026-May-25 14:29:53.935927 Attempt 4 of 10 | Healthcheck status: "starting"
+2026-May-25 14:29:53.983577 Healthcheck logs: (no logs) | Return code: 1
+2026-May-25 14:29:59.683651 Attempt 5 of 10 | Healthcheck status: "starting"
+2026-May-25 14:29:59.722037 Healthcheck logs: (no logs) | Return code: 1
+2026-May-25 14:30:05.503267 Attempt 6 of 10 | Healthcheck status: "starting"
+2026-May-25 14:30:05.539428 Healthcheck logs: (no logs) | Return code: 1
+2026-May-25 14:30:11.095895 Attempt 7 of 10 | Healthcheck status: "starting"
+2026-May-25 14:30:11.132542 Healthcheck logs: (no logs) | Return code: 1
+2026-May-25 14:30:16.631961 Attempt 8 of 10 | Healthcheck status: "starting"
+2026-May-25 14:30:16.667754 Healthcheck logs: (no logs) | Return code: 1
+2026-May-25 14:30:22.152377 Attempt 9 of 10 | Healthcheck status: "starting"
+2026-May-25 14:30:22.184600 Healthcheck logs: (no logs) | Return code: 1
+2026-May-25 14:30:27.895849 Attempt 10 of 10 | Healthcheck status: "unhealthy"
+2026-May-25 14:30:27.924739 Healthcheck logs: (no logs) | Return code: 1
+2026-May-25 14:30:27.950701 New container is unhealthy.
+2026-May-25 14:30:27.977010 ----------------------------------------
+2026-May-25 14:30:28.005909 Container logs:
+2026-May-25 14:30:28.255799 [CMD]: docker logs -n 100 n12lywn11oyw1wz0ziv0corq-141843475455
+2026-May-25 14:30:28.255799 severity_local: 'NOTICE',
+2026-May-25 14:30:28.255799 severity: 'NOTICE',
+2026-May-25 14:30:28.255799 code: '42701',
+2026-May-25 14:30:28.255799 message: 'column "outlet_id" of relation "kds_devices" already exists, skipping',
+2026-May-25 14:30:28.255799 file: 'tablecmds.c',
+2026-May-25 14:30:28.255799 line: '7471',
+2026-May-25 14:30:28.255799 routine: 'check_for_column_name_collision'
+2026-May-25 14:30:28.255799 }
+2026-May-25 14:30:28.255799 {
+2026-May-25 14:30:28.255799 severity_local: 'NOTICE',
+2026-May-25 14:30:28.255799 severity: 'NOTICE',
+2026-May-25 14:30:28.273112 code: '42P07',
+2026-May-25 14:30:28.273112 message: 'relation "tables_outlet_idx" already exists, skipping',
+2026-May-25 14:30:28.273112 file: 'index.c',
+2026-May-25 14:30:28.273112 line: '889',
+2026-May-25 14:30:28.273112 routine: 'index_create'
+2026-May-25 14:30:28.273112 }
+2026-May-25 14:30:28.273112 {
+2026-May-25 14:30:28.273112 severity_local: 'NOTICE',
+2026-May-25 14:30:28.273112 severity: 'NOTICE',
+2026-May-25 14:30:28.273112 code: '42P07',
+2026-May-25 14:30:28.273112 message: 'relation "tenant_order_types_outlet_idx" already exists, skipping',
+2026-May-25 14:30:28.273112 file: 'index.c',
+2026-May-25 14:30:28.273112 line: '889',
+2026-May-25 14:30:28.273112 routine: 'index_create'
+2026-May-25 14:30:28.273112 }
+2026-May-25 14:30:28.273112 {
+2026-May-25 14:30:28.273112 severity_local: 'NOTICE',
+2026-May-25 14:30:28.273112 severity: 'NOTICE',
+2026-May-25 14:30:28.273112 code: '42P07',
+2026-May-25 14:30:28.273112 message: 'relation "orders_outlet_idx" already exists, skipping',
+2026-May-25 14:30:28.273112 file: 'index.c',
+2026-May-25 14:30:28.273112 line: '889',
+2026-May-25 14:30:28.273112 routine: 'index_create'
+2026-May-25 14:30:28.273112 }
+2026-May-25 14:30:28.273112 {
+2026-May-25 14:30:28.273112 severity_local: 'NOTICE',
+2026-May-25 14:30:28.273112 severity: 'NOTICE',
+2026-May-25 14:30:28.273112 code: '42P07',
+2026-May-25 14:30:28.273112 message: 'relation "kitchen_tickets_outlet_idx" already exists, skipping',
+2026-May-25 14:30:28.273112 file: 'index.c',
+2026-May-25 14:30:28.273112 line: '889',
+2026-May-25 14:30:28.273112 routine: 'index_create'
+2026-May-25 14:30:28.273112 }
+2026-May-25 14:30:28.273112 {
+2026-May-25 14:30:28.273112 severity_local: 'NOTICE',
+2026-May-25 14:30:28.273112 severity: 'NOTICE',
+2026-May-25 14:30:28.273112 code: '42P07',
+2026-May-25 14:30:28.273112 message: 'relation "terminals_outlet_idx" already exists, skipping',
+2026-May-25 14:30:28.273112 file: 'index.c',
+2026-May-25 14:30:28.273112 line: '889',
+2026-May-25 14:30:28.273112 routine: 'index_create'
+2026-May-25 14:30:28.273112 }
+2026-May-25 14:30:28.273112 {
+2026-May-25 14:30:28.273112 severity_local: 'NOTICE',
+2026-May-25 14:30:28.273112 severity: 'NOTICE',
+2026-May-25 14:30:28.273112 code: '42P07',
+2026-May-25 14:30:28.273112 message: 'relation "sync_batches_outlet_idx" already exists, skipping',
+2026-May-25 14:30:28.273112 file: 'index.c',
+2026-May-25 14:30:28.273112 line: '889',
+2026-May-25 14:30:28.273112 routine: 'index_create'
+2026-May-25 14:30:28.273112 }
+2026-May-25 14:30:28.273112 {
+2026-May-25 14:30:28.273112 severity_local: 'NOTICE',
+2026-May-25 14:30:28.273112 severity: 'NOTICE',
+2026-May-25 14:30:28.273112 code: '42P07',
+2026-May-25 14:30:28.273112 message: 'relation "sync_events_outlet_idx" already exists, skipping',
+2026-May-25 14:30:28.273112 file: 'index.c',
+2026-May-25 14:30:28.273112 line: '889',
+2026-May-25 14:30:28.273112 routine: 'index_create'
+2026-May-25 14:30:28.273112 }
+2026-May-25 14:30:28.273112 {
+2026-May-25 14:30:28.273112 severity_local: 'NOTICE',
+2026-May-25 14:30:28.273112 severity: 'NOTICE',
+2026-May-25 14:30:28.273112 code: '42P07',
+2026-May-25 14:30:28.273112 message: 'relation "server_sync_conflicts_outlet_idx" already exists, skipping',
+2026-May-25 14:30:28.273112 file: 'index.c',
+2026-May-25 14:30:28.273112 line: '889',
+2026-May-25 14:30:28.273112 routine: 'index_create'
+2026-May-25 14:30:28.273112 }
+2026-May-25 14:30:28.273112 {
+2026-May-25 14:30:28.273112 severity_local: 'NOTICE',
+2026-May-25 14:30:28.273112 severity: 'NOTICE',
+2026-May-25 14:30:28.273112 code: '42P07',
+2026-May-25 14:30:28.273112 message: 'relation "inventory_movements_outlet_idx" already exists, skipping',
+2026-May-25 14:30:28.273112 file: 'index.c',
+2026-May-25 14:30:28.273112 line: '889',
+2026-May-25 14:30:28.273112 routine: 'index_create'
+2026-May-25 14:30:28.273112 }
+2026-May-25 14:30:28.273112 {
+2026-May-25 14:30:28.273112 severity_local: 'NOTICE',
+2026-May-25 14:30:28.273112 severity: 'NOTICE',
+2026-May-25 14:30:28.273112 code: '42P07',
+2026-May-25 14:30:28.273112 message: 'relation "kds_devices_outlet_idx" already exists, skipping',
+2026-May-25 14:30:28.273112 file: 'index.c',
+2026-May-25 14:30:28.273112 line: '889',
+2026-May-25 14:30:28.273112 routine: 'index_create'
+2026-May-25 14:30:28.273112 }
+2026-May-25 14:30:28.273112 2:28:41 PM [express] Multi-outlet schema ensured.
+2026-May-25 14:30:28.273112 2:28:41 PM [express] serving on port 5000
+2026-May-25 14:30:28.293773 ----------------------------------------
+2026-May-25 14:30:28.321988 Removing old containers.
+2026-May-25 14:30:28.355505 New container is not healthy, rolling back to the old container.
+2026-May-25 14:30:59.505821 Rolling update completed.
+2026-May-25 14:31:00.372900 Gracefully shutting down build container: gda69l50o3h5fnlb13uegkpb

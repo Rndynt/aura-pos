@@ -27,6 +27,12 @@ const app = express();
 // Required so req.hostname returns the real subdomain behind a proxy
 app.set('trust proxy', true);
 
+// Health check endpoint — must be registered before any auth/tenant middleware
+// so Coolify / load-balancers can reach it without credentials
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 const databaseUrl = process.env.DATABASE_URL?.trim();
 
 if (!databaseUrl) {
