@@ -635,7 +635,10 @@ export default function MarketplacePage() {
           body: JSON.stringify({ feature_code: fItem.featureCode }),
         });
         if (!res.ok) throw new Error();
-        await queryClient.invalidateQueries({ queryKey: ["/api/tenants/features", tenantId] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["/api/tenants/features", tenantId] }),
+          queryClient.invalidateQueries({ queryKey: ["/api/tenants/features"] }),
+        ]);
         const wasActive = isFeatureActive(fItem);
         toast({ title: !wasActive ? `${item.title} diaktifkan` : `${item.title} dinonaktifkan` });
       }

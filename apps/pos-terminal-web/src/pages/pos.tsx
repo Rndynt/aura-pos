@@ -56,6 +56,7 @@ export default function POSPage() {
   const { hasFeature } = useFeatures();
   const hasReceiptPrinter = hasFeature("receipt_printer");
   const isOrderQueueEnabled = hasFeature("order_queue");
+  const hasProductVariants = hasFeature("product_variants");
   const hasPairedPrinter = Boolean(bluetoothReceiptPrinter.getPairedDeviceId());
   const shouldAutoPrintReceipt = hasReceiptPrinter || hasPairedPrinter;
   const { toast } = useToast();
@@ -268,11 +269,11 @@ export default function POSPage() {
     const hasVariants = product.has_variants && product.variants && product.variants.length > 0;
     const hasOptionGroups = product.option_groups && product.option_groups.length > 0;
 
-    if (hasVariants || hasOptionGroups) {
+    if ((hasVariants || hasOptionGroups) && hasProductVariants) {
       // Show dialog for variant/option selection
       setSelectedProduct(product);
     } else {
-      // Add directly to cart with no options
+      // Add directly to cart with no options (or feature disabled)
       cart.addItem(product, undefined, [], 1);
       toast({
         title: "Added to cart",

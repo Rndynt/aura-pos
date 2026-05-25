@@ -9,7 +9,9 @@ import {
   Search,
   X,
   Store,
+  Lock,
 } from "lucide-react";
+import { useFeatures } from "@/hooks/useFeatures";
 import { PageHeader } from "@/components/design";
 import { useProducts, useCreateProduct, useUpdateProduct } from "@/hooks/api/useProducts";
 import { useVariantsLibrary, useCreateOrUpdateVariant, type Variant } from "@/hooks/useVariants";
@@ -33,6 +35,8 @@ const formatIDR = (price: number) =>
 export default function ProductsPage() {
   const [, setLocation] = useLocation();
   const { toast, addToast } = useToast();
+  const { hasFeature } = useFeatures();
+  const hasProductVariants = hasFeature("product_variants");
 
   const [activeTab, setActiveTab] = useState<"products" | "variants">("products");
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
@@ -631,15 +635,18 @@ export default function ProductsPage() {
               Daftar Produk
             </button>
             <button
-              onClick={() => setActiveTab("variants")}
-              className={`py-3 text-sm font-bold border-b-2 transition-all ${
+              onClick={() => hasProductVariants && setActiveTab("variants")}
+              className={`py-3 text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${
                 activeTab === "variants"
                   ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-slate-400 hover:text-slate-600"
+                  : hasProductVariants
+                  ? "border-transparent text-slate-400 hover:text-slate-600"
+                  : "border-transparent text-slate-300 cursor-not-allowed"
               }`}
               data-testid="tab-variants"
             >
               Perpustakaan Varian
+              {!hasProductVariants && <Lock size={12} className="text-slate-300" />}
             </button>
           </div>
         }

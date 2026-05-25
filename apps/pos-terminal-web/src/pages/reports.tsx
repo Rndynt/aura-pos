@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { List, Download, Printer } from "lucide-react";
+import { useFeatures } from "@/hooks/useFeatures";
+import { FeatureGate } from "@/components/ui/FeatureGate";
 import { CustomSelect, PageHeader } from "@/components/design";
 import { useOrders } from "@/hooks/api/useOrders";
 
@@ -46,6 +48,8 @@ function norm(o: any) {
 const ReportsPage = () => {
   const [, setLocation] = useLocation();
   const [period, setPeriod] = useState<PeriodLabel>("Hari Ini");
+  const { hasFeature } = useFeatures();
+  const hasSalesReports = hasFeature("sales_reports");
 
   const { startDate, endDate } = useMemo(() => getPeriodRange(period), [period]);
   const { data: orderRes, isLoading } = useOrders({ startDate, endDate, limit: 1000 });
@@ -56,6 +60,15 @@ const ReportsPage = () => {
   const gross = orders.reduce((s, o) => s + o.total, 0);
   const paid = orders.filter((o) => o.paymentStatus === "paid").length;
   const avgOrder = orders.length ? gross / orders.length : 0;
+
+  if (!hasSalesReports) {
+    return (
+      <div className="flex flex-col h-full bg-slate-50">
+        <PageHeader title="Laporan Penjualan" subtitle="Analisis detail transaksi" onBack={() => setLocation("/hub")} />
+        <FeatureGate enabled={false} featureName="Laporan Penjualan" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-slate-50">

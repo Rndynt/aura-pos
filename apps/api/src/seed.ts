@@ -641,40 +641,149 @@ async function seedNusantara(createdOrderTypes: any[]) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// TENANT 3 — WARUNG BAHAGIA (Free Starter - no modules, free features only)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function seedFreeStarter(createdOrderTypes: any[]) {
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🏪  TENANT 3 — Warung Bahagia (Free Starter)');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+  const [tenant] = await db.insert(tenants).values({
+    id: 'warung-bahagia',
+    name: 'Warung Bahagia',
+    slug: 'warung-bahagia',
+    businessType: 'CAFE_RESTAURANT',
+    businessName: 'Warung Bahagia',
+    businessAddress: 'Jl. Kebahagiaan No. 1, Depok',
+    businessPhone: '+62811-1111-2222',
+    businessEmail: 'owner@warungbahagia.id',
+    planTier: 'free',
+    subscriptionStatus: 'active',
+    timezone: 'Asia/Jakarta',
+    currency: 'IDR',
+    locale: 'id-ID',
+    isActive: true,
+  } as InsertTenant).returning();
+  console.log(`✅ Tenant: ${tenant.name} (${tenant.id})\n`);
+
+  const [outlet] = await db.insert(outlets).values({
+    tenantId: tenant.id,
+    name: 'Warung Utama',
+    slug: 'main',
+    address: 'Jl. Kebahagiaan No. 1, Depok',
+    phone: '+62811-1111-2222',
+    isDefault: true,
+    isActive: true,
+  } as InsertOutlet).returning();
+
+  await createOwnerAccount({
+    name: 'Budi Santoso',
+    email: 'budi@warungbahagia.id',
+    username: 'warung_owner',
+    password: 'Warung2024!',
+    tenantId: tenant.id,
+  });
+
+  // Only DINE_IN & TAKE_AWAY for free plan
+  const dinein  = createdOrderTypes.find(o => o.code === 'DINE_IN');
+  const takeaway = createdOrderTypes.find(o => o.code === 'TAKE_AWAY');
+  if (dinein)   await db.insert(tenantOrderTypes).values({ tenantId: tenant.id, orderTypeId: dinein.id,   isEnabled: true } as InsertTenantOrderType);
+  if (takeaway) await db.insert(tenantOrderTypes).values({ tenantId: tenant.id, orderTypeId: takeaway.id, isEnabled: true } as InsertTenantOrderType);
+
+  // No modules enabled on free plan
+  await db.insert(tenantModuleConfigs).values({
+    tenantId: tenant.id,
+    enableTableManagement: false,
+    enableKitchenTicket: false,
+    enableLoyalty: false,
+    enableDelivery: false,
+    enableInventory: false,
+    enableAppointments: false,
+    enableMultiLocation: false,
+  } as InsertTenantModuleConfig);
+
+  // Only free-plan features
+  await db.insert(tenantFeatures).values([
+    { tenantId: tenant.id, featureCode: 'product_variants', source: 'plan_default', isActive: true },
+    { tenantId: tenant.id, featureCode: 'partial_payment',  source: 'plan_default', isActive: true },
+    { tenantId: tenant.id, featureCode: 'discounts',        source: 'plan_default', isActive: true },
+    { tenantId: tenant.id, featureCode: 'order_queue',      source: 'plan_default', isActive: true },
+    { tenantId: tenant.id, featureCode: 'receipt_printer',  source: 'plan_default', isActive: true },
+    { tenantId: tenant.id, featureCode: 'sales_reports',    source: 'plan_default', isActive: true },
+  ] as InsertTenantFeature[]);
+  console.log('✅ Free plan features only (6 features, 0 modules)\n');
+
+  // Simple products — NO variants (variants feature disabled by default for testing)
+  const [catMakanan] = await db.insert(productCategories).values({
+    tenantId: tenant.id, name: 'Makanan', displayOrder: 1, isActive: true,
+  }).returning();
+  const [catMinuman] = await db.insert(productCategories).values({
+    tenantId: tenant.id, name: 'Minuman', displayOrder: 2, isActive: true,
+  }).returning();
+
+  const menuItems = [
+    { categoryId: catMakanan.id, name: 'Nasi Goreng', price: '15000', desc: 'Nasi goreng spesial bumbu rumahan' },
+    { categoryId: catMakanan.id, name: 'Mie Goreng',  price: '13000', desc: 'Mie goreng dengan telur' },
+    { categoryId: catMakanan.id, name: 'Nasi Uduk',   price: '12000', desc: 'Nasi uduk + lauk pilihan' },
+    { categoryId: catMakanan.id, name: 'Gado-Gado',   price: '14000', desc: 'Gado-gado segar bumbu kacang' },
+    { categoryId: catMinuman.id, name: 'Es Teh Manis', price: '5000',  desc: 'Teh manis dingin segar' },
+    { categoryId: catMinuman.id, name: 'Es Jeruk',     price: '7000',  desc: 'Jeruk peras segar' },
+    { categoryId: catMinuman.id, name: 'Kopi Tubruk',  price: '8000',  desc: 'Kopi hitam tradisional' },
+    { categoryId: catMinuman.id, name: 'Air Mineral',  price: '3000',  desc: 'Aqua 600ml' },
+  ];
+
+  for (const item of menuItems) {
+    await db.insert(products).values({
+      tenantId: tenant.id,
+      categoryId: item.categoryId,
+      outletId: outlet.id,
+      name: item.name,
+      description: item.desc,
+      basePrice: item.price,
+      isAvailable: true,
+      hasVariants: false,
+      trackStock: false,
+      displayOrder: 0,
+    } as any);
+  }
+  console.log(`✅ ${menuItems.length} menu items seeded (no variants)\n`);
+  console.log('✅ Warung Bahagia (Free Starter) fully seeded!\n');
+  return tenant.id;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function seed() {
-  console.log('\n🌱 AuraPOS — Database Seed (2 Cafe/Resto Tenants)\n');
+  console.log('\n🌱 AuraPOS — Database Seed (3 Tenants)\n');
 
   try {
     await clearDatabase();
     await seedBusinessTypes();
     const createdOrderTypes = await seedOrderTypes();
 
-    const thamadaId   = await seedThamada(createdOrderTypes);
-    const nusantaraId = await seedNusantara(createdOrderTypes);
+    const thamadaId      = await seedThamada(createdOrderTypes);
+    const nusantaraId    = await seedNusantara(createdOrderTypes);
+    const freeStarterId  = await seedFreeStarter(createdOrderTypes);
 
     console.log('═══════════════════════════════════════════════════════════════');
     console.log('🎉  Seed completed successfully!\n');
     console.log('📋  Summary:');
-    console.log('   Tenant 1: Thamada Coffee Shop');
+    console.log('   Tenant 1: Thamada Coffee Shop  (slug: thamada)  → Premium plan');
     console.log(`     ID: ${thamadaId}`);
-    console.log('     Slug: thamada');
-    console.log('     Owner login: thamada_owner / Thamada2024!');
-    console.log('     Menu: 6 Coffee · 4 Non-Coffee · 3 Main Course · 3 Snack');
-    console.log('     Tables: 12 (Ground Floor + 2nd Floor + Outdoor)');
+    console.log('     Login: thamada_owner / Thamada2024!');
     console.log('     Modules: Table Management ✓ · Kitchen Display ✓ · Delivery ✓\n');
-    console.log('   Tenant 2: Warung Kopi Nusantara');
+    console.log('   Tenant 2: Warung Kopi Nusantara  (slug: kopi-nusantara)  → Growth plan');
     console.log(`     ID: ${nusantaraId}`);
-    console.log('     Slug: kopi-nusantara');
-    console.log('     Owner login: nusantara_owner / Nusantara2024!');
-    console.log('     Menu: 6 Kopi Tradisional · 5 Minuman Tradisional · 4 Makanan Berat · 4 Jajan Pasar');
-    console.log('     Tables: 6 (Indoor + Outdoor Lesehan)');
-    console.log('     Modules: Table Management ✓ (no Kitchen Display, no Delivery)\n');
-    console.log('   x-tenant-id header:');
-    console.log('     thamada-coffee  → Thamada Coffee Shop');
-    console.log('     kopi-nusantara  → Warung Kopi Nusantara');
+    console.log('     Login: nusantara_owner / Nusantara2024!');
+    console.log('     Modules: Table Management ✓  (no Kitchen, no Delivery)\n');
+    console.log('   Tenant 3: Warung Bahagia  (slug: warung-bahagia)  → FREE plan');
+    console.log(`     ID: ${freeStarterId}`);
+    console.log('     Login: warung_owner / Warung2024!');
+    console.log('     Modules: NONE  |  Features: 6 free features only');
+    console.log('     Use this tenant to test free-tier feature restrictions\n');
     console.log('═══════════════════════════════════════════════════════════════\n');
   } catch (err) {
     console.error('❌ Seed failed:', err);

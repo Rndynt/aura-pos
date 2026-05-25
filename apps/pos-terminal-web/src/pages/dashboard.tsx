@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
+import { useFeatures } from "@/hooks/useFeatures";
+import { FeatureGate } from "@/components/ui/FeatureGate";
 import {
   Calendar, ChevronDown, Wallet, ShoppingBag,
   ArrowDownRight, AlertCircle, TrendingUp, CheckCircle, AlertTriangle,
@@ -58,6 +60,8 @@ function norm(o: any) {
 export default function DashboardPage() {
   const [, setLocation] = useLocation();
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>("today");
+  const { hasFeature } = useFeatures();
+  const hasAnalytics = hasFeature("analytics_dashboard");
   const [activeChartItem, setActiveChartItem] = useState<ChartDataPoint | null>(null);
 
   const { startDate, endDate } = useMemo(() => getPeriodRange(selectedPeriod), [selectedPeriod]);
@@ -106,6 +110,15 @@ export default function DashboardPage() {
     () => products.filter((p: any) => typeof p.stock_qty === "number" && p.stock_qty > 0 && p.stock_qty < 10),
     [products]
   );
+
+  if (!hasAnalytics) {
+    return (
+      <div className="flex-1 h-full bg-slate-50 overflow-y-auto pb-24 md:pb-8">
+        <PageHeader title="Dashboard" subtitle="Analisa Performa" onBack={() => setLocation("/hub")} />
+        <FeatureGate enabled={false} featureName="Dashboard Analitik" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 h-full bg-slate-50 overflow-y-auto pb-24 md:pb-8">
