@@ -176,10 +176,9 @@ const MODULE_CATALOG: ModuleItem[] = [
     icon: MapPin,
     iconBg: "bg-cyan-100",
     iconColor: "text-cyan-600",
-    requiredPlan: "pro",
+    requiredPlan: "free",
     badge: "Pro",
     bundledFeatures: [],
-    comingSoon: true,
   },
 ];
 
@@ -235,7 +234,6 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Cetak struk thermal ke pelanggan saat transaksi selesai.",
     longDesc: "Integrasi printer thermal untuk struk pelanggan. Struk mencakup item, harga, diskon, pajak, metode bayar, dan info toko.",
     icon: Printer, iconBg: "bg-slate-100", iconColor: "text-slate-600", requiredPlan: "free",
-    comingSoon: true,
   },
   {
     type: "feature", featureCode: "label_printer",
@@ -260,15 +258,13 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Ringkasan omzet harian, mingguan, dan bulanan dengan export.",
     longDesc: "Laporan penjualan lengkap: omzet per periode, produk terlaris, metode pembayaran, dan tren penjualan. Export ke PDF atau Excel.",
     icon: BarChart3, iconBg: "bg-blue-100", iconColor: "text-blue-600", requiredPlan: "free",
-    comingSoon: true,
   },
   {
     type: "feature", featureCode: "analytics_dashboard",
     title: "Dashboard Analitik", category: "Laporan & Analitik",
     description: "Grafik real-time, KPI bisnis, & insight penjualan interaktif.",
     longDesc: "Dashboard visual dengan grafik omzet, chart produk terlaris, rata-rata nilai transaksi, dan insight bisnis. Update real-time, bisa filter per periode.",
-    icon: PieChart, iconBg: "bg-violet-100", iconColor: "text-violet-600", requiredPlan: "growth", badge: "Baru",
-    comingSoon: true,
+    icon: PieChart, iconBg: "bg-violet-100", iconColor: "text-violet-600", requiredPlan: "free", badge: "Baru",
   },
   // Integrasi Eksternal
   {
@@ -651,12 +647,23 @@ export default function MarketplacePage() {
     }
   };
 
-  const filteredModules = moduleCat === "Semua"
-    ? MODULE_CATALOG
-    : MODULE_CATALOG.filter((m) => m.category === moduleCat);
-  const filteredFeatures = featureCat === "Semua"
-    ? FEATURE_CATALOG
-    : FEATURE_CATALOG.filter((f) => f.category === featureCat);
+  const sortItems = <T extends CatalogItem>(items: T[]): T[] =>
+    [...items].sort((a, b) => {
+      const rank = (i: T) => {
+        if (i.comingSoon) return 3;
+        if (isItemActive(i)) return 0;
+        if (canActivate(i)) return 1;
+        return 2;
+      };
+      return rank(a) - rank(b);
+    });
+
+  const filteredModules = sortItems(
+    moduleCat === "Semua" ? MODULE_CATALOG : MODULE_CATALOG.filter((m) => m.category === moduleCat)
+  );
+  const filteredFeatures = sortItems(
+    featureCat === "Semua" ? FEATURE_CATALOG : FEATURE_CATALOG.filter((f) => f.category === featureCat)
+  );
 
   const selectedActive = selected ? isItemActive(selected) : false;
   const selectedUnlocked = selected ? canActivate(selected) : false;
