@@ -78,7 +78,7 @@ const MODULE_CATALOG: ModuleItem[] = [
     icon: LayoutGrid,
     iconBg: "bg-blue-100",
     iconColor: "text-blue-600",
-    requiredPlan: "free",
+    requiredPlan: "growth",
     bundledFeatures: [],
   },
   {
@@ -93,7 +93,7 @@ const MODULE_CATALOG: ModuleItem[] = [
     icon: ChefHat,
     iconBg: "bg-orange-100",
     iconColor: "text-orange-600",
-    requiredPlan: "free",
+    requiredPlan: "growth",
     bundledFeatures: [
       { code: "kitchen_ticket", label: "Tiket Dapur" },
       { code: "kitchen_display", label: "Layar KDS" },
