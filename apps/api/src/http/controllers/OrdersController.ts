@@ -77,6 +77,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
   // Execute use case
   const result = await container.createOrder.execute({
     tenant_id: tenantId,
+    outlet_id: req.outletId,
     ...parsed.data,
   });
 
@@ -227,13 +228,15 @@ export const listOrders = asyncHandler(async (req: Request, res: Response) => {
   };
 
   // Query orders using repository
+  const outletFilter = req.outletId ? { outletId: req.outletId } : {};
   const [orders, total] = await Promise.all([
     container.orderRepository.findByTenant(tenantId, {
       ...filterOptions,
+      ...outletFilter,
       limit: limit!,
       offset,
     }),
-    container.orderRepository.countByTenant(tenantId, filterOptions),
+    container.orderRepository.countByTenant(tenantId, { ...filterOptions, ...outletFilter }),
   ]);
 
   res.status(200).json({
@@ -553,6 +556,7 @@ export const listOpenOrders = asyncHandler(async (req: Request, res: Response) =
   // Execute use case
   const result = await container.listOpenOrders.execute({
     tenant_id: tenantId,
+    outlet_id: req.outletId,
     limit: parsed.data.limit,
     offset: parsed.data.offset,
   });

@@ -5,6 +5,7 @@ export interface ListTablesRequest {
   tenantId: string;
   status?: string;
   floor?: string;
+  outletId?: string;
 }
 
 export interface ListTablesResponse {
@@ -16,9 +17,9 @@ export class ListTables {
   constructor(private tableRepository: TableRepository) {}
 
   async execute(request: ListTablesRequest): Promise<ListTablesResponse> {
-    const { tenantId, status, floor } = request;
+    const { tenantId, status, floor, outletId } = request;
 
-    const tables = await this.tableRepository.findByTenant(tenantId, { status, floor });
+    const tables = await this.tableRepository.findByTenant(tenantId, { status, floor, outletId });
 
     return {
       tables,

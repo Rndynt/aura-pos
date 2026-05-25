@@ -65,10 +65,12 @@ function mapApiOrder(raw: Record<string, any>): Order {
 // Helper to add tenant header to fetch requests
 async function fetchWithTenantHeader(url: string) {
   const tenantId = getActiveTenantId();
+  const { getActiveOutletId } = await import("@/lib/outlet");
+  const outletId = getActiveOutletId();
+  const headers: Record<string, string> = { "x-tenant-id": tenantId };
+  if (outletId) headers["x-outlet-id"] = outletId;
   const res = await fetch(url, {
-    headers: {
-      "x-tenant-id": tenantId,
-    },
+    headers,
     credentials: "include",
   });
 
@@ -84,12 +86,16 @@ async function fetchWithTenantHeader(url: string) {
 // Helper to add tenant header to mutations
 async function mutateWithTenantHeader(method: string, url: string, data?: unknown) {
   const tenantId = getActiveTenantId();
+  const { getActiveOutletId } = await import("@/lib/outlet");
+  const outletId = getActiveOutletId();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-tenant-id": tenantId,
+  };
+  if (outletId) headers["x-outlet-id"] = outletId;
   const res = await fetch(url, {
     method,
-    headers: {
-      "Content-Type": "application/json",
-      "x-tenant-id": tenantId,
-    },
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });

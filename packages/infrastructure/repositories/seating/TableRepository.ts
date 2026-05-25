@@ -6,7 +6,7 @@ import type { Table, InsertTable } from "@shared/schema";
 export class TableRepository {
   constructor(private db: Database) {}
 
-  async findByTenant(tenantId: string, filters?: { status?: string; floor?: string }): Promise<Table[]> {
+  async findByTenant(tenantId: string, filters?: { status?: string; floor?: string; outletId?: string }): Promise<Table[]> {
     const where = [eq(tables.tenantId, tenantId)];
     
     if (filters?.status) {
@@ -15,6 +15,10 @@ export class TableRepository {
     
     if (filters?.floor) {
       where.push(eq(tables.floor, filters.floor));
+    }
+
+    if (filters?.outletId) {
+      where.push(eq(tables.outletId, filters.outletId));
     }
 
     return this.db

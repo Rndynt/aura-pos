@@ -60,6 +60,7 @@ export function createTablesRouter(db: Database): Router {
         tenantId,
         status: parsedQuery.data.status,
         floor: parsedQuery.data.floor,
+        outletId: req.outletId,
       });
 
       res.json({ success: true, data: { tables: result.tables, total: result.total } });
@@ -89,6 +90,7 @@ export function createTablesRouter(db: Database): Router {
         floor,
         capacity,
         status: "available",
+        outletId: req.outletId,
       } as InsertTable);
 
       res.status(201).json({ success: true, data: newTable });

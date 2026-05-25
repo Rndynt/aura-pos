@@ -22,6 +22,7 @@ export interface ITenantRepository {
 
 export interface ListOpenOrdersInput {
   tenant_id: string;
+  outlet_id?: string;
   limit?: number;
   offset?: number;
 }
@@ -61,6 +62,7 @@ export class ListOpenOrders {
       input.tenant_id,
       {
         status: ["draft", "confirmed", "preparing", "ready", "served"],
+        ...(input.outlet_id ? { outletId: input.outlet_id } : {}),
         limit,
         offset,
       }

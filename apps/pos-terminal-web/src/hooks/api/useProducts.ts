@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { Product } from "@pos/domain/catalog/types";
 import { getActiveTenantId } from "@/lib/tenant";
+import { getActiveOutletId } from "@/lib/outlet";
 import { queryClient } from "@/lib/queryClient";
 import {
   getCachedProducts,
@@ -8,9 +9,16 @@ import {
   updateCatalogCachedAt,
 } from "@pos/offline";
 
+function buildHeaders(extra?: Record<string, string>): Record<string, string> {
+  const outletId = getActiveOutletId();
+  const headers: Record<string, string> = { "x-tenant-id": getActiveTenantId(), ...extra };
+  if (outletId) headers["x-outlet-id"] = outletId;
+  return headers;
+}
+
 async function fetchWithTenantHeader(url: string) {
   const res = await fetch(url, {
-    headers: { "x-tenant-id": getActiveTenantId() },
+    headers: buildHeaders(),
     credentials: "include",
   });
   if (!res.ok) {
@@ -23,7 +31,7 @@ async function fetchWithTenantHeader(url: string) {
 async function postWithTenantHeader(url: string, body: any) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-tenant-id": getActiveTenantId() },
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     credentials: "include",
     body: JSON.stringify(body),
   });
@@ -37,7 +45,7 @@ async function postWithTenantHeader(url: string, body: any) {
 async function putWithTenantHeader(url: string, body: any) {
   const res = await fetch(url, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", "x-tenant-id": getActiveTenantId() },
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     credentials: "include",
     body: JSON.stringify(body),
   });

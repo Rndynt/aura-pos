@@ -28,6 +28,7 @@ export interface OrderFilters {
   dateTo?: Date;
   limit?: number;
   offset?: number;
+  outletId?: string;
 }
 
 export interface OrderItemInput {
@@ -104,6 +105,10 @@ export class OrderRepository
 
     if (filters?.dateTo) {
       conditions.push(lte(orders.orderDate, filters.dateTo));
+    }
+
+    if (filters?.outletId) {
+      conditions.push(eq(orders.outletId, filters.outletId));
     }
 
     return conditions;

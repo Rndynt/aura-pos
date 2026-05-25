@@ -29,6 +29,7 @@ export interface CreateOrderItemInput {
 
 export interface CreateOrderInput {
   tenant_id: string;
+  outlet_id?: string;
   items: CreateOrderItemInput[];
   order_type_id?: string;
   customer_name?: string;
@@ -185,7 +186,8 @@ export class CreateOrder {
         input.customer_name,
         input.table_number,
         input.notes,
-        input.idempotency_key
+        input.idempotency_key,
+        input.outlet_id,
       );
 
       const orderItemsForDb: OrderItemInput[] = orderItems.map(item => ({

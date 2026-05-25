@@ -1,20 +1,28 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
 import { getActiveTenantId } from '@/lib/tenant';
+import { getActiveOutletId } from '@/lib/outlet';
 import {
   getCachedCategories,
   saveCachedCategories,
   updateCatalogCachedAt,
 } from '@pos/offline';
 
+function buildHeaders(extra?: Record<string, string>): Record<string, string> {
+  const outletId = getActiveOutletId();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-tenant-id': getActiveTenantId(),
+    ...extra,
+  };
+  if (outletId) headers['x-outlet-id'] = outletId;
+  return headers;
+}
+
 async function req(url: string, init?: RequestInit) {
   const res = await fetch(url, {
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-tenant-id': getActiveTenantId(),
-      ...(init?.headers || {}),
-    },
+    headers: buildHeaders(init?.headers as Record<string, string> | undefined),
     ...init,
   });
   const payload = await res.json().catch(() => null);

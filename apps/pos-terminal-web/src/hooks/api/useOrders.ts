@@ -2,10 +2,18 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import type { Order, OrderItem, OrderPayment } from "@pos/domain/orders/types";
 import { getActiveTenantId } from "@/lib/tenant";
+import { getActiveOutletId } from "@/lib/outlet";
+
+function buildHeaders(extra?: Record<string, string>): Record<string, string> {
+  const outletId = getActiveOutletId();
+  const headers: Record<string, string> = { "x-tenant-id": getActiveTenantId(), ...extra };
+  if (outletId) headers["x-outlet-id"] = outletId;
+  return headers;
+}
 
 async function fetchWithTenantHeader(url: string) {
   const res = await fetch(url, {
-    headers: { "x-tenant-id": getActiveTenantId() },
+    headers: buildHeaders(),
     credentials: "include",
   });
   if (!res.ok) {
@@ -18,10 +26,7 @@ async function fetchWithTenantHeader(url: string) {
 async function postWithTenantHeader(url: string, data: unknown) {
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-tenant-id": getActiveTenantId(),
-    },
+    headers: buildHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(data),
     credentials: "include",
   });
