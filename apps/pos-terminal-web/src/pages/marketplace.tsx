@@ -902,7 +902,6 @@ export default function MarketplacePage() {
                         <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
                         <div>
                           <span className="text-xs font-bold text-slate-700">{f.label}</span>
-                          <code className="ml-2 text-[10px] text-slate-400 font-mono">{f.code}</code>
                         </div>
                       </div>
                     ))}
@@ -910,15 +909,6 @@ export default function MarketplacePage() {
                 </div>
               )}
 
-              {/* Feature code for standalone features */}
-              {selected.type === "feature" && (
-                <div className="bg-slate-50 rounded-2xl px-4 py-3 mb-5 border border-slate-100">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Feature Code</p>
-                  <code className="text-xs font-mono text-slate-700 font-semibold">
-                    {(selected as FeatureItem).featureCode}
-                  </code>
-                </div>
-              )}
 
               {selectedUnlocked ? (
                 <button
