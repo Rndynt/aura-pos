@@ -299,7 +299,7 @@ app.use((req, res, next) => {
             FOR bad IN
               SELECT id, tenant_id, name, slug, address, phone, is_default, is_active, created_at, updated_at
               FROM outlets
-              WHERE id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+              WHERE id::text !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
             LOOP
               new_uuid := gen_random_uuid()::text;
               -- Insert new row with proper UUID; use temp slug to avoid unique constraint collision
