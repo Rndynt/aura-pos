@@ -147,7 +147,10 @@ export const recordPayment = asyncHandler(async (req: Request, res: Response) =>
 
 /**
  * POST /api/orders/:id/kitchen-ticket
- * Create kitchen ticket
+ * Create kitchen ticket.
+ * Auto-confirms the order if it is still in `draft` status — a draft order
+ * in the Kitchen Display System makes no semantic sense. Stock is deducted
+ * on confirmation (same logic as the dedicated /confirm endpoint).
  */
 export const createKitchenTicket = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.tenantId!;
@@ -167,12 +170,37 @@ export const createKitchenTicket = asyncHandler(async (req: Request, res: Respon
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
+  // Auto-confirm draft orders before creating a kitchen ticket.
+  // Silently skip if the order is already confirmed / in a later state.
+  try {
+    const confirmResult = await container.confirmOrder.execute({ order_id: id, tenant_id: tenantId });
+    if (confirmResult.order.items?.length) {
+      await deductStockForItems(
+        tenantId,
+        confirmResult.order.items.map((item: any) => ({
+          productId: item.productId ?? item.product_id,
+          quantity: item.quantity ?? 1,
+        })),
+        {
+          orderId: id,
+          orderNumber: confirmResult.order.order_number,
+          outletId: req.outletId ?? null,
+        },
+      ).catch(() => {});
+    }
+    emitOrderQueueChanged(tenantId, { source: 'confirm_order', orderId: id });
+  } catch {
+    // Non-fatal — order may already be confirmed or in a later state; proceed to create ticket.
+  }
+
   // Execute use case
   const result = await container.createKitchenTicket.execute({
     order_id: id,
     tenant_id: tenantId,
     priority: parsed.data.priority,
   });
+
+  emitOrderQueueChanged(tenantId, { source: 'kitchen_ticket_created', orderId: id });
 
   res.status(201).json({
     success: true,

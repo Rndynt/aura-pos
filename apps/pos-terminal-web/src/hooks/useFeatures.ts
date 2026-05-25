@@ -6,7 +6,7 @@ export function useFeatures() {
   const features = data?.features || [];
 
   const hasFeature = (code: string): boolean => {
-    if (isLoading) return true;
+    if (isLoading) return false;
     return features.some(f => f.feature_code === code);
   };
 

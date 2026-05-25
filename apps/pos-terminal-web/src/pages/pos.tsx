@@ -1096,7 +1096,28 @@ export default function POSPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 pt-1">
-            {hasKitchenTicket && (
+            {/* Case: both kitchen_ticket + order_queue active → satu aksi gabungan */}
+            {hasKitchenTicket && isOrderQueueEnabled && (
+              <Button
+                className="w-full justify-start gap-3 h-12 bg-orange-500 hover:bg-orange-600 text-white font-bold"
+                data-testid="button-post-save-confirm-and-kitchen"
+                onClick={async () => {
+                  if (postSaveDialog.orderId) {
+                    // handleSendToKitchen → backend auto-confirm + buat KOT + emit SSE
+                    // queue panel update otomatis via SSE invalidation
+                    await handleSendToKitchen(postSaveDialog.orderId);
+                  }
+                  cart.clearCart();
+                  setPostSaveDialog({ open: false, orderId: null });
+                }}
+              >
+                <ChefHat size={18} />
+                Konfirmasi &amp; Kirim ke Dapur
+              </Button>
+            )}
+
+            {/* Case: hanya kitchen_ticket aktif (tanpa queue) */}
+            {hasKitchenTicket && !isOrderQueueEnabled && (
               <Button
                 className="w-full justify-start gap-3 h-12 bg-orange-500 hover:bg-orange-600 text-white font-bold"
                 data-testid="button-post-save-send-kitchen"
@@ -1112,7 +1133,9 @@ export default function POSPage() {
                 Kirim ke Dapur
               </Button>
             )}
-            {isOrderQueueEnabled && (
+
+            {/* Case: hanya order_queue aktif (tanpa kitchen) → konfirmasi ke antrian */}
+            {!hasKitchenTicket && isOrderQueueEnabled && (
               <Button
                 variant="outline"
                 className="w-full justify-start gap-3 h-12 border-slate-200 text-slate-700 font-bold hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
@@ -1129,6 +1152,7 @@ export default function POSPage() {
                 Tambah ke Antrian
               </Button>
             )}
+
             <Button
               variant="ghost"
               className="w-full h-10 text-slate-500 font-medium"
