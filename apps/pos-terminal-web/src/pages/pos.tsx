@@ -60,7 +60,7 @@ export default function POSPage() {
   const isOrderQueueEnabled = hasFeature("order_queue");
   const hasProductVariants = hasFeature("product_variants");
   const hasPairedPrinter = Boolean(bluetoothReceiptPrinter.getPairedDeviceId());
-  const shouldAutoPrintReceipt = hasReceiptPrinter || hasPairedPrinter;
+  const shouldAutoPrintReceipt = hasPairedPrinter; // browser print disabled — only auto-print when BT printer is actually paired
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { isOnline } = useNetworkStatus();
