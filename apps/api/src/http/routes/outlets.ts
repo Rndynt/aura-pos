@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '@pos/infrastructure/database';
-import { outlets, userOutletAssignments, tenantFeatures, insertOutletSchema } from '@shared/schema';
-import { eq, and, count } from 'drizzle-orm';
+import { outlets, userOutletAssignments, tenantFeatures, insertOutletSchema, outletProductConfigs } from '@shared/schema';
+import { eq, and, count, inArray } from 'drizzle-orm';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { z } from 'zod';
 
@@ -164,6 +164,58 @@ router.delete('/:id/staff/:userId', asyncHandler(async (req, res) => {
       ),
     );
   res.json({ success: true });
+}));
+
+// GET /api/outlets/product-configs — get all outlet_product_configs for this tenant
+router.get('/product-configs', asyncHandler(async (req, res) => {
+  const tenantId = req.tenantId!;
+
+  // Get all outlet IDs for this tenant
+  const tenantOutlets = await db
+    .select({ id: outlets.id })
+    .from(outlets)
+    .where(and(eq(outlets.tenantId, tenantId), eq(outlets.isActive, true)));
+
+  if (!tenantOutlets.length) {
+    return res.json({ configs: [] });
+  }
+
+  const outletIds = tenantOutlets.map((o) => o.id);
+
+  const configs = await db
+    .select()
+    .from(outletProductConfigs)
+    .where(inArray(outletProductConfigs.outletId, outletIds));
+
+  res.json({ configs });
+}));
+
+// PUT /api/outlets/:outletId/product-configs/:productId — set product availability at outlet
+router.put('/:outletId/product-configs/:productId', asyncHandler(async (req, res) => {
+  const tenantId = req.tenantId!;
+  const { outletId, productId } = req.params;
+
+  const body = z.object({ isAvailable: z.boolean() }).parse(req.body);
+
+  // Verify the outlet belongs to this tenant
+  const outletRows = await db
+    .select({ id: outlets.id })
+    .from(outlets)
+    .where(and(eq(outlets.id, outletId), eq(outlets.tenantId, tenantId), eq(outlets.isActive, true)))
+    .limit(1);
+
+  if (!outletRows.length) throw createError('Outlet tidak ditemukan', 404);
+
+  const [config] = await db
+    .insert(outletProductConfigs)
+    .values({ outletId, productId, isAvailable: body.isAvailable })
+    .onConflictDoUpdate({
+      target: [outletProductConfigs.outletId, outletProductConfigs.productId],
+      set: { isAvailable: body.isAvailable, updatedAt: new Date() },
+    })
+    .returning();
+
+  res.json({ config });
 }));
 
 export default router;

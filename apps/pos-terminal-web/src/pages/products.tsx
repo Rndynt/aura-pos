@@ -8,11 +8,13 @@ import {
   GripVertical,
   Search,
   X,
+  Store,
 } from "lucide-react";
 import { PageHeader } from "@/components/design";
 import { useProducts, useCreateProduct, useUpdateProduct } from "@/hooks/api/useProducts";
 import { useVariantsLibrary, useCreateOrUpdateVariant, type Variant } from "@/hooks/useVariants";
 import { useCategories, useCreateCategory, useRenameCategory, useDeleteCategory, useReorderCategories } from "@/hooks/api/useCategories";
+import { useOutlets, useOutletProductConfigs, useToggleOutletProductConfig } from "@/hooks/api/useOutlets";
 import ProductForm from "@/components/products/ProductForm";
 import VariantForm from "@/components/products/VariantForm";
 import VariantLibrary from "@/components/products/VariantLibrary";
@@ -54,6 +56,9 @@ export default function ProductsPage() {
   const { data: products = [], isLoading: isLoadingProducts } = useProducts();
   const { data: categories = [] } = useCategories();
   const { data: variants = [], isLoading: isLoadingVariants } = useVariantsLibrary();
+  const { data: outletsData } = useOutlets();
+  const { data: outletConfigsData } = useOutletProductConfigs();
+  const toggleOutletProduct = useToggleOutletProductConfig();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const createOrUpdateVariant = useCreateOrUpdateVariant();
@@ -61,6 +66,32 @@ export default function ProductsPage() {
   const createCategoryMutation = useCreateCategory();
   const deleteCategoryMutation = useDeleteCategory();
   const reorderCategoriesMutation = useReorderCategories();
+
+  const allOutlets = outletsData?.outlets ?? [];
+  const hasMultiOutlet = allOutlets.length > 1;
+
+  // Build a lookup map: `${outletId}:${productId}` → isAvailable (default true if no config)
+  const outletConfigMap = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const cfg of outletConfigsData?.configs ?? []) {
+      map.set(`${cfg.outletId}:${cfg.productId}`, cfg.isAvailable);
+    }
+    return map;
+  }, [outletConfigsData]);
+
+  const [togglingOutletProduct, setTogglingOutletProduct] = useState<Set<string>>(new Set());
+
+  const handleToggleOutletProduct = async (outletId: string, productId: string, current: boolean) => {
+    const key = `${outletId}:${productId}`;
+    setTogglingOutletProduct((prev) => new Set(prev).add(key));
+    try {
+      await toggleOutletProduct.mutateAsync({ outletId, productId, isAvailable: !current });
+    } catch {
+      addToast("Gagal mengubah ketersediaan produk", "error");
+    } finally {
+      setTogglingOutletProduct((prev) => { const n = new Set(prev); n.delete(key); return n; });
+    }
+  };
   
 
   const groupedProducts = useMemo(() => {
@@ -851,6 +882,46 @@ export default function ProductsPage() {
                                       </span>
                                     )}
                                   </div>
+
+                                  {/* Outlet availability chips — only shown when tenant has 2+ outlets */}
+                                  {hasMultiOutlet && (
+                                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                      <Store size={10} className="text-slate-400 flex-shrink-0" />
+                                      {allOutlets.map((outlet) => {
+                                        const key = `${outlet.id}:${product.id}`;
+                                        const isAvailable = outletConfigMap.has(key)
+                                          ? outletConfigMap.get(key)!
+                                          : true;
+                                        const isToggling = togglingOutletProduct.has(key);
+                                        return (
+                                          <button
+                                            key={outlet.id}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleToggleOutletProduct(outlet.id, product.id, isAvailable);
+                                            }}
+                                            disabled={isToggling}
+                                            title={`${outlet.name}: ${isAvailable ? "Tersedia — klik untuk nonaktifkan" : "Tidak tersedia — klik untuk aktifkan"}`}
+                                            data-testid={`outlet-chip-${outlet.id}-${product.id}`}
+                                            className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border transition-all cursor-pointer select-none ${
+                                              isToggling
+                                                ? "opacity-50 cursor-wait"
+                                                : isAvailable
+                                                ? "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                                                : "bg-slate-100 border-slate-200 text-slate-400 hover:bg-slate-200 line-through"
+                                            }`}
+                                          >
+                                            <span
+                                              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                                isAvailable ? "bg-emerald-500" : "bg-slate-300"
+                                              }`}
+                                            />
+                                            {outlet.name}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
