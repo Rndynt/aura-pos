@@ -149,11 +149,11 @@ export const browserPrintProvider = new BrowserPrintProvider();
 /**
  * Returns the best available provider in priority order:
  *  1. Bluetooth (if paired)
- *  2. Browser print (always available as fallback)
+ *  2. null — browser print is disabled; no silent fallback
  */
-export function getActivePrinterProvider(): PrinterProvider {
+export function getActivePrinterProvider(): PrinterProvider | null {
   if (bluetoothPrinterProvider.isAvailable()) return bluetoothPrinterProvider;
-  return browserPrintProvider;
+  return null;
 }
 
 /**

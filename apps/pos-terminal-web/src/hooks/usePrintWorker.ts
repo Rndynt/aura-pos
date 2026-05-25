@@ -47,6 +47,9 @@ export function usePrintWorker({ terminalId, enabled = true }: UsePrintWorkerOpt
 
         const provider = getActivePrinterProvider();
 
+        // No real printer paired — skip auto-print entirely (browser print disabled)
+        if (!provider) return;
+
         for (const job of pending) {
           // Skip jobs that have already failed too many times (manual reprint required)
           if ((job.retryCount ?? 0) >= MAX_AUTO_RETRY) continue;

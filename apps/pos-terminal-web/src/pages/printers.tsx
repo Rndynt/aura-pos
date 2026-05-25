@@ -103,7 +103,7 @@ export default function PrintersPage() {
   const { toast } = useToast();
   const [btState, setBtState] = useState(bluetoothReceiptPrinter.getState());
   const [isBusy, setIsBusy] = useState<string | null>(null);
-  const [activeProvider, setActiveProvider] = useState<PrinterProvider>(getActivePrinterProvider());
+  const [activeProvider, setActiveProvider] = useState<PrinterProvider | null>(getActivePrinterProvider());
 
   const refreshBtState = () => {
     setBtState(bluetoothReceiptPrinter.getState());
