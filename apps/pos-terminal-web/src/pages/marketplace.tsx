@@ -23,7 +23,8 @@ type PlanTier = "free" | "growth" | "pro";
 type TabType = "modul" | "fitur";
 type ModuleKey =
   | "enable_table_management" | "enable_kitchen_ticket" | "enable_loyalty"
-  | "enable_delivery" | "enable_inventory" | "enable_appointments" | "enable_multi_location";
+  | "enable_delivery" | "enable_inventory" | "enable_inventory_advanced"
+  | "enable_appointments" | "enable_multi_location";
 
 /** What feature_codes are BUNDLED inside this module (not sold separately) */
 type ModuleItem = {
@@ -153,18 +154,34 @@ const MODULE_CATALOG: ModuleItem[] = [
     type: "module",
     moduleKey: "enable_inventory",
     moduleConfigKey: "enableInventory",
-    title: "Manajemen Inventori",
+    title: "Stok Dasar",
     category: "Inventori",
-    description: "Stok otomatis berkurang + laporan inventori — satu paket.",
+    description: "Lihat stok per produk, status menipis/habis, & adjust qty.",
     longDesc:
-      "Dua fitur dalam satu: stok otomatis berkurang setiap transaksi, plus laporan pergerakan stok harian dan mingguan. Notifikasi otomatis saat stok hampir habis.",
+      "Fitur stok esensial: aktifkan tracking stok per produk, lihat status stok (aman, menipis, habis) secara real-time, dan lakukan penyesuaian stok langsung. Tersedia di semua paket termasuk Starter.",
     icon: Package,
     iconBg: "bg-amber-100",
     iconColor: "text-amber-600",
+    requiredPlan: "free",
+    bundledFeatures: [],
+  },
+  {
+    type: "module",
+    moduleKey: "enable_inventory_advanced",
+    moduleConfigKey: "enableInventoryAdvanced",
+    title: "Stok Lanjutan",
+    category: "Inventori",
+    description: "Mutasi stok bertipe, riwayat audit trail, & laporan pergerakan.",
+    longDesc:
+      "Melengkapi Stok Dasar dengan fitur profesional: catat mutasi stok dengan tipe (pembelian baru, rusak/terbuang, retur masuk), riwayat lengkap setiap pergerakan, dan laporan audit trail. Stok Dasar harus aktif terlebih dahulu.",
+    icon: PackageSearch,
+    iconBg: "bg-emerald-100",
+    iconColor: "text-emerald-600",
     requiredPlan: "growth",
+    badge: "Growth",
     bundledFeatures: [
-      { code: "inventory_tracking", label: "Tracking Stok Otomatis" },
-      { code: "inventory_reports", label: "Laporan Inventori" },
+      { code: "inventory_tracking", label: "Tracking Otomatis per Transaksi" },
+      { code: "inventory_reports", label: "Laporan Pergerakan Stok" },
     ],
   },
   {

@@ -51,6 +51,7 @@ export const BUSINESS_TYPE_TEMPLATES: Record<BusinessType, BusinessTypeTemplate>
       enable_loyalty: false,
       enable_delivery: true,
       enable_inventory: false,
+      enable_inventory_advanced: false,
       enable_appointments: false,
       enable_multi_location: false,
       config: {
@@ -89,6 +90,7 @@ export const BUSINESS_TYPE_TEMPLATES: Record<BusinessType, BusinessTypeTemplate>
       enable_loyalty: true,
       enable_delivery: false,
       enable_inventory: true,
+      enable_inventory_advanced: true,
       enable_appointments: false,
       enable_multi_location: false,
       config: {
@@ -125,6 +127,7 @@ export const BUSINESS_TYPE_TEMPLATES: Record<BusinessType, BusinessTypeTemplate>
       enable_loyalty: true,
       enable_delivery: true,
       enable_inventory: false,
+      enable_inventory_advanced: false,
       enable_appointments: false,
       enable_multi_location: false,
       config: {
@@ -159,6 +162,7 @@ export const BUSINESS_TYPE_TEMPLATES: Record<BusinessType, BusinessTypeTemplate>
       enable_loyalty: true,
       enable_delivery: false,
       enable_inventory: false,
+      enable_inventory_advanced: false,
       enable_appointments: true,
       enable_multi_location: false,
       config: {
@@ -193,6 +197,7 @@ export const BUSINESS_TYPE_TEMPLATES: Record<BusinessType, BusinessTypeTemplate>
       enable_loyalty: false,
       enable_delivery: false,
       enable_inventory: false,
+      enable_inventory_advanced: false,
       enable_appointments: false,
       enable_multi_location: true,
       config: {

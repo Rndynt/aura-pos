@@ -24,6 +24,7 @@ function mapTenantModuleConfigToDomain(dbConfig: DBTenantModuleConfig): TenantMo
     enable_loyalty: dbConfig.enableLoyalty,
     enable_delivery: dbConfig.enableDelivery,
     enable_inventory: dbConfig.enableInventory,
+    enable_inventory_advanced: dbConfig.enableInventoryAdvanced,
     enable_appointments: dbConfig.enableAppointments,
     enable_multi_location: dbConfig.enableMultiLocation,
     config: dbConfig.config || undefined,
@@ -43,6 +44,7 @@ function mapCreateTenantModuleConfigToDb(domainConfig: CreateTenantModuleConfig)
     enableLoyalty: domainConfig.enable_loyalty,
     enableDelivery: domainConfig.enable_delivery,
     enableInventory: domainConfig.enable_inventory,
+    enableInventoryAdvanced: domainConfig.enable_inventory_advanced,
     enableAppointments: domainConfig.enable_appointments,
     enableMultiLocation: domainConfig.enable_multi_location,
     config: domainConfig.config || undefined,
@@ -61,6 +63,7 @@ function mapUpdateTenantModuleConfigToDb(domainConfig: Partial<TenantModuleConfi
   if (domainConfig.enable_loyalty !== undefined) dbConfig.enableLoyalty = domainConfig.enable_loyalty;
   if (domainConfig.enable_delivery !== undefined) dbConfig.enableDelivery = domainConfig.enable_delivery;
   if (domainConfig.enable_inventory !== undefined) dbConfig.enableInventory = domainConfig.enable_inventory;
+  if (domainConfig.enable_inventory_advanced !== undefined) dbConfig.enableInventoryAdvanced = domainConfig.enable_inventory_advanced;
   if (domainConfig.enable_appointments !== undefined) dbConfig.enableAppointments = domainConfig.enable_appointments;
   if (domainConfig.enable_multi_location !== undefined) dbConfig.enableMultiLocation = domainConfig.enable_multi_location;
   if (domainConfig.config !== undefined) dbConfig.config = domainConfig.config === null ? undefined : domainConfig.config;

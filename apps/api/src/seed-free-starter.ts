@@ -46,6 +46,7 @@ async function run() {
     enableLoyalty: false,
     enableDelivery: false,
     enableInventory: false,
+    enableInventoryAdvanced: false,
     enableAppointments: false,
     enableMultiLocation: false,
   } as any);

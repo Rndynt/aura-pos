@@ -87,7 +87,8 @@ export type TenantModuleConfig = {
   enable_kitchen_ticket: boolean;        // For café/restaurant - kitchen display
   enable_loyalty: boolean;                // Loyalty points program
   enable_delivery: boolean;               // Delivery order management
-  enable_inventory: boolean;              // Stock/inventory tracking
+  enable_inventory: boolean;              // Basic stock tracking (list + simple adjust)
+  enable_inventory_advanced: boolean;     // Advanced: movement types, audit trail, reports
   enable_appointments: boolean;           // For service businesses - appointment scheduling
   enable_multi_location: boolean;         // Multiple locations support
   

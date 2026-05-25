@@ -154,6 +154,7 @@ export const tenantModuleConfigs = pgTable("tenant_module_configs", {
   enableLoyalty: boolean("enable_loyalty").notNull().default(false),
   enableDelivery: boolean("enable_delivery").notNull().default(false),
   enableInventory: boolean("enable_inventory").notNull().default(false),
+  enableInventoryAdvanced: boolean("enable_inventory_advanced").notNull().default(false),
   enableAppointments: boolean("enable_appointments").notNull().default(false),
   enableMultiLocation: boolean("enable_multi_location").notNull().default(false),
   config: json("config"),

@@ -172,6 +172,7 @@ async function seedThamada(createdOrderTypes: any[]) {
     enableLoyalty: false,
     enableDelivery: true,
     enableInventory: false,
+    enableInventoryAdvanced: false,
     enableAppointments: false,
     enableMultiLocation: false,
   } as InsertTenantModuleConfig);
@@ -448,6 +449,7 @@ async function seedNusantara(createdOrderTypes: any[]) {
     enableLoyalty: false,
     enableDelivery: false,
     enableInventory: false,
+    enableInventoryAdvanced: false,
     enableAppointments: false,
     enableMultiLocation: false,
   } as InsertTenantModuleConfig);
@@ -699,6 +701,7 @@ async function seedFreeStarter(createdOrderTypes: any[]) {
     enableLoyalty: false,
     enableDelivery: false,
     enableInventory: false,
+    enableInventoryAdvanced: false,
     enableAppointments: false,
     enableMultiLocation: false,
   } as InsertTenantModuleConfig);

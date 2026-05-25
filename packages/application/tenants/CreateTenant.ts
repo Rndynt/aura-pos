@@ -44,6 +44,7 @@ type RepositoryCreateModuleConfigInput = {
   enable_loyalty: boolean;
   enable_delivery: boolean;
   enable_inventory: boolean;
+  enable_inventory_advanced: boolean;
   enable_appointments: boolean;
   enable_multi_location: boolean;
   config?: Record<string, any>;
@@ -172,6 +173,7 @@ export class CreateTenant {
         enable_loyalty: template.moduleConfig.enable_loyalty,
         enable_delivery: template.moduleConfig.enable_delivery,
         enable_inventory: template.moduleConfig.enable_inventory,
+        enable_inventory_advanced: template.moduleConfig.enable_inventory_advanced,
         enable_appointments: template.moduleConfig.enable_appointments,
         enable_multi_location: template.moduleConfig.enable_multi_location,
         config: template.moduleConfig.config,

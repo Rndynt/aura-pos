@@ -388,7 +388,8 @@ export default function StockPage() {
   const [, setLocation] = useLocation();
   const { tenantId } = useTenant();
   const { data: profile } = useTenantProfile(tenantId);
-  const isAdvanced = profile?.moduleConfig?.enable_inventory === true;
+  const isBasic = profile?.moduleConfig?.enable_inventory === true;
+  const isAdvanced = profile?.moduleConfig?.enable_inventory_advanced === true;
 
   const { data, isLoading, refetch, isFetching } = useStockProducts();
   const items = data?.data.items ?? [];
@@ -532,12 +533,12 @@ export default function StockPage() {
             </div>
           </div>
 
-          {/* Free vs Paid notice */}
+          {/* Tier notice */}
           {!isAdvanced && (
             <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-center gap-2">
               <Lock size={13} className="text-amber-500 flex-shrink-0" />
               <p className="text-xs text-amber-700 flex-1">
-                <span className="font-bold">Mode Dasar:</span> Adjust stok langsung aktif. Aktifkan <span className="font-bold">Advanced Inventory</span> untuk catat tipe pergerakan + riwayat lengkap.
+                <span className="font-bold">Stok Dasar aktif.</span> Aktifkan <span className="font-bold">Stok Lanjutan</span> untuk catat tipe mutasi (pembelian, rusak, retur) + riwayat audit trail.
               </p>
               <button
                 onClick={() => setLocation("/marketplace")}

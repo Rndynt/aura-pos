@@ -26,13 +26,22 @@ const router = Router();
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-async function isAdvancedInventoryEnabled(tenantId: string): Promise<boolean> {
+async function isBasicInventoryEnabled(tenantId: string): Promise<boolean> {
   const rows = await db
     .select({ enableInventory: tenantModuleConfigs.enableInventory })
     .from(tenantModuleConfigs)
     .where(eq(tenantModuleConfigs.tenantId, tenantId))
     .limit(1);
   return rows[0]?.enableInventory === true;
+}
+
+async function isAdvancedInventoryEnabled(tenantId: string): Promise<boolean> {
+  const rows = await db
+    .select({ enableInventoryAdvanced: tenantModuleConfigs.enableInventoryAdvanced })
+    .from(tenantModuleConfigs)
+    .where(eq(tenantModuleConfigs.tenantId, tenantId))
+    .limit(1);
+  return rows[0]?.enableInventoryAdvanced === true;
 }
 
 const MOVEMENT_TYPES = [
@@ -45,15 +54,19 @@ const MOVEMENT_TYPES = [
   'INITIAL',
 ] as const;
 
-// ── FREE ──────────────────────────────────────────────────────────────────────
+// ── STOK DASAR (basic) ────────────────────────────────────────────────────────
 
 /**
  * GET /api/inventory/products
  * List all products with stock_tracking_enabled = true.
  * Returns current stock qty, sku, low-stock flag (threshold < 10 default).
+ * Requires: enable_inventory (Stok Dasar)
  */
 router.get('/products', asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
+  if (!(await isBasicInventoryEnabled(tenantId))) {
+    throw createError('Fitur ini memerlukan modul Stok Dasar. Aktifkan dari Marketplace.', 403, 'MODULE_REQUIRED');
+  }
   const LOW_STOCK_THRESHOLD = 10;
 
   const rows = await db
@@ -96,10 +109,13 @@ router.get('/products', asyncHandler(async (req, res) => {
 /**
  * PUT /api/inventory/products/:id/adjust
  * Simple direct adjustment — langsung update stock_qty.
- * Free tier. Juga catat movement jika advanced inventory aktif.
+ * Requires: enable_inventory (Stok Dasar). Also logs movement if Stok Lanjutan aktif.
  */
 router.put('/products/:id/adjust', asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
+  if (!(await isBasicInventoryEnabled(tenantId))) {
+    throw createError('Fitur ini memerlukan modul Stok Dasar. Aktifkan dari Marketplace.', 403, 'MODULE_REQUIRED');
+  }
   const productId = req.params.id;
 
   const body = z.object({
@@ -144,7 +160,7 @@ router.put('/products/:id/adjust', asyncHandler(async (req, res) => {
   res.json({ success: true, data: { productId, before, after, delta: after - before } });
 }));
 
-// ── PAID (advanced inventory) ─────────────────────────────────────────────────
+// ── STOK LANJUTAN (advanced) ──────────────────────────────────────────────────
 
 /**
  * POST /api/inventory/movements

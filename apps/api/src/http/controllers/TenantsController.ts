@@ -244,6 +244,7 @@ export const updateModuleConfig = asyncHandler(async (req: Request, res: Respons
     enableLoyalty: z.boolean().optional(),
     enableDelivery: z.boolean().optional(),
     enableInventory: z.boolean().optional(),
+    enableInventoryAdvanced: z.boolean().optional(),
     enableAppointments: z.boolean().optional(),
     enableMultiLocation: z.boolean().optional(),
   });
@@ -254,6 +255,16 @@ export const updateModuleConfig = asyncHandler(async (req: Request, res: Respons
   }
 
   const updates = parsed.data;
+
+  // Dependency enforcement:
+  // - Enabling Stok Lanjutan (advanced) auto-enables Stok Dasar (basic)
+  // - Disabling Stok Dasar (basic) auto-disables Stok Lanjutan (advanced)
+  if (updates.enableInventoryAdvanced === true) {
+    updates.enableInventory = true;
+  }
+  if (updates.enableInventory === false) {
+    updates.enableInventoryAdvanced = false;
+  }
 
   const existing = await db
     .select()

@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { emitOrderQueueChanged, subscribeOrderQueue } from '../services/orderQueueEvents';
+import { deductStockForItems, reverseStockForItems, STOCK_DEDUCTED_STATES } from '../helpers/stockDeduction';
 
 /**
  * GET /api/orders/queue/stream
@@ -360,6 +361,19 @@ export const confirmOrder = asyncHandler(async (req: Request, res: Response) => 
     tenant_id: tenantId,
   });
 
+  // Deduct stock for tracked products — stock decreases on CONFIRMATION, not on payment
+  if (result.order.items?.length) {
+    await deductStockForItems(
+      tenantId,
+      result.order.items.map((item: any) => ({
+        productId: item.productId ?? item.product_id,
+        quantity: item.quantity ?? 1,
+      })),
+      result.order.id,
+      result.order.order_number,
+    ).catch(() => {}); // Non-fatal — stock deduction must not block order flow
+  }
+
   emitOrderQueueChanged(tenantId, { source: 'confirm_order', orderId: result.order.id });
 
   res.status(200).json({
@@ -504,12 +518,32 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
+  // Fetch order BEFORE cancellation to know its current status and items
+  const orderBeforeCancel = await container.orderRepository.findById(id, tenantId);
+
   // Execute use case
   const result = await container.cancelOrder.execute({
     order_id: id,
     tenant_id: tenantId,
     cancellation_reason: parsed.data.cancellation_reason,
   });
+
+  // Reverse stock if order was in a state where stock had already been deducted
+  if (
+    orderBeforeCancel &&
+    STOCK_DEDUCTED_STATES.has(orderBeforeCancel.status) &&
+    orderBeforeCancel.items?.length
+  ) {
+    await reverseStockForItems(
+      tenantId,
+      orderBeforeCancel.items.map((item: any) => ({
+        productId: item.productId ?? item.product_id,
+        quantity: item.quantity ?? 1,
+      })),
+      id,
+      orderBeforeCancel.order_number,
+    ).catch(() => {}); // Non-fatal — stock reversal must not block cancel flow
+  }
 
   emitOrderQueueChanged(tenantId, { source: 'cancel_order', orderId: result.order.id });
 
