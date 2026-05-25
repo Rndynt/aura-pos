@@ -16,11 +16,11 @@ export interface CreateKitchenTicketOutput {
 }
 
 export interface IOrderRepository {
-  findById(orderId: string): Promise<Order | null>;
+  findById(orderId: string, tenantId: string): Promise<Order | null>;
 }
 
 export interface IKitchenTicketRepository {
-  create(ticket: Omit<KitchenTicket, 'id' | 'created_at'>): Promise<KitchenTicket>;
+  create(ticket: Omit<KitchenTicket, 'id' | 'created_at'>, tenantId: string): Promise<KitchenTicket>;
   generateTicketNumber(tenantId: string): Promise<string>;
 }
 
@@ -32,7 +32,7 @@ export class CreateKitchenTicket {
 
   async execute(input: CreateKitchenTicketInput): Promise<CreateKitchenTicketOutput> {
     try {
-      const order = await this.orderRepository.findById(input.order_id);
+      const order = await this.orderRepository.findById(input.order_id, input.tenant_id);
       if (!order) {
         throw new Error('Order not found');
       }
@@ -68,7 +68,7 @@ export class CreateKitchenTicket {
         status: 'pending',
       };
 
-      const createdTicket = await this.kitchenTicketRepository.create(ticket);
+      const createdTicket = await this.kitchenTicketRepository.create(ticket, input.tenant_id);
 
       return {
         ticket: createdTicket,
