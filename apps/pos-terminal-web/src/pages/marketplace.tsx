@@ -10,7 +10,7 @@ import { getActiveTenantId } from "@/lib/tenant";
 import { PageHeader } from "@/components/design";
 import {
   Crown, Sparkles, ChevronRight, X, Zap,
-  ToggleLeft, ToggleRight, Lock, Info, CheckCircle2,
+  ToggleLeft, ToggleRight, Lock, Info, CheckCircle2, ShieldCheck,
   LayoutGrid, ChefHat, Heart, Truck, CalendarDays, Package, MapPin,
   Layers, SplitSquareVertical, Tag, ClipboardList, Printer, QrCode,
   BarChart3, PieChart, Globe, Webhook, CalendarClock, Bell, PackageSearch,
@@ -44,6 +44,8 @@ type ModuleItem = {
   /** Feature codes that are part of this module bundle */
   bundledFeatures: Array<{ code: string; label: string }>;
   comingSoon?: boolean;
+  /** Core items are always active and cannot be deactivated */
+  isCore?: boolean;
 };
 
 type FeatureItem = {
@@ -59,6 +61,8 @@ type FeatureItem = {
   category: string;
   badge?: string;
   comingSoon?: boolean;
+  /** Core items are always active and cannot be deactivated */
+  isCore?: boolean;
 };
 
 type CatalogItem = ModuleItem | FeatureItem;
@@ -164,6 +168,7 @@ const MODULE_CATALOG: ModuleItem[] = [
     iconColor: "text-amber-600",
     requiredPlan: "free",
     bundledFeatures: [],
+    isCore: true,
   },
   {
     type: "module",
@@ -254,6 +259,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Cetak struk thermal ke pelanggan saat transaksi selesai.",
     longDesc: "Integrasi printer thermal untuk struk pelanggan. Struk mencakup item, harga, diskon, pajak, metode bayar, dan info toko.",
     icon: Printer, iconBg: "bg-slate-100", iconColor: "text-slate-600", requiredPlan: "free",
+    isCore: true,
   },
   {
     type: "feature", featureCode: "label_printer",
@@ -278,6 +284,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     description: "Ringkasan omzet harian, mingguan, dan bulanan dengan export.",
     longDesc: "Laporan penjualan lengkap: omzet per periode, produk terlaris, metode pembayaran, dan tren penjualan. Export ke PDF atau Excel.",
     icon: BarChart3, iconBg: "bg-blue-100", iconColor: "text-blue-600", requiredPlan: "free",
+    isCore: true,
   },
   {
     type: "feature", featureCode: "analytics_dashboard",
@@ -352,10 +359,12 @@ function ModuleCard({
   isToggling: boolean; onToggle: () => void; onSelect: () => void;
 }) {
   const comingSoon = item.comingSoon;
+  const isCore = item.isCore;
+  const effectiveActive = isCore ? true : isActive;
   return (
     <div className={`bg-white rounded-2xl border-2 transition-all duration-200 overflow-hidden relative ${
       comingSoon ? "border-slate-100"
-      : isActive ? "border-emerald-300 shadow-md shadow-emerald-50"
+      : effectiveActive ? "border-emerald-300 shadow-md shadow-emerald-50"
       : unlocked ? "border-slate-200 hover:border-slate-300 hover:shadow-md"
       : "border-slate-100 opacity-60"
     }`}>
@@ -376,18 +385,18 @@ function ModuleCard({
           </div>
           <div className="flex items-center gap-1.5">
             {/* Active status badge — prominent green pill */}
-            {isActive && !comingSoon && (
+            {effectiveActive && !comingSoon && (
               <span className="flex items-center gap-1 text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-full">
                 <CheckCircle2 size={9} /> Aktif
               </span>
             )}
-            {item.badge && !isActive && (
+            {item.badge && !effectiveActive && (
               <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
                 item.badge === "Pro" ? "bg-violet-50 text-violet-600 border-violet-200"
                 : "bg-orange-50 text-orange-600 border-orange-200"
               }`}>{item.badge}</span>
             )}
-            {!unlocked && !comingSoon && <Lock size={11} className="text-slate-300" />}
+            {!unlocked && !comingSoon && !isCore && <Lock size={11} className="text-slate-300" />}
           </div>
         </div>
         <h3 className="font-black text-slate-800 text-sm mb-1">{item.title}</h3>
@@ -407,7 +416,7 @@ function ModuleCard({
       </button>
 
       <div className={`px-4 py-3 flex items-center justify-between border-t ${
-        isActive && !comingSoon ? "bg-emerald-50/50 border-emerald-100" : "bg-slate-50/50 border-slate-100"
+        effectiveActive && !comingSoon ? "bg-emerald-50/50 border-emerald-100" : "bg-slate-50/50 border-slate-100"
       }`}>
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
           item.requiredPlan === "free" ? "bg-slate-100 text-slate-500"
@@ -418,6 +427,10 @@ function ModuleCard({
         </span>
         {comingSoon ? (
           <span className="text-[10px] font-bold text-slate-400 italic">Coming soon</span>
+        ) : isCore ? (
+          <span className="flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+            <ShieldCheck size={10} /> Inti Sistem
+          </span>
         ) : unlocked ? (
           <button
             onClick={(e) => { e.stopPropagation(); onToggle(); }}
@@ -453,10 +466,12 @@ function FeatureCard({
   isToggling: boolean; onToggle: () => void; onSelect: () => void;
 }) {
   const comingSoon = item.comingSoon;
+  const isCore = item.isCore;
+  const effectiveActive = isCore ? true : isActive;
   return (
     <div className={`bg-white rounded-2xl border-2 transition-all duration-200 overflow-hidden relative ${
       comingSoon ? "border-slate-100"
-      : isActive ? "border-emerald-300 shadow-md shadow-emerald-50"
+      : effectiveActive ? "border-emerald-300 shadow-md shadow-emerald-50"
       : unlocked ? "border-slate-200 hover:border-slate-300 hover:shadow-md"
       : "border-slate-100 opacity-60"
     }`}>
@@ -477,26 +492,26 @@ function FeatureCard({
           </div>
           <div className="flex items-center gap-1.5">
             {/* Active status badge — prominent green pill */}
-            {isActive && !comingSoon && (
+            {effectiveActive && !comingSoon && (
               <span className="flex items-center gap-1 text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-full">
                 <CheckCircle2 size={9} /> Aktif
               </span>
             )}
-            {item.badge && !isActive && (
+            {item.badge && !effectiveActive && (
               <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
                 item.badge === "Pro" ? "bg-violet-50 text-violet-600 border-violet-200"
                 : item.badge === "Baru" ? "bg-emerald-50 text-emerald-600 border-emerald-200"
                 : "bg-orange-50 text-orange-600 border-orange-200"
               }`}>{item.badge}</span>
             )}
-            {!unlocked && !comingSoon && <Lock size={11} className="text-slate-300" />}
+            {!unlocked && !comingSoon && !isCore && <Lock size={11} className="text-slate-300" />}
           </div>
         </div>
         <h3 className="font-black text-slate-800 text-sm mb-1">{item.title}</h3>
         <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">{item.description}</p>
       </button>
       <div className={`px-4 py-3 flex items-center justify-between border-t ${
-        isActive && !comingSoon ? "bg-emerald-50/50 border-emerald-100" : "bg-slate-50/50 border-slate-100"
+        effectiveActive && !comingSoon ? "bg-emerald-50/50 border-emerald-100" : "bg-slate-50/50 border-slate-100"
       }`}>
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
           item.requiredPlan === "free" ? "bg-slate-100 text-slate-500"
@@ -507,6 +522,10 @@ function FeatureCard({
         </span>
         {comingSoon ? (
           <span className="text-[10px] font-bold text-slate-400 italic">Coming soon</span>
+        ) : isCore ? (
+          <span className="flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+            <ShieldCheck size={10} /> Inti Sistem
+          </span>
         ) : unlocked ? (
           <button
             onClick={(e) => { e.stopPropagation(); onToggle(); }}
@@ -604,6 +623,7 @@ export default function MarketplacePage() {
   };
 
   const handleToggle = async (item: CatalogItem) => {
+    if (item.isCore) return;
     if (!canActivate(item)) { setShowPlans(true); return; }
 
     const key = item.type === "module"
@@ -927,7 +947,12 @@ export default function MarketplacePage() {
               )}
 
 
-              {selectedUnlocked ? (
+              {selected.isCore ? (
+                <div className="w-full py-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center gap-2">
+                  <ShieldCheck size={16} className="text-emerald-600" />
+                  <span className="text-sm font-black text-emerald-700">Fitur Inti — Selalu Aktif</span>
+                </div>
+              ) : selectedUnlocked ? (
                 <button
                   onClick={() => handleToggle(selected)}
                   disabled={toggling === selectedTogglingKey}

@@ -48,6 +48,7 @@ export interface CreateAndPayOrderItemInput {
 
 export interface CreateAndPayOrderInput {
   tenant_id: string;
+  outlet_id?: string | null;
   // Order fields
   items: CreateAndPayOrderItemInput[];
   order_type_id?: string;
@@ -81,6 +82,7 @@ export class CreateAndPayOrder {
   async execute(input: CreateAndPayOrderInput): Promise<CreateAndPayOrderOutput> {
     const {
       tenant_id,
+      outlet_id,
       items,
       order_type_id,
       customer_name,
@@ -298,65 +300,57 @@ export class CreateAndPayOrder {
         .where(and(eq(orders.id, newOrder.id), eq(orders.tenantId, tenant_id)))
         .returning();
 
-      // 6. Stock deduction + movement ledger for tracked products
-      // Deducts stockQty directly on the products table (Stok Dasar).
-      // Also records an audit movement (for Stok Lanjutan reporting).
-      if (computedItems.length > 0) {
-        const productIds = [...new Set(computedItems.map((i: any) => i.product_id).filter(Boolean))];
+      return { order: updatedOrder, payment: newPayment };
+    });
 
-        if (productIds.length > 0) {
-          // Fetch only products with stock tracking enabled
-          const trackedProducts = await tx
-            .select({ id: products.id, stockQty: products.stockQty })
-            .from(products)
-            .where(
-              and(
-                eq(products.tenantId, tenant_id),
-                inArray(products.id, productIds),
-                eq(products.stockTrackingEnabled, true),
-              ),
-            );
+    // Stock deduction runs AFTER the transaction is committed.
+    // create-and-pay creates the order as "confirmed" directly, so stock
+    // must be deducted here. outletId is tagged on movements for per-outlet
+    // sales reporting while the stock pool remains global (shared across outlets).
+    if (computedItems.length > 0) {
+      const productIds = [...new Set(computedItems.map((i: any) => i.product_id).filter(Boolean))];
+      if (productIds.length > 0) {
+        const trackedProducts = await this.db
+          .select({ id: products.id, stockQty: products.stockQty })
+          .from(products)
+          .where(and(
+            eq(products.tenantId, tenant_id),
+            inArray(products.id, productIds),
+            eq(products.stockTrackingEnabled, true),
+          ));
 
-          if (trackedProducts.length > 0) {
-            // Aggregate sold qty per product (handles duplicates in cart)
-            const soldQtyMap: Record<string, number> = {};
-            for (const item of computedItems as any[]) {
-              if (item.product_id) {
-                soldQtyMap[item.product_id] = (soldQtyMap[item.product_id] ?? 0) + (item.quantity ?? 1);
-              }
+        if (trackedProducts.length > 0) {
+          const soldQtyMap: Record<string, number> = {};
+          for (const item of computedItems as any[]) {
+            if (item.product_id) {
+              soldQtyMap[item.product_id] = (soldQtyMap[item.product_id] ?? 0) + (item.quantity ?? 1);
             }
-
-            for (const product of trackedProducts) {
-              const soldQty = soldQtyMap[product.id] ?? 0;
-              if (soldQty === 0) continue;
-
-              const before = product.stockQty ?? 0;
-              const after = before - soldQty;
-
-              // Deduct stock — this is the core of Stok Dasar
-              await tx
-                .update(products)
-                .set({ stockQty: after, updatedAt: new Date() })
-                .where(and(eq(products.id, product.id), eq(products.tenantId, tenant_id)));
-
-              // Record movement for audit trail (best-effort — non-fatal)
-              await tx.insert(inventoryMovements).values({
-                tenantId: tenant_id,
-                productId: product.id,
-                orderId: newOrder.id,
-                movementType: 'SALE',
-                quantityDelta: -soldQty,
-                quantityBefore: before,
-                quantityAfter: after,
-                notes: `Penjualan — Order ${orderNumber}`,
-              }).catch(() => {});
-            }
+          }
+          const orderLabel = result.order.orderNumber ?? result.order.order_number;
+          for (const product of trackedProducts) {
+            const soldQty = soldQtyMap[product.id] ?? 0;
+            if (soldQty === 0) continue;
+            const before = product.stockQty ?? 0;
+            const after = before - soldQty;
+            await this.db
+              .update(products)
+              .set({ stockQty: after, updatedAt: new Date() })
+              .where(and(eq(products.id, product.id), eq(products.tenantId, tenant_id)));
+            await this.db.insert(inventoryMovements).values({
+              tenantId: tenant_id,
+              productId: product.id,
+              orderId: result.order.id,
+              outletId: outlet_id ?? null,
+              movementType: 'SALE',
+              quantityDelta: -soldQty,
+              quantityBefore: before,
+              quantityAfter: after,
+              notes: `Penjualan — Order ${orderLabel}`,
+            }).catch(() => {});
           }
         }
       }
-
-      return { order: updatedOrder, payment: newPayment };
-    });
+    }
 
     return {
       order: result.order,

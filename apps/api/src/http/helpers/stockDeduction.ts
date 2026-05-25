@@ -21,16 +21,25 @@ export interface StockItem {
   quantity: number;
 }
 
+export interface StockContext {
+  orderId?: string;
+  orderNumber?: string;
+  /** Tag movement to a specific outlet for per-outlet reporting (global pool remains shared) */
+  outletId?: string | null;
+}
+
 /**
  * Deducts stock for each tracked item.
  * Call after order is confirmed.
+ * outletId is recorded on the movement for per-outlet sales reporting,
+ * but stock itself is a global shared pool across all outlets.
  */
 export async function deductStockForItems(
   tenantId: string,
   items: StockItem[],
-  orderId?: string,
-  orderNumber?: string,
+  ctx: StockContext = {},
 ): Promise<void> {
+  const { orderId, orderNumber, outletId } = ctx;
   if (!items.length) return;
 
   const productIds = [...new Set(items.map((i) => i.productId).filter(Boolean))];
@@ -72,6 +81,7 @@ export async function deductStockForItems(
       tenantId,
       productId: product.id,
       orderId: orderId ?? null,
+      outletId: outletId ?? null,
       movementType: 'SALE',
       quantityDelta: -soldQty,
       quantityBefore: before,
@@ -85,13 +95,14 @@ export async function deductStockForItems(
  * Restores stock for each tracked item.
  * Call after order is cancelled (only when the order was already in a
  * post-confirmation state so stock was previously deducted).
+ * outletId is tagged on the movement for reporting consistency.
  */
 export async function reverseStockForItems(
   tenantId: string,
   items: StockItem[],
-  orderId?: string,
-  orderNumber?: string,
+  ctx: StockContext = {},
 ): Promise<void> {
+  const { orderId, orderNumber, outletId } = ctx;
   if (!items.length) return;
 
   const productIds = [...new Set(items.map((i) => i.productId).filter(Boolean))];
@@ -133,6 +144,7 @@ export async function reverseStockForItems(
       tenantId,
       productId: product.id,
       orderId: orderId ?? null,
+      outletId: outletId ?? null,
       movementType: 'RETURN',
       quantityDelta: returnQty,
       quantityBefore: before,

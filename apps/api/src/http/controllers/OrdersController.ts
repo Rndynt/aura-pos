@@ -369,8 +369,11 @@ export const confirmOrder = asyncHandler(async (req: Request, res: Response) => 
         productId: item.productId ?? item.product_id,
         quantity: item.quantity ?? 1,
       })),
-      result.order.id,
-      result.order.order_number,
+      {
+        orderId: result.order.id,
+        orderNumber: result.order.order_number,
+        outletId: req.outletId ?? null,
+      },
     ).catch(() => {}); // Non-fatal — stock deduction must not block order flow
   }
 
@@ -540,8 +543,11 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
         productId: item.productId ?? item.product_id,
         quantity: item.quantity ?? 1,
       })),
-      id,
-      orderBeforeCancel.order_number,
+      {
+        orderId: id,
+        orderNumber: orderBeforeCancel.order_number,
+        outletId: req.outletId ?? null,
+      },
     ).catch(() => {}); // Non-fatal — stock reversal must not block cancel flow
   }
 
@@ -709,6 +715,7 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
   // Execute via dedicated use case (single DB transaction – P0.2)
   const result = await container.createAndPayOrder.execute({
     tenant_id: tenantId,
+    outlet_id: req.outletId ?? null,
     items: parsed.data.items,
     order_type_id: parsed.data.order_type_id,
     customer_name: parsed.data.customer_name,
