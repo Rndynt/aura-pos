@@ -577,11 +577,15 @@ Make AuraPoS a production-grade offline-first POS PWA that remains usable by cas
 - [ ] Dine-in POS table selector wired to `useOfflineTables` (remaining small step).
 - [ ] `attachRole` mounted in API router + routes protected.
 
-### Sprint 8 — Inventory Ledger
+### Sprint 8 — Inventory Ledger ✅
 
-- [ ] `inventory_movements` wired for all payment paths.
-- [ ] `inventory_items` table + endpoints.
-- [ ] Movement report endpoint.
+- [x] `inventory_movements` wired for all payment paths (SALE via CreateAndPayOrder + OrdersController, OFFLINE_SALE via SyncOfflineOrder, RETURN on cancellation, ADJUSTMENT_IN/OUT on manual adjust).
+- [x] `OFFLINE_SALE` movement type added to enum and frontend labels.
+- [x] Movement report endpoint `GET /api/inventory/report` — top 10 terlaku, breakdown tipe, nilai stok, unit terjual (period: 7/30/90 hari).
+- [x] Movement filtering + pagination `GET /api/inventory/movements?type=&dateFrom=&dateTo=&limit=&offset=`.
+- [x] `actorId` captured in manual adjustment routes.
+- [x] Frontend `/stock` — Tab "Laporan" dengan summary cards, top produk terlaku, breakdown tipe.
+- [x] Frontend `/stock` — Tab "Riwayat" dengan filter tipe chip (9 tipe).
 
 ### Sprint 9 — Void and Refund
 

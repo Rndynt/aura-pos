@@ -14,6 +14,12 @@ import {
   Search,
   RefreshCw,
   ClipboardList,
+  BarChart2,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  ShoppingCart,
+  Filter,
 } from "lucide-react";
 import { PageHeader } from "@/components/design";
 import {
@@ -22,8 +28,10 @@ import {
   useInventoryMovements,
   useProductMovements,
   useCreateMovement,
+  useInventoryReport,
   MOVEMENT_TYPE_LABELS,
   type StockProduct,
+  type MovementsFilter,
 } from "@/hooks/api/useInventory";
 import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import { useTenant } from "@/context/TenantContext";
@@ -272,10 +280,29 @@ function ProductHistoryDrawer({ product, onClose }: { product: StockProduct; onC
   );
 }
 
+const ALL_MOVEMENT_FILTER_OPTIONS = [
+  { value: "", label: "Semua Tipe" },
+  { value: "SALE", label: "Terjual" },
+  { value: "OFFLINE_SALE", label: "Offline" },
+  { value: "ADJUSTMENT_IN", label: "Tambah" },
+  { value: "ADJUSTMENT_OUT", label: "Kurang" },
+  { value: "PURCHASE", label: "Pembelian" },
+  { value: "DAMAGE", label: "Rusak" },
+  { value: "RETURN", label: "Retur" },
+  { value: "INITIAL", label: "Awal" },
+];
+
 // ── All Movements Tab ─────────────────────────────────────────────────────────
 function AllMovementsTab() {
-  const { data, isLoading, refetch, isFetching } = useInventoryMovements();
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+
+  const filters: MovementsFilter = useMemo(() => ({
+    ...(typeFilter ? { type: typeFilter } : {}),
+    limit: 100,
+  }), [typeFilter]);
+
+  const { data, isLoading, refetch, isFetching } = useInventoryMovements(filters);
   const movements = data?.data.movements ?? [];
 
   const filtered = useMemo(() =>
@@ -290,6 +317,7 @@ function AllMovementsTab() {
 
   return (
     <div className="space-y-3">
+      {/* Search + refresh */}
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -310,11 +338,30 @@ function AllMovementsTab() {
         </button>
       </div>
 
+      {/* Type filter chips */}
+      <div className="flex gap-1.5 flex-wrap">
+        <Filter size={12} className="text-slate-400 self-center flex-shrink-0" />
+        {ALL_MOVEMENT_FILTER_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setTypeFilter(opt.value)}
+            data-testid={`filter-type-${opt.value || "all"}`}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all ${
+              typeFilter === opt.value
+                ? "bg-blue-600 text-white border-blue-600"
+                : "bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:text-blue-600"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       {isLoading ? (
         <div className="text-center py-12 text-slate-400 text-sm">Memuat riwayat...</div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-slate-400 text-sm">
-          {search ? "Tidak ada hasil" : "Belum ada riwayat pergerakan stok"}
+          {search || typeFilter ? "Tidak ada hasil sesuai filter" : "Belum ada riwayat pergerakan stok"}
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -361,6 +408,161 @@ function AllMovementsTab() {
   );
 }
 
+// ── Laporan Tab ───────────────────────────────────────────────────────────────
+function LaporanTab() {
+  const [period, setPeriod] = useState(30);
+  const { data, isLoading } = useInventoryReport(period);
+  const report = data?.data;
+
+  const formatIDRLocal = (v: number) =>
+    new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(v);
+
+  const PERIOD_OPTIONS = [
+    { value: 7, label: "7 Hari" },
+    { value: 30, label: "30 Hari" },
+    { value: 90, label: "90 Hari" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Period selector */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-bold text-slate-500">Periode:</span>
+        <div className="flex gap-1">
+          {PERIOD_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setPeriod(opt.value)}
+              data-testid={`period-${opt.value}`}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                period === opt.value
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-white text-slate-500 border-slate-200 hover:border-blue-300"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="text-center py-16 text-slate-400 text-sm">Memuat laporan...</div>
+      ) : !report ? (
+        <div className="text-center py-16 text-slate-400 text-sm">Gagal memuat laporan</div>
+      ) : (
+        <>
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
+              <div className="flex items-center gap-2 mb-1.5">
+                <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <ShoppingCart size={13} className="text-blue-600" />
+                </div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Unit Terjual</span>
+              </div>
+              <p className="text-2xl font-black text-slate-800" data-testid="text-total-units-sold">
+                {report.salesSummary.totalUnitsSold.toLocaleString("id-ID")}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">dari {report.salesSummary.totalOrders} transaksi</p>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
+              <div className="flex items-center gap-2 mb-1.5">
+                <div className="w-7 h-7 bg-emerald-100 rounded-lg flex items-center justify-center">
+                  <DollarSign size={13} className="text-emerald-600" />
+                </div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Nilai Stok</span>
+              </div>
+              <p className="text-lg font-black text-slate-800 truncate" data-testid="text-stock-value">
+                {formatIDRLocal(report.stockValue.totalValue)}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">{report.stockValue.totalUnits} unit tersisa ({report.stockValue.totalTracked} produk)</p>
+            </div>
+          </div>
+
+          {/* Top 10 produk terlaku */}
+          {report.topSold.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+                <TrendingUp size={14} className="text-emerald-600" />
+                <h3 className="font-bold text-slate-700 text-sm">Top Produk Terlaku</h3>
+                <span className="text-[10px] text-slate-400">({period} hari terakhir)</span>
+              </div>
+              <div className="divide-y divide-slate-50">
+                {report.topSold.map((item, idx) => (
+                  <div key={item.productId} className="px-4 py-2.5 flex items-center gap-3" data-testid={`top-sold-${item.productId}`}>
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 ${
+                      idx === 0 ? "bg-amber-400 text-white" :
+                      idx === 1 ? "bg-slate-300 text-slate-700" :
+                      idx === 2 ? "bg-orange-300 text-white" :
+                      "bg-slate-100 text-slate-500"
+                    }`}>{idx + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-slate-700 truncate text-sm">{item.productName}</p>
+                      <p className="text-[10px] text-slate-400">{item.category}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="font-black text-slate-800 text-sm">{item.totalSold}</p>
+                      <p className="text-[10px] text-slate-400">unit</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Movement breakdown */}
+          {report.movementBreakdown.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+                <BarChart2 size={14} className="text-blue-600" />
+                <h3 className="font-bold text-slate-700 text-sm">Breakdown Pergerakan</h3>
+                <span className="text-[10px] text-slate-400">({period} hari terakhir)</span>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-xs text-slate-500 font-bold">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Tipe</th>
+                    <th className="px-4 py-2 text-center">Transaksi</th>
+                    <th className="px-4 py-2 text-center text-emerald-600">Masuk</th>
+                    <th className="px-4 py-2 text-center text-red-500">Keluar</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {report.movementBreakdown.map((row) => {
+                    const meta = MOVEMENT_TYPE_LABELS[row.movementType] ?? { label: row.movementType, color: "text-slate-600 bg-slate-50 border-slate-200" };
+                    return (
+                      <tr key={row.movementType} className="hover:bg-slate-50" data-testid={`breakdown-${row.movementType}`}>
+                        <td className="px-4 py-2.5">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${meta.color}`}>{meta.label}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-center font-bold text-slate-700">{row.count}</td>
+                        <td className="px-4 py-2.5 text-center text-emerald-600 font-semibold">
+                          {row.totalIn > 0 ? `+${row.totalIn}` : "—"}
+                        </td>
+                        <td className="px-4 py-2.5 text-center text-red-500 font-semibold">
+                          {row.totalOut > 0 ? `-${row.totalOut}` : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {report.topSold.length === 0 && report.movementBreakdown.length === 0 && (
+            <div className="text-center py-12 text-slate-400 text-sm">
+              Belum ada pergerakan stok dalam {period} hari terakhir
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Upgrade Prompt ────────────────────────────────────────────────────────────
 function UpgradePrompt({ feature }: { feature: string }) {
   const [, setLocation] = useLocation();
@@ -397,7 +599,7 @@ export default function StockPage() {
 
   const [filter, setFilter] = useState<"all" | "low" | "out">("all");
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"stock" | "history">("stock");
+  const [activeTab, setActiveTab] = useState<"stock" | "history" | "report">("stock");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [advancedDialogProduct, setAdvancedDialogProduct] = useState<StockProduct | null>(null);
   const [historyProduct, setHistoryProduct] = useState<StockProduct | null>(null);
@@ -445,6 +647,7 @@ export default function StockPage() {
           <div className="flex gap-6">
             <button
               onClick={() => setActiveTab("stock")}
+              data-testid="tab-stock"
               className={`py-3 text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${
                 activeTab === "stock" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"
               }`}
@@ -453,11 +656,22 @@ export default function StockPage() {
             </button>
             <button
               onClick={() => setActiveTab("history")}
+              data-testid="tab-history"
               className={`py-3 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
                 activeTab === "history" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"
               }`}
             >
               <ClipboardList size={14} /> Riwayat
+              {!isAdvanced && <Lock size={11} className="text-amber-500" />}
+            </button>
+            <button
+              onClick={() => setActiveTab("report")}
+              data-testid="tab-report"
+              className={`py-3 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
+                activeTab === "report" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              <BarChart2 size={14} /> Laporan
               {!isAdvanced && <Lock size={11} className="text-amber-500" />}
             </button>
           </div>
@@ -467,6 +681,10 @@ export default function StockPage() {
       {activeTab === "history" ? (
         <div className="flex-1 overflow-y-auto p-4 pb-20">
           {isAdvanced ? <AllMovementsTab /> : <UpgradePrompt feature="Riwayat Pergerakan Stok" />}
+        </div>
+      ) : activeTab === "report" ? (
+        <div className="flex-1 overflow-y-auto p-4 pb-20">
+          {isAdvanced ? <LaporanTab /> : <UpgradePrompt feature="Laporan Inventaris" />}
         </div>
       ) : (
         <>

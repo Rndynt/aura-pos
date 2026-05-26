@@ -2,13 +2,14 @@
  * Inventory Routes
  *
  * FREE (basic stock):
- *   GET  /api/inventory/products          — list produk yang stock tracking aktif
- *   PUT  /api/inventory/products/:id/adjust — simple +/- qty (update langsung)
+ *   GET  /api/inventory/products               — list produk yang stock tracking aktif
+ *   PUT  /api/inventory/products/:id/adjust    — simple +/- qty (update langsung)
  *
- * PAID (advanced inventory — requires enable_inventory module):
- *   POST /api/inventory/movements          — catat pergerakan stok dengan tipe + catatan
- *   GET  /api/inventory/movements          — riwayat semua pergerakan
- *   GET  /api/inventory/movements/:productId — riwayat per produk
+ * ADVANCED (requires enable_inventory_advanced module):
+ *   POST /api/inventory/movements              — catat pergerakan stok dengan tipe + catatan
+ *   GET  /api/inventory/movements              — riwayat semua pergerakan (+ filter)
+ *   GET  /api/inventory/movements/:productId   — riwayat per produk
+ *   GET  /api/inventory/report                 — laporan agregat (top sold, breakdown tipe, nilai stok)
  */
 
 import { Router } from 'express';
@@ -18,13 +19,13 @@ import {
   tenantModuleConfigs,
   inventoryMovements,
 } from '@shared/schema';
-import { eq, and, desc, asc } from 'drizzle-orm';
+import { eq, and, desc, asc, gte, lte, sql } from 'drizzle-orm';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { z } from 'zod';
 
 const router = Router();
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 async function isBasicInventoryEnabled(tenantId: string): Promise<boolean> {
   const rows = await db
@@ -44,8 +45,13 @@ async function isAdvancedInventoryEnabled(tenantId: string): Promise<boolean> {
   return rows[0]?.enableInventoryAdvanced === true;
 }
 
+/**
+ * All recognised movement types.
+ * OFFLINE_SALE is written by the offline sync path.
+ */
 const MOVEMENT_TYPES = [
   'SALE',
+  'OFFLINE_SALE',
   'ADJUSTMENT_IN',
   'ADJUSTMENT_OUT',
   'PURCHASE',
@@ -53,6 +59,16 @@ const MOVEMENT_TYPES = [
   'RETURN',
   'INITIAL',
 ] as const;
+
+type MovementType = typeof MOVEMENT_TYPES[number];
+
+/** Returns a Date representing `period` days ago from now. */
+function periodStart(days: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
 // ── STOK DASAR (basic) ────────────────────────────────────────────────────────
 
@@ -122,6 +138,7 @@ router.put('/products/:id/adjust', asyncHandler(async (req, res) => {
     qty: z.number().int(),
     mode: z.enum(['set', 'delta']).default('set'),
     notes: z.string().optional(),
+    actorId: z.string().optional(),
   }).parse(req.body);
 
   const [product] = await db
@@ -145,7 +162,7 @@ router.put('/products/:id/adjust', asyncHandler(async (req, res) => {
   const advanced = await isAdvancedInventoryEnabled(tenantId);
   if (advanced) {
     const delta = after - before;
-    const movementType = delta >= 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT';
+    const movementType: MovementType = delta >= 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT';
     await db.insert(inventoryMovements).values({
       tenantId,
       productId,
@@ -154,6 +171,7 @@ router.put('/products/:id/adjust', asyncHandler(async (req, res) => {
       quantityBefore: before,
       quantityAfter: after,
       notes: body.notes ?? 'Manual adjustment',
+      actorId: body.actorId ?? null,
     });
   }
 
@@ -164,7 +182,7 @@ router.put('/products/:id/adjust', asyncHandler(async (req, res) => {
 
 /**
  * POST /api/inventory/movements
- * Catat pergerakan stok dengan tipe dan catatan. PAID only.
+ * Catat pergerakan stok dengan tipe dan catatan. Advanced only.
  */
 router.post('/movements', asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
@@ -179,6 +197,7 @@ router.post('/movements', asyncHandler(async (req, res) => {
     quantityDelta: z.number().int(),
     unitCost: z.string().optional(),
     notes: z.string().optional(),
+    actorId: z.string().optional(),
   }).parse(req.body);
 
   const [product] = await db
@@ -206,6 +225,7 @@ router.post('/movements', asyncHandler(async (req, res) => {
     quantityAfter: after,
     unitCost: body.unitCost,
     notes: body.notes,
+    actorId: body.actorId,
   }).returning();
 
   res.status(201).json({ success: true, data: { movement, before, after } });
@@ -213,13 +233,55 @@ router.post('/movements', asyncHandler(async (req, res) => {
 
 /**
  * GET /api/inventory/movements
- * Semua riwayat pergerakan stok tenant. PAID only.
+ * Semua riwayat pergerakan stok tenant. Advanced only.
+ *
+ * Query params:
+ *   type      — filter by movement type (e.g. SALE, OFFLINE_SALE, ADJUSTMENT_IN, …)
+ *   productId — filter by specific product
+ *   dateFrom  — ISO date string (inclusive)
+ *   dateTo    — ISO date string (inclusive, end of day)
+ *   limit     — default 50, max 200
+ *   offset    — default 0
  */
 router.get('/movements', asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
 
   if (!(await isAdvancedInventoryEnabled(tenantId))) {
     throw createError('Fitur ini memerlukan modul Advanced Inventory', 403, 'MODULE_REQUIRED');
+  }
+
+  const query = z.object({
+    type: z.string().optional(),
+    productId: z.string().uuid().optional(),
+    dateFrom: z.string().optional(),
+    dateTo: z.string().optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+    offset: z.coerce.number().int().min(0).default(0),
+  }).parse(req.query);
+
+  const conditions = [eq(inventoryMovements.tenantId, tenantId)];
+
+  if (query.type && MOVEMENT_TYPES.includes(query.type as MovementType)) {
+    conditions.push(eq(inventoryMovements.movementType, query.type));
+  }
+
+  if (query.productId) {
+    conditions.push(eq(inventoryMovements.productId, query.productId));
+  }
+
+  if (query.dateFrom) {
+    const from = new Date(query.dateFrom);
+    if (!isNaN(from.getTime())) {
+      conditions.push(gte(inventoryMovements.createdAt, from));
+    }
+  }
+
+  if (query.dateTo) {
+    const to = new Date(query.dateTo);
+    if (!isNaN(to.getTime())) {
+      to.setHours(23, 59, 59, 999);
+      conditions.push(lte(inventoryMovements.createdAt, to));
+    }
   }
 
   const rows = await db
@@ -234,20 +296,23 @@ router.get('/movements', asyncHandler(async (req, res) => {
       quantityAfter: inventoryMovements.quantityAfter,
       unitCost: inventoryMovements.unitCost,
       notes: inventoryMovements.notes,
+      actorId: inventoryMovements.actorId,
+      orderId: inventoryMovements.orderId,
       createdAt: inventoryMovements.createdAt,
     })
     .from(inventoryMovements)
     .innerJoin(products, eq(products.id, inventoryMovements.productId))
-    .where(eq(inventoryMovements.tenantId, tenantId))
+    .where(and(...conditions))
     .orderBy(desc(inventoryMovements.createdAt))
-    .limit(200);
+    .limit(query.limit)
+    .offset(query.offset);
 
-  res.json({ success: true, data: { movements: rows } });
+  res.json({ success: true, data: { movements: rows, limit: query.limit, offset: query.offset } });
 }));
 
 /**
  * GET /api/inventory/movements/:productId
- * Riwayat pergerakan stok per produk. PAID only.
+ * Riwayat pergerakan stok per produk. Advanced only.
  */
 router.get('/movements/:productId', asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
@@ -270,6 +335,127 @@ router.get('/movements/:productId', asyncHandler(async (req, res) => {
     .limit(100);
 
   res.json({ success: true, data: { movements: rows } });
+}));
+
+/**
+ * GET /api/inventory/report
+ * Laporan agregat inventaris. Advanced only.
+ *
+ * Query params:
+ *   period  — 7 | 30 | 90 (days, default 30)
+ *   dateFrom / dateTo — custom range (overrides period)
+ */
+router.get('/report', asyncHandler(async (req, res) => {
+  const tenantId = req.tenantId!;
+
+  if (!(await isAdvancedInventoryEnabled(tenantId))) {
+    throw createError('Fitur ini memerlukan modul Advanced Inventory', 403, 'MODULE_REQUIRED');
+  }
+
+  const query = z.object({
+    period: z.coerce.number().int().min(1).max(365).default(30),
+    dateFrom: z.string().optional(),
+    dateTo: z.string().optional(),
+  }).parse(req.query);
+
+  let from: Date;
+  let to: Date = new Date();
+
+  if (query.dateFrom) {
+    const parsed = new Date(query.dateFrom);
+    from = isNaN(parsed.getTime()) ? periodStart(query.period) : parsed;
+  } else {
+    from = periodStart(query.period);
+  }
+
+  if (query.dateTo) {
+    const parsed = new Date(query.dateTo);
+    if (!isNaN(parsed.getTime())) {
+      parsed.setHours(23, 59, 59, 999);
+      to = parsed;
+    }
+  }
+
+  // 1. Top 10 produk terlaku (SALE + OFFLINE_SALE dalam periode)
+  const topSoldResult = await db.execute(sql`
+    SELECT
+      im.product_id   AS "productId",
+      p.name          AS "productName",
+      p.category      AS "category",
+      SUM(ABS(im.quantity_delta))::int AS "totalSold"
+    FROM inventory_movements im
+    JOIN products p ON p.id = im.product_id
+    WHERE im.tenant_id = ${tenantId}
+      AND im.movement_type IN ('SALE', 'OFFLINE_SALE')
+      AND im.created_at >= ${from}
+      AND im.created_at <= ${to}
+    GROUP BY im.product_id, p.name, p.category
+    ORDER BY "totalSold" DESC
+    LIMIT 10
+  `);
+
+  // 2. Breakdown pergerakan per tipe dalam periode
+  const breakdownResult = await db.execute(sql`
+    SELECT
+      movement_type AS "movementType",
+      COUNT(*)::int AS "count",
+      COALESCE(SUM(CASE WHEN quantity_delta > 0 THEN quantity_delta ELSE 0 END), 0)::int AS "totalIn",
+      COALESCE(SUM(CASE WHEN quantity_delta < 0 THEN ABS(quantity_delta) ELSE 0 END), 0)::int AS "totalOut"
+    FROM inventory_movements
+    WHERE tenant_id = ${tenantId}
+      AND created_at >= ${from}
+      AND created_at <= ${to}
+    GROUP BY movement_type
+    ORDER BY "count" DESC
+  `);
+
+  // 3. Nilai stok saat ini (produk aktif + tracking aktif)
+  const stockValueResult = await db.execute(sql`
+    SELECT
+      COALESCE(SUM(GREATEST(stock_qty, 0) * base_price::numeric), 0)::numeric AS "totalValue",
+      COUNT(*)::int AS "totalTracked",
+      COALESCE(SUM(GREATEST(stock_qty, 0)), 0)::int AS "totalUnits"
+    FROM products
+    WHERE tenant_id = ${tenantId}
+      AND stock_tracking_enabled = true
+      AND is_active = true
+  `);
+
+  // 4. Total terjual (unit + transaksi) dalam periode
+  const salesSummaryResult = await db.execute(sql`
+    SELECT
+      COUNT(DISTINCT order_id)::int AS "totalOrders",
+      COALESCE(SUM(ABS(quantity_delta)), 0)::int AS "totalUnitsSold"
+    FROM inventory_movements
+    WHERE tenant_id = ${tenantId}
+      AND movement_type IN ('SALE', 'OFFLINE_SALE')
+      AND created_at >= ${from}
+      AND created_at <= ${to}
+  `);
+
+  const stockValueRow = (stockValueResult as any).rows?.[0] ?? stockValueResult[0] ?? {};
+  const salesRow = (salesSummaryResult as any).rows?.[0] ?? salesSummaryResult[0] ?? {};
+
+  const topSoldRows = (topSoldResult as any).rows ?? topSoldResult ?? [];
+  const breakdownRows = (breakdownResult as any).rows ?? breakdownResult ?? [];
+
+  res.json({
+    success: true,
+    data: {
+      period: { from: from.toISOString(), to: to.toISOString(), days: query.period },
+      topSold: topSoldRows,
+      movementBreakdown: breakdownRows,
+      stockValue: {
+        totalValue: Number(stockValueRow.totalValue ?? 0),
+        totalTracked: Number(stockValueRow.totalTracked ?? 0),
+        totalUnits: Number(stockValueRow.totalUnits ?? 0),
+      },
+      salesSummary: {
+        totalOrders: Number(salesRow.totalOrders ?? 0),
+        totalUnitsSold: Number(salesRow.totalUnitsSold ?? 0),
+      },
+    },
+  });
 }));
 
 export default router;
