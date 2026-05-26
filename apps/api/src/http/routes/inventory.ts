@@ -376,6 +376,11 @@ router.get('/report', asyncHandler(async (req, res) => {
     }
   }
 
+  // postgres-js sql template tag does not serialize Date objects automatically —
+  // pass ISO strings so the driver receives plain strings.
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
+
   // 1. Top 10 produk terlaku (SALE + OFFLINE_SALE dalam periode)
   const topSoldResult = await db.execute(sql`
     SELECT
@@ -386,9 +391,9 @@ router.get('/report', asyncHandler(async (req, res) => {
     FROM inventory_movements im
     JOIN products p ON p.id = im.product_id
     WHERE im.tenant_id = ${tenantId}
-      AND im.movement_type IN ('SALE', 'OFFLINE_SALE')
-      AND im.created_at >= ${from}
-      AND im.created_at <= ${to}
+      AND UPPER(im.movement_type) IN ('SALE', 'OFFLINE_SALE')
+      AND im.created_at >= ${fromIso}::timestamptz
+      AND im.created_at <= ${toIso}::timestamptz
     GROUP BY im.product_id, p.name, p.category
     ORDER BY "totalSold" DESC
     LIMIT 10
@@ -403,8 +408,8 @@ router.get('/report', asyncHandler(async (req, res) => {
       COALESCE(SUM(CASE WHEN quantity_delta < 0 THEN ABS(quantity_delta) ELSE 0 END), 0)::int AS "totalOut"
     FROM inventory_movements
     WHERE tenant_id = ${tenantId}
-      AND created_at >= ${from}
-      AND created_at <= ${to}
+      AND created_at >= ${fromIso}::timestamptz
+      AND created_at <= ${toIso}::timestamptz
     GROUP BY movement_type
     ORDER BY "count" DESC
   `);
@@ -428,23 +433,45 @@ router.get('/report', asyncHandler(async (req, res) => {
       COALESCE(SUM(ABS(quantity_delta)), 0)::int AS "totalUnitsSold"
     FROM inventory_movements
     WHERE tenant_id = ${tenantId}
-      AND movement_type IN ('SALE', 'OFFLINE_SALE')
-      AND created_at >= ${from}
-      AND created_at <= ${to}
+      AND UPPER(movement_type) IN ('SALE', 'OFFLINE_SALE')
+      AND created_at >= ${fromIso}::timestamptz
+      AND created_at <= ${toIso}::timestamptz
   `);
 
-  const stockValueRow = (stockValueResult as any).rows?.[0] ?? stockValueResult[0] ?? {};
-  const salesRow = (salesSummaryResult as any).rows?.[0] ?? salesSummaryResult[0] ?? {};
+  // postgres-js RowList is array-like but may not serialize cleanly —
+  // map to plain objects to guarantee JSON-safe output.
+  const toPlainRows = (result: unknown): Record<string, unknown>[] => {
+    const arr = Array.isArray(result) ? result : ((result as any)?.rows ?? []);
+    return arr.map((r: unknown) => ({ ...(r as object) }));
+  };
 
-  const topSoldRows = (topSoldResult as any).rows ?? topSoldResult ?? [];
-  const breakdownRows = (breakdownResult as any).rows ?? breakdownResult ?? [];
+  const topSoldPlain = toPlainRows(topSoldResult);
+  const breakdownPlain = toPlainRows(breakdownResult);
+  const stockValueRows = toPlainRows(stockValueResult);
+  const salesRows = toPlainRows(salesSummaryResult);
+
+  const stockValueRow = stockValueRows[0] ?? {};
+  const salesRow = salesRows[0] ?? {};
+
+  console.log('[InventoryReport] topSold:', topSoldPlain.length, 'breakdown:', breakdownPlain.length,
+    'stockValue:', stockValueRow, 'sales:', salesRow);
 
   res.json({
     success: true,
     data: {
       period: { from: from.toISOString(), to: to.toISOString(), days: query.period },
-      topSold: topSoldRows,
-      movementBreakdown: breakdownRows,
+      topSold: topSoldPlain.map((r) => ({
+        productId: String(r.productId ?? ''),
+        productName: String(r.productName ?? ''),
+        category: String(r.category ?? ''),
+        totalSold: Number(r.totalSold ?? 0),
+      })),
+      movementBreakdown: breakdownPlain.map((r) => ({
+        movementType: String(r.movementType ?? ''),
+        count: Number(r.count ?? 0),
+        totalIn: Number(r.totalIn ?? 0),
+        totalOut: Number(r.totalOut ?? 0),
+      })),
       stockValue: {
         totalValue: Number(stockValueRow.totalValue ?? 0),
         totalTracked: Number(stockValueRow.totalTracked ?? 0),

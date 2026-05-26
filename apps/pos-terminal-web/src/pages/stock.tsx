@@ -411,7 +411,7 @@ function AllMovementsTab() {
 // ── Laporan Tab ───────────────────────────────────────────────────────────────
 function LaporanTab() {
   const [period, setPeriod] = useState(30);
-  const { data, isLoading } = useInventoryReport(period);
+  const { data, isLoading, isError, error, refetch } = useInventoryReport(period);
   const report = data?.data;
 
   const formatIDRLocal = (v: number) =>
@@ -448,8 +448,19 @@ function LaporanTab() {
 
       {isLoading ? (
         <div className="text-center py-16 text-slate-400 text-sm">Memuat laporan...</div>
+      ) : isError ? (
+        <div className="text-center py-12 space-y-3">
+          <p className="text-sm font-semibold text-red-500">Gagal memuat laporan</p>
+          <p className="text-xs text-slate-400 max-w-xs mx-auto">{(error as Error)?.message ?? "Terjadi kesalahan server"}</p>
+          <button
+            onClick={() => refetch()}
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+          >
+            Coba Lagi
+          </button>
+        </div>
       ) : !report ? (
-        <div className="text-center py-16 text-slate-400 text-sm">Gagal memuat laporan</div>
+        <div className="text-center py-16 text-slate-400 text-sm">Memuat data...</div>
       ) : (
         <>
           {/* Summary cards */}
