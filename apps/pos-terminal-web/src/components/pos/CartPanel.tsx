@@ -2,7 +2,7 @@
 import type { CartItem as CartItemType, PaymentMethod, OrderType, ItemDiscount } from "@/hooks/useCart";
 import type { OrderType as DomainOrderType } from "@pos/domain/orders/types";
 import { CartItem } from "./CartItem";
-import { ShoppingBag, Banknote, ChevronUp, User, Trash2, Tag, X } from "lucide-react";
+import { ShoppingBag, Banknote, ChevronUp, User, Trash2, Tag, X, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTenant } from "@/context/TenantContext";
 import { useState, useCallback } from "react";
@@ -23,6 +23,7 @@ type CartPanelProps = {
   onCharge: () => void;
   onPartialPayment?: () => void;
   onSaveDraft?: () => void;
+  isDraftSaving?: boolean;
   onUpdateNote?: (id: string, note: string) => void;
   hasPartialPayment?: boolean;
   isProcessing?: boolean;
@@ -49,7 +50,7 @@ type CartPanelProps = {
 export function CartPanel({
   items, onUpdateQty, onRemove, onClear, getItemPrice,
   subtotal, taxRate, tax, serviceChargeRate, serviceCharge, total,
-  onCharge, onSaveDraft, onUpdateNote, isProcessing = false,
+  onCharge, onSaveDraft, isDraftSaving = false, onUpdateNote, isProcessing = false,
   customerName, setCustomerName, orderNumber,
   tableNumber, setTableNumber,
   orderType, setOrderType,
@@ -372,12 +373,15 @@ export function CartPanel({
           <div className="px-3 pb-3 flex gap-2">
             <button
               onClick={onSaveDraft}
-              disabled={isProcessing || items.length === 0}
+              disabled={isProcessing || isDraftSaving || items.length === 0}
               className="w-10 h-10 flex-shrink-0 bg-white border-2 border-slate-200 hover:border-slate-300 text-slate-500 hover:text-slate-700 rounded-xl flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
               data-testid="button-save-draft"
-              title="Simpan Draft"
+              title={isDraftSaving ? "Menyimpan..." : "Simpan Draft"}
             >
-              <ShoppingBag size={16} />
+              {isDraftSaving
+                ? <Loader2 size={16} className="animate-spin text-blue-500" />
+                : <ShoppingBag size={16} />
+              }
             </button>
 
             <button

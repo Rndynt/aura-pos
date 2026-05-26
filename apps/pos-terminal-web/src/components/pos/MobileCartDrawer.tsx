@@ -3,7 +3,7 @@ import type { CartItem as CartItemType, PaymentMethod, OrderType, ItemDiscount }
 import type { OrderType as DomainOrderType } from "@pos/domain/orders/types";
 import { CartItem } from "./CartItem";
 import { Drawer } from "vaul";
-import { ShoppingBag, Banknote, X, User, ChevronDown, ChevronUp, Trash2, Tag } from "lucide-react";
+import { ShoppingBag, Banknote, X, User, ChevronDown, ChevronUp, Trash2, Tag, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTenant } from "@/context/TenantContext";
 import { useState, useCallback, useEffect } from "react";
@@ -47,6 +47,7 @@ type MobileCartDrawerProps = {
   onCharge: () => void;
   onPartialPayment?: () => void;
   onSaveDraft?: () => void;
+  isDraftSaving?: boolean;
   onUpdateNote?: (id: string, note: string) => void;
   hasPartialPayment?: boolean;
   isProcessing?: boolean;
@@ -86,6 +87,7 @@ export function MobileCartDrawer({
   total,
   onCharge,
   onSaveDraft,
+  isDraftSaving = false,
   onUpdateNote,
   isProcessing = false,
   customerName,
@@ -491,15 +493,27 @@ export function MobileCartDrawer({
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={onSaveDraft}
-                      disabled={isProcessing || items.length === 0}
-                      className="bg-white border-2 border-slate-200 hover:border-slate-300 text-slate-600 hover:text-slate-800 py-3.5 rounded-xl font-bold flex flex-col items-center justify-center leading-none gap-1 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-all"
+                      disabled={isProcessing || isDraftSaving || items.length === 0}
+                      className="bg-white border-2 border-slate-200 text-slate-600 py-3.5 rounded-xl font-bold flex flex-col items-center justify-center leading-none gap-1 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition-all"
                       data-testid="button-save-draft"
                     >
-                      <div className="flex items-center gap-2 text-sm">
-                        <ShoppingBag size={18} />
-                        <span>Simpan</span>
-                      </div>
-                      <span className="text-[9px] font-normal opacity-70">Simpan Draft</span>
+                      {isDraftSaving ? (
+                        <>
+                          <div className="flex items-center gap-2 text-sm text-blue-600">
+                            <Loader2 size={18} className="animate-spin" />
+                            <span>Menyimpan...</span>
+                          </div>
+                          <span className="text-[9px] font-normal opacity-70">Mohon tunggu</span>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2 text-sm">
+                            <ShoppingBag size={18} />
+                            <span>Simpan</span>
+                          </div>
+                          <span className="text-[9px] font-normal opacity-70">Simpan Draft</span>
+                        </>
+                      )}
                     </button>
 
                     <button

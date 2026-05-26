@@ -48,6 +48,7 @@ export default function POSPage() {
   const [partialPaymentDialogOpen, setPartialPaymentDialogOpen] = useState(false);
   const [isSubmittingPartialPayment, setIsSubmittingPartialPayment] = useState(false);
   const [isProcessingQuickCharge, setIsProcessingQuickCharge] = useState(false);
+  const [isDraftSaving, setIsDraftSaving] = useState(false);
   const [paymentMethodDialogOpen, setPaymentMethodDialogOpen] = useState(false);
   const [pendingOrderForPayment, setPendingOrderForPayment] = useState<{
     orderId: string;
@@ -756,6 +757,7 @@ export default function POSPage() {
   // Save as Draft - NO kitchen ticket dependency
   const handleSaveDraft = async () => {
     if (!ensureCartHasItems()) return;
+    setIsDraftSaving(true);
     
     // Auto-select first order type if none selected (no dialog needed)
     if (!cart.selectedOrderTypeId && activeOrderTypes.length > 0) {
@@ -840,6 +842,8 @@ export default function POSPage() {
         description: error instanceof Error ? error.message : "Gagal membuat pesanan",
         variant: "destructive",
       });
+    } finally {
+      setIsDraftSaving(false);
     }
   };
   
@@ -948,6 +952,7 @@ export default function POSPage() {
           onCharge={handleCharge}
           onPartialPayment={handlePartialPayment}
           onSaveDraft={handleSaveDraft}
+          isDraftSaving={isDraftSaving}
           onUpdateNote={cart.updateNote}
           hasPartialPayment={hasPartialPayment}
           isProcessing={isProcessingQuickCharge}
@@ -1003,6 +1008,7 @@ export default function POSPage() {
         }}
         onPartialPayment={handlePartialPayment}
         onSaveDraft={handleSaveDraft}
+        isDraftSaving={isDraftSaving}
         onUpdateNote={cart.updateNote}
         hasPartialPayment={hasPartialPayment}
         isProcessing={isProcessingQuickCharge}
