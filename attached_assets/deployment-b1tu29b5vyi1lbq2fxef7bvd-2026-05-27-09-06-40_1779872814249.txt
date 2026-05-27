@@ -1,0 +1,178 @@
+2026-May-27 08:52:27.299013 Docker 29.4.3 with BuildKit and Buildx detected on deployment server (localhost).
+2026-May-27 08:52:27.319783 Starting deployment of Rndynt/AuraPoS:main to localhost.
+2026-May-27 08:52:27.656523 Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-27 08:52:31.015109 ----------------------------------------
+2026-May-27 08:52:31.034291 Importing Rndynt/AuraPoS:main (commit sha 68e7e82081ba8371d3afb0203ad563f5f9dd5e0d) to /artifacts/b1tu29b5vyi1lbq2fxef7bvd.
+2026-May-27 08:52:39.712137 Image not found (n12lywn11oyw1wz0ziv0corq:68e7e82081ba8371d3afb0203ad563f5f9dd5e0d). Building new image.
+2026-May-27 08:52:42.265314 ----------------------------------------
+2026-May-27 08:52:42.288742 ⚠️ Build-time environment variable warning: NODE_ENV=production
+2026-May-27 08:52:42.306480 Affects: Node.js/npm/yarn/bun/pnpm
+2026-May-27 08:52:42.331375 Issue: Skips devDependencies installation which are often required for building (webpack, typescript, etc.)
+2026-May-27 08:52:42.351542 Recommendation: Uncheck "Available at Buildtime" or use "development" during build
+2026-May-27 08:52:42.371940
+2026-May-27 08:52:42.391978 💡 Tips to resolve build issues:
+2026-May-27 08:52:42.411566 1. Set these variables as "Runtime only" in the environment variables settings
+2026-May-27 08:52:42.432197 2. Use different values for build-time (e.g., NODE_ENV=development for build)
+2026-May-27 08:52:42.471757 3. Consider using multi-stage Docker builds to separate build and runtime environments
+2026-May-27 08:52:43.669688 ----------------------------------------
+2026-May-27 08:52:43.691534 Building docker image started.
+2026-May-27 08:52:43.709482 To check the current progress, click on Show Debug Logs.
+2026-May-27 08:57:47.044205 Building docker image completed.
+2026-May-27 08:57:47.823231 ----------------------------------------
+2026-May-27 08:57:47.848867 Rolling update started.
+2026-May-27 08:57:51.061193 New container started.
+2026-May-27 08:57:51.094306 Waiting for healthcheck to pass on the new container.
+2026-May-27 08:57:51.119517 Healthcheck URL (inside the container): GET: http://localhost:5000/health
+2026-May-27 08:57:51.147039 Waiting for the start period (60 seconds) before starting healthcheck.
+2026-May-27 08:58:51.895852 Attempt 1 of 10 | Healthcheck status: "starting"
+2026-May-27 08:58:51.921533 Healthcheck logs: /bin/sh: curl: not found
+2026-May-27 08:58:51.921533 wget: can't connect to remote host: Connection refused
+2026-May-27 08:58:51.921533 | Return code: 1
+2026-May-27 08:58:57.339573 Attempt 2 of 10 | Healthcheck status: "starting"
+2026-May-27 08:58:57.356888 Healthcheck logs: /bin/sh: curl: not found
+2026-May-27 08:58:57.356888 wget: can't connect to remote host: Connection refused
+2026-May-27 08:58:57.356888 | Return code: 1
+2026-May-27 08:59:02.827634 Attempt 3 of 10 | Healthcheck status: "starting"
+2026-May-27 08:59:02.852071 Healthcheck logs: /bin/sh: curl: not found
+2026-May-27 08:59:02.852071 wget: can't connect to remote host: Connection refused
+2026-May-27 08:59:02.852071 | Return code: 1
+2026-May-27 08:59:08.312560 Attempt 4 of 10 | Healthcheck status: "starting"
+2026-May-27 08:59:08.358993 Healthcheck logs: /bin/sh: curl: not found
+2026-May-27 08:59:08.358993 wget: can't connect to remote host: Connection refused
+2026-May-27 08:59:08.358993 | Return code: 1
+2026-May-27 08:59:13.913106 Attempt 5 of 10 | Healthcheck status: "starting"
+2026-May-27 08:59:13.954630 Healthcheck logs: /bin/sh: curl: not found
+2026-May-27 08:59:13.954630 wget: can't connect to remote host: Connection refused
+2026-May-27 08:59:13.954630 | Return code: 1
+2026-May-27 08:59:19.624766 Attempt 6 of 10 | Healthcheck status: "starting"
+2026-May-27 08:59:19.652473 Healthcheck logs: /bin/sh: curl: not found
+2026-May-27 08:59:19.652473 wget: can't connect to remote host: Connection refused
+2026-May-27 08:59:19.652473 | Return code: 1
+2026-May-27 08:59:25.167362 Attempt 7 of 10 | Healthcheck status: "starting"
+2026-May-27 08:59:25.189493 Healthcheck logs: /bin/sh: curl: not found
+2026-May-27 08:59:25.189493 wget: can't connect to remote host: Connection refused
+2026-May-27 08:59:25.189493 | Return code: 1
+2026-May-27 08:59:30.679748 Attempt 8 of 10 | Healthcheck status: "starting"
+2026-May-27 08:59:30.709206 Healthcheck logs: /bin/sh: curl: not found
+2026-May-27 08:59:30.709206 wget: can't connect to remote host: Connection refused
+2026-May-27 08:59:30.709206 | Return code: 1
+2026-May-27 08:59:36.263228 Attempt 9 of 10 | Healthcheck status: "starting"
+2026-May-27 08:59:36.283587 Healthcheck logs: /bin/sh: curl: not found
+2026-May-27 08:59:36.283587 wget: can't connect to remote host: Connection refused
+2026-May-27 08:59:36.283587 | Return code: 1
+2026-May-27 08:59:41.784455 Attempt 10 of 10 | Healthcheck status: "unhealthy"
+2026-May-27 08:59:41.816576 Healthcheck logs: /bin/sh: curl: not found
+2026-May-27 08:59:41.816576 wget: can't connect to remote host: Connection refused
+2026-May-27 08:59:41.816576 | Return code: 1
+2026-May-27 08:59:41.866234 New container is unhealthy.
+2026-May-27 08:59:41.903549 ----------------------------------------
+2026-May-27 08:59:41.946303 Container logs:
+2026-May-27 08:59:42.226792 [CMD]: docker logs -n 100 n12lywn11oyw1wz0ziv0corq-085224292631
+2026-May-27 08:59:42.226792 severity_local: 'NOTICE',
+2026-May-27 08:59:42.226792 severity: 'NOTICE',
+2026-May-27 08:59:42.226792 code: '42701',
+2026-May-27 08:59:42.239109 message: 'column "outlet_id" of relation "kds_devices" already exists, skipping',
+2026-May-27 08:59:42.239109 file: 'tablecmds.c',
+2026-May-27 08:59:42.239109 line: '7471',
+2026-May-27 08:59:42.239109 routine: 'check_for_column_name_collision'
+2026-May-27 08:59:42.239109 }
+2026-May-27 08:59:42.239109 {
+2026-May-27 08:59:42.239109 severity_local: 'NOTICE',
+2026-May-27 08:59:42.239109 severity: 'NOTICE',
+2026-May-27 08:59:42.239109 code: '42P07',
+2026-May-27 08:59:42.239109 message: 'relation "tables_outlet_idx" already exists, skipping',
+2026-May-27 08:59:42.239109 file: 'index.c',
+2026-May-27 08:59:42.239109 line: '889',
+2026-May-27 08:59:42.239109 routine: 'index_create'
+2026-May-27 08:59:42.239109 }
+2026-May-27 08:59:42.239109 {
+2026-May-27 08:59:42.239109 severity_local: 'NOTICE',
+2026-May-27 08:59:42.239109 severity: 'NOTICE',
+2026-May-27 08:59:42.239109 code: '42P07',
+2026-May-27 08:59:42.239109 message: 'relation "tenant_order_types_outlet_idx" already exists, skipping',
+2026-May-27 08:59:42.239109 file: 'index.c',
+2026-May-27 08:59:42.239109 line: '889',
+2026-May-27 08:59:42.239109 routine: 'index_create'
+2026-May-27 08:59:42.239109 }
+2026-May-27 08:59:42.239109 {
+2026-May-27 08:59:42.239109 severity_local: 'NOTICE',
+2026-May-27 08:59:42.239109 severity: 'NOTICE',
+2026-May-27 08:59:42.239109 code: '42P07',
+2026-May-27 08:59:42.239109 message: 'relation "orders_outlet_idx" already exists, skipping',
+2026-May-27 08:59:42.239109 file: 'index.c',
+2026-May-27 08:59:42.239109 line: '889',
+2026-May-27 08:59:42.239109 routine: 'index_create'
+2026-May-27 08:59:42.239109 }
+2026-May-27 08:59:42.239109 {
+2026-May-27 08:59:42.239109 severity_local: 'NOTICE',
+2026-May-27 08:59:42.239109 severity: 'NOTICE',
+2026-May-27 08:59:42.239109 code: '42P07',
+2026-May-27 08:59:42.239109 message: 'relation "kitchen_tickets_outlet_idx" already exists, skipping',
+2026-May-27 08:59:42.239109 file: 'index.c',
+2026-May-27 08:59:42.239109 line: '889',
+2026-May-27 08:59:42.239109 routine: 'index_create'
+2026-May-27 08:59:42.239109 }
+2026-May-27 08:59:42.239109 {
+2026-May-27 08:59:42.239109 severity_local: 'NOTICE',
+2026-May-27 08:59:42.239109 severity: 'NOTICE',
+2026-May-27 08:59:42.239109 code: '42P07',
+2026-May-27 08:59:42.239109 message: 'relation "terminals_outlet_idx" already exists, skipping',
+2026-May-27 08:59:42.239109 file: 'index.c',
+2026-May-27 08:59:42.239109 line: '889',
+2026-May-27 08:59:42.239109 routine: 'index_create'
+2026-May-27 08:59:42.239109 }
+2026-May-27 08:59:42.239109 {
+2026-May-27 08:59:42.239109 severity_local: 'NOTICE',
+2026-May-27 08:59:42.239109 severity: 'NOTICE',
+2026-May-27 08:59:42.239109 code: '42P07',
+2026-May-27 08:59:42.239109 message: 'relation "sync_batches_outlet_idx" already exists, skipping',
+2026-May-27 08:59:42.239109 file: 'index.c',
+2026-May-27 08:59:42.239109 line: '889',
+2026-May-27 08:59:42.239109 routine: 'index_create'
+2026-May-27 08:59:42.239109 }
+2026-May-27 08:59:42.239109 {
+2026-May-27 08:59:42.239109 severity_local: 'NOTICE',
+2026-May-27 08:59:42.239109 severity: 'NOTICE',
+2026-May-27 08:59:42.239109 code: '42P07',
+2026-May-27 08:59:42.239109 message: 'relation "sync_events_outlet_idx" already exists, skipping',
+2026-May-27 08:59:42.239109 file: 'index.c',
+2026-May-27 08:59:42.239109 line: '889',
+2026-May-27 08:59:42.239109 routine: 'index_create'
+2026-May-27 08:59:42.239109 }
+2026-May-27 08:59:42.239109 {
+2026-May-27 08:59:42.239109 severity_local: 'NOTICE',
+2026-May-27 08:59:42.239109 severity: 'NOTICE',
+2026-May-27 08:59:42.239109 code: '42P07',
+2026-May-27 08:59:42.239109 message: 'relation "server_sync_conflicts_outlet_idx" already exists, skipping',
+2026-May-27 08:59:42.239109 file: 'index.c',
+2026-May-27 08:59:42.239109 line: '889',
+2026-May-27 08:59:42.239109 routine: 'index_create'
+2026-May-27 08:59:42.239109 }
+2026-May-27 08:59:42.239109 {
+2026-May-27 08:59:42.239109 severity_local: 'NOTICE',
+2026-May-27 08:59:42.239109 severity: 'NOTICE',
+2026-May-27 08:59:42.239109 code: '42P07',
+2026-May-27 08:59:42.239109 message: 'relation "inventory_movements_outlet_idx" already exists, skipping',
+2026-May-27 08:59:42.239109 file: 'index.c',
+2026-May-27 08:59:42.239109 line: '889',
+2026-May-27 08:59:42.239109 routine: 'index_create'
+2026-May-27 08:59:42.239109 }
+2026-May-27 08:59:42.239109 {
+2026-May-27 08:59:42.239109 severity_local: 'NOTICE',
+2026-May-27 08:59:42.239109 severity: 'NOTICE',
+2026-May-27 08:59:42.239109 code: '42P07',
+2026-May-27 08:59:42.239109 message: 'relation "kds_devices_outlet_idx" already exists, skipping',
+2026-May-27 08:59:42.239109 file: 'index.c',
+2026-May-27 08:59:42.239109 line: '889',
+2026-May-27 08:59:42.239109 routine: 'index_create'
+2026-May-27 08:59:42.239109 }
+2026-May-27 08:59:42.239109 8:57:57 AM [express] Multi-outlet schema ensured.
+2026-May-27 08:59:42.239109 8:57:57 AM [express] serving on port 5000
+2026-May-27 08:59:42.252508 ----------------------------------------
+2026-May-27 08:59:42.285809 Removing old containers.
+2026-May-27 08:59:42.315182 ----------------------------------------
+2026-May-27 08:59:42.344435 WARNING: Dockerfile or Docker Image based deployment detected. The healthcheck needs a curl or wget command to check the health of the application. Please make sure that it is available in the image or turn off healthcheck on Coolify's UI.
+2026-May-27 08:59:42.374770 ----------------------------------------
+2026-May-27 08:59:42.408340 New container is not healthy, rolling back to the old container.
+2026-May-27 09:00:13.979539 Rolling update completed.
+2026-May-27 09:00:14.656190 Gracefully shutting down build container: b1tu29b5vyi1lbq2fxef7bvd

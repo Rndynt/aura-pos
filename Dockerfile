@@ -26,6 +26,8 @@ RUN pnpm --filter @pos/api deploy --prod --legacy /standalone
 # ── Stage 3: minimal runner ───────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 
+RUN apk add --no-cache curl
+
 WORKDIR /app
 
 # Production npm dependencies (express, drizzle-orm, better-auth, ws, etc.)
