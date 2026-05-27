@@ -42,8 +42,8 @@ COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/migrations ./migrations
 
 ENV NODE_ENV=production
-ENV PORT=8080
-EXPOSE 8080
+ENV PORT=5000
+EXPOSE 5000
 
 # Run from /app so Node's module resolution finds ./node_modules
 CMD ["node", "apps/api/dist/index.js"]
