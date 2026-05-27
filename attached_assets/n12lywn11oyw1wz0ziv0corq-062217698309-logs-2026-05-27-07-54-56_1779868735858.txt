@@ -1,0 +1,100 @@
+code: '42P07',
+message: 'relation "tables_outlet_idx" already exists, skipping',
+file: 'index.c',
+line: '889',
+routine: 'index_create'
+}
+{
+severity_local: 'NOTICE',
+severity: 'NOTICE',
+code: '42P07',
+message: 'relation "tenant_order_types_outlet_idx" already exists, skipping',
+file: 'index.c',
+line: '889',
+routine: 'index_create'
+}
+{
+severity_local: 'NOTICE',
+severity: 'NOTICE',
+code: '42P07',
+message: 'relation "orders_outlet_idx" already exists, skipping',
+file: 'index.c',
+line: '889',
+routine: 'index_create'
+}
+{
+severity_local: 'NOTICE',
+severity: 'NOTICE',
+code: '42P07',
+message: 'relation "kitchen_tickets_outlet_idx" already exists, skipping',
+file: 'index.c',
+line: '889',
+routine: 'index_create'
+}
+{
+severity_local: 'NOTICE',
+severity: 'NOTICE',
+code: '42P07',
+message: 'relation "terminals_outlet_idx" already exists, skipping',
+file: 'index.c',
+line: '889',
+routine: 'index_create'
+}
+{
+severity_local: 'NOTICE',
+severity: 'NOTICE',
+code: '42P07',
+message: 'relation "sync_batches_outlet_idx" already exists, skipping',
+file: 'index.c',
+line: '889',
+routine: 'index_create'
+}
+{
+severity_local: 'NOTICE',
+severity: 'NOTICE',
+code: '42P07',
+message: 'relation "sync_events_outlet_idx" already exists, skipping',
+file: 'index.c',
+line: '889',
+routine: 'index_create'
+}
+{
+severity_local: 'NOTICE',
+severity: 'NOTICE',
+code: '42P07',
+message: 'relation "server_sync_conflicts_outlet_idx" already exists, skipping',
+file: 'index.c',
+line: '889',
+routine: 'index_create'
+}
+{
+severity_local: 'NOTICE',
+severity: 'NOTICE',
+code: '42P07',
+message: 'relation "inventory_movements_outlet_idx" already exists, skipping',
+file: 'index.c',
+line: '889',
+routine: 'index_create'
+}
+{
+severity_local: 'NOTICE',
+severity: 'NOTICE',
+code: '42P07',
+message: 'relation "kds_devices_outlet_idx" already exists, skipping',
+file: 'index.c',
+line: '889',
+routine: 'index_create'
+}
+6:27:17 AM [express] Multi-outlet schema ensured.
+6:27:17 AM [express] serving on port 5000
+2:01:19 PM [express] GET /api/client_secret.json 400 in 4ms :: {"error":"Missing tenant","message":"…
+2:01:19 PM [express] GET /api/.env 400 in 3ms :: {"error":"Missing tenant","message":"Use {slug}.aur…
+5:40:52 PM [express] GET /api/.env 400 in 1ms :: {"error":"Missing tenant","message":"Use {slug}.aur…
+12:12:10 AM [express] GET /api/.env 400 in 2ms :: {"error":"Missing tenant","message":"Use {slug}.aur…
+12:12:17 AM [express] GET /api/v1/.env 400 in 1ms :: {"error":"Missing tenant","message":"Use {slug}.…
+12:12:17 AM [express] GET /api/v2/.env 400 in 1ms :: {"error":"Missing tenant","message":"Use {slug}.…
+12:12:18 AM [express] GET /api/v3/.env 400 in 2ms :: {"error":"Missing tenant","message":"Use {slug}.…
+12:12:18 AM [express] GET /api/dev/.env 400 in 1ms :: {"error":"Missing tenant","message":"Use {slug}…
+12:12:18 AM [express] GET /api/staging/.env 400 in 1ms :: {"error":"Missing tenant","message":"Use {s…
+6:25:49 AM [express] GET /api/.env 400 in 2ms :: {"error":"Missing tenant","message":"Use {slug}.aur…
+6:25:58 AM [express] GET /api/.env 400 in 1ms :: {"error":"Missing tenant","message":"Use {slug}.aur…

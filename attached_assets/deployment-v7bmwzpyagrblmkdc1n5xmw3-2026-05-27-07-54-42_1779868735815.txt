@@ -1,0 +1,58 @@
+2026-May-27 07:52:05.252494 Docker 29.4.3 with BuildKit and Buildx detected on deployment server (localhost).
+2026-May-27 07:52:05.276173 Starting deployment of Rndynt/AuraPoS:main to localhost.
+2026-May-27 07:52:05.599564 Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-27 07:52:09.157239 ----------------------------------------
+2026-May-27 07:52:09.172812 Importing Rndynt/AuraPoS:main (commit sha ebc90f3bccda628a2ac927880341c7c15ec25ac8) to /artifacts/v7bmwzpyagrblmkdc1n5xmw3.
+2026-May-27 07:52:16.863374 Generating nixpacks configuration with: nixpacks plan -f json --env 'NIXPACKS_NODE_VERSION=22' --env 'COOLIFY_URL=https://n12lywn11oyw1wz0ziv0corq.69.197.164.221.sslip.io' --env 'COOLIFY_FQDN=n12lywn11oyw1wz0ziv0corq.69.197.164.221.sslip.io' --env 'COOLIFY_BRANCH=main' --env 'COOLIFY_RESOURCE_UUID=n12lywn11oyw1wz0ziv0corq' --build-cmd 'pnpm build' --start-cmd 'mkdir -p apps/api/dist/public; cp -r dist/public/* apps/api/dist/public/ 2>/dev/null||true; NODE_ENV=production node apps/api/dist/index.js' --install-cmd 'npm install -g pnpm@10.28.1 && pnpm install --frozen-lockfile' /artifacts/v7bmwzpyagrblmkdc1n5xmw3
+2026-May-27 07:52:17.843424 Found application type: node.
+2026-May-27 07:52:17.858877 If you need further customization, please check the documentation of Nixpacks: https://nixpacks.com/docs/providers/node
+2026-May-27 07:52:19.455294 ----------------------------------------
+2026-May-27 07:52:19.477201 ⚠️ Build-time environment variable warning: NODE_ENV=production
+2026-May-27 07:52:19.499596 Affects: Node.js/npm/yarn/bun/pnpm
+2026-May-27 07:52:19.517340 Issue: Skips devDependencies installation which are often required for building (webpack, typescript, etc.)
+2026-May-27 07:52:19.533969 Recommendation: Uncheck "Available at Buildtime" or use "development" during build
+2026-May-27 07:52:19.550898
+2026-May-27 07:52:19.567795 💡 Tips to resolve build issues:
+2026-May-27 07:52:19.583315 1. Set these variables as "Runtime only" in the environment variables settings
+2026-May-27 07:52:19.600075 2. Use different values for build-time (e.g., NODE_ENV=development for build)
+2026-May-27 07:52:19.618458 3. Consider using multi-stage Docker builds to separate build and runtime environments
+2026-May-27 07:52:19.646563 ----------------------------------------
+2026-May-27 07:52:19.669941 Building docker image started.
+2026-May-27 07:52:19.690981 To check the current progress, click on Show Debug Logs.
+2026-May-27 07:52:40.107414 ========================================
+2026-May-27 07:52:40.128451 Deployment failed: Command execution failed (exit code 255): docker exec v7bmwzpyagrblmkdc1n5xmw3 bash -c 'bash /artifacts/build.sh'
+2026-May-27 07:52:40.128451 Error: #0 building with "default" instance using docker driver
+2026-May-27 07:52:40.128451
+2026-May-27 07:52:40.128451 #1 [internal] load build definition from Dockerfile
+2026-May-27 07:52:40.128451 #1 transferring dockerfile: 2.14kB done
+2026-May-27 07:52:40.128451 #1 DONE 0.0s
+2026-May-27 07:52:40.128451
+2026-May-27 07:52:40.128451 #2 [internal] load metadata for ghcr.io/railwayapp/nixpacks:ubuntu-1745885067
+2026-May-27 07:52:40.128451 #2 DONE 0.7s
+2026-May-27 07:52:40.128451
+2026-May-27 07:52:40.128451 #3 [internal] load .dockerignore
+2026-May-27 07:52:40.128451 #3 transferring context: 544B done
+2026-May-27 07:52:40.128451 #3 DONE 0.0s
+2026-May-27 07:52:40.128451
+2026-May-27 07:52:40.128451 #4 [internal] load build context
+2026-May-27 07:52:40.128451 #4 ...
+2026-May-27 07:52:40.128451
+2026-May-27 07:52:40.128451 #5 [ 1/16] FROM ghcr.io/railwayapp/nixpacks:ubuntu-1745885067@sha256:d45c89d80e13d7ad0fd555b5130f22a866d9dd10e861f589932303ef2314c7de
+2026-May-27 07:52:40.128451 #5 resolve ghcr.io/railwayapp/nixpacks:ubuntu-1745885067@sha256:d45c89d80e13d7ad0fd555b5130f22a866d9dd10e861f589932303ef2314c7de 0.0s done
+2026-May-27 07:52:40.128451 #5 DONE 0.2s
+2026-May-27 07:52:40.128451
+2026-May-27 07:52:40.128451 #4 [internal] load build context
+2026-May-27 07:52:40.128451 #4 transferring context: 6.25MB 0.5s done
+2026-May-27 07:52:40.128451 #4 DONE 0.5s
+2026-May-27 07:52:40.128451
+2026-May-27 07:52:40.128451 #6 [ 2/16] WORKDIR /app/
+2026-May-27 07:52:40.128451 #6 DONE 0.3s
+2026-May-27 07:52:40.128451
+2026-May-27 07:52:40.128451 #7 [ 3/16] COPY .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix
+2026-May-27 07:52:40.128451 #7 DONE 0.1s
+2026-May-27 07:52:40.128451
+2026-May-27 07:52:40.128451 #8 [ 4/16] RUN nix-env -if .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix && nix-collect-garbage -d
+2026-May-27 07:52:40.128451 #8 0.375 unpacking 'https://github.com/NixOS/nixpkgs/archive/ba913eda2df8eb72147259189d55932012df6301.tar.gz' into the Git cache...
+2026-May-27 07:52:40.392965 ========================================
+2026-May-27 07:52:40.414671 Deployment failed. Removing the new version of your application.
+2026-May-27 07:52:42.329045 Gracefully shutting down build container: v7bmwzpyagrblmkdc1n5xmw3
