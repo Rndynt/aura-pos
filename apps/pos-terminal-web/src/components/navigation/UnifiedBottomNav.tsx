@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { LayoutGrid, UtensilsCrossed, ShoppingBag, ChefHat, Grip } from "lucide-react";
+import { LayoutGrid, UtensilsCrossed, ShoppingBag, ChefHat, Grip, Receipt } from "lucide-react";
 import { useTenant } from "@/context/TenantContext";
 
 interface UnifiedBottomNavProps {
@@ -18,9 +18,10 @@ export function UnifiedBottomNav({ cartCount, onCartClick }: UnifiedBottomNavPro
 
   // Build nav items dynamically so spacing stays even
   const navItems = [
-    { path: "/pos",     icon: LayoutGrid,       label: "Kasir" },
+    { path: "/pos",     icon: LayoutGrid,       label: "Kasir"     },
     ...(isTablesEnabled  ? [{ path: "/tables",  icon: UtensilsCrossed,  label: "Meja"    }] : []),
     { path: "__cart__", icon: ShoppingBag,      label: "Keranjang" },   // center FAB slot
+    { path: "/orders",  icon: Receipt,          label: "Pesanan"   },
     ...(isKitchenEnabled ? [{ path: "/kitchen", icon: ChefHat,          label: "Dapur"   }] : []),
     { path: "/hub",     icon: Grip,             label: "Hub"       },
   ];

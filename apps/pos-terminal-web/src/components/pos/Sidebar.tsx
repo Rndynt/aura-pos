@@ -1,7 +1,7 @@
 import {
   ShoppingBag, LayoutGrid, UtensilsCrossed, ChefHat, Grip, LogOut,
   AlertTriangle, Printer, ClipboardList, Wifi, WifiOff, RefreshCw,
-  CheckCircle2, Clock3, XCircle,
+  CheckCircle2, Clock3, XCircle, Receipt,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useTenant } from "@/context/TenantContext";
@@ -125,7 +125,7 @@ export function Sidebar() {
   const showKitchen = !isLoading && hasModule("enable_kitchen_ticket");
 
   const nav = (path: string) => setLocation(path);
-  const isHub = ["/hub", "/dashboard", "/products", "/stock", "/reports", "/employees", "/store-profile", "/orders"].some(p => location === p || location.startsWith(p));
+  const isHub = ["/hub", "/dashboard", "/products", "/stock", "/reports", "/employees", "/store-profile"].some(p => location === p || location.startsWith(p));
 
   return (
     <aside className="hidden md:flex flex-col items-center w-[68px] h-screen bg-white border-r border-slate-100 py-5 flex-shrink-0 z-30 gap-2">
@@ -143,6 +143,14 @@ export function Sidebar() {
           isActive={location === "/pos" || location === "/"}
           onClick={() => nav("/pos")}
           testId="button-nav-pos"
+        />
+
+        <SidebarItem
+          icon={Receipt}
+          label="Pesanan"
+          isActive={location.startsWith("/orders")}
+          onClick={() => nav("/orders")}
+          testId="button-nav-orders"
         />
 
         {showTables && (
@@ -222,10 +230,11 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
   const showKitchen = !isLoading && hasModule("enable_kitchen_ticket");
 
   const nav = (path: string) => { setLocation(path); onItemClick?.(); };
-  const isHub = ["/hub", "/dashboard", "/products", "/stock", "/reports", "/employees", "/store-profile", "/orders"].some(p => location === p || location.startsWith(p));
+  const isHub = ["/hub", "/dashboard", "/products", "/stock", "/reports", "/employees", "/store-profile"].some(p => location === p || location.startsWith(p));
 
   const items = [
     { path: "/pos",             icon: LayoutGrid,     label: "Kasir / POS",      active: location === "/pos" || location === "/",   show: true         },
+    { path: "/orders",          icon: Receipt,        label: "Pesanan",          active: location.startsWith("/orders"),            show: true         },
     { path: "/tables",          icon: UtensilsCrossed,label: "Meja",             active: location.startsWith("/tables"),            show: showTables   },
     { path: "/kitchen",         icon: ChefHat,        label: "Dapur / Kitchen",  active: location.startsWith("/kitchen"),           show: showKitchen  },
     { path: "/printers",        icon: Printer,        label: "Printer Hub",      active: location.startsWith("/printers"),          show: true         },
