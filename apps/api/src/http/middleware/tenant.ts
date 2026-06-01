@@ -28,6 +28,42 @@ function extractSlugFromHost(hostname: string): string | null {
   return slug;
 }
 
+// ── In-memory tenant cache (TTL: 60s) ────────────────────────────────────────
+// Reduces DB queries on every request. Entries are invalidated on tenant update.
+interface TenantCacheEntry {
+  id: string;
+  slug: string;
+  isActive: boolean;
+  ts: number;
+}
+
+const tenantCache = new Map<string, TenantCacheEntry>();
+const TENANT_CACHE_TTL = 60_000; // 60 seconds
+
+function getCachedTenant(key: string): TenantCacheEntry | null {
+  const entry = tenantCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > TENANT_CACHE_TTL) {
+    tenantCache.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function setCachedTenant(key: string, entry: TenantCacheEntry): void {
+  // Cap cache size to prevent memory leaks
+  if (tenantCache.size > 1000) {
+    const oldest = tenantCache.keys().next().value;
+    if (oldest) tenantCache.delete(oldest);
+  }
+  tenantCache.set(key, entry);
+}
+
+/** Call this after updating a tenant to invalidate cache */
+export function invalidateTenantCache(slugOrId: string): void {
+  tenantCache.delete(slugOrId);
+}
+
 export async function tenantMiddleware(
   req: Request, res: Response, next: NextFunction,
 ): Promise<void> {
@@ -39,24 +75,29 @@ export async function tenantMiddleware(
 
     const slug = extractSlugFromHost(hostname);
 
-    // Debug log (hapus setelah confirmed working)
-    if (process.env.NODE_ENV === 'development' || process.env.DEBUG_TENANT) {
-      console.log(`[tenant] host="${hostname}" slug="${slug}" path="${req.path}"`);
-    }
-
     // ── 1. Subdomain: {slug}.aurapos.my.id ───────────────────────────────────
     if (slug) {
+      const cached = getCachedTenant(slug);
+      if (cached) {
+        if (!cached.isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
+        req.tenantId = cached.id;
+        req.tenantSlug = slug;
+        return next();
+      }
+
       const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
       if (!rows.length) { res.status(404).json({ error: 'Tenant not found', slug }); return; }
       if (!rows[0].isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
+
+      setCachedTenant(slug, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive, ts: Date.now() });
+      setCachedTenant(rows[0].id, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive, ts: Date.now() });
+
       req.tenantId = rows[0].id;
       req.tenantSlug = slug;
       return next();
     }
 
     // ── 2. Header / query fallback (dev, API client) ─────────────────────────
-    // Block header-based tenant resolution in production when flag is set.
-    // Set ALLOW_TENANT_HEADER=false in production environment variables.
     const allowTenantHeader = process.env.ALLOW_TENANT_HEADER !== 'false';
 
     const tenantId = allowTenantHeader
@@ -68,11 +109,22 @@ export async function tenantMiddleware(
       return;
     }
 
+    const cached = getCachedTenant(tenantId);
+    if (cached) {
+      if (!cached.isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
+      req.tenantId = cached.id;
+      req.tenantSlug = cached.slug;
+      return next();
+    }
+
     const rows = await db.select().from(tenants)
       .where(or(eq(tenants.id, tenantId), eq(tenants.slug, tenantId))).limit(1);
 
     if (!rows.length) { res.status(404).json({ error: 'Tenant not found' }); return; }
     if (!rows[0].isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
+
+    setCachedTenant(tenantId, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive, ts: Date.now() });
+    setCachedTenant(rows[0].id, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive, ts: Date.now() });
 
     req.tenantId = rows[0].id;
     req.tenantSlug = rows[0].slug;

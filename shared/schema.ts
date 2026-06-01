@@ -391,6 +391,9 @@ export const orders = pgTable("orders", {
   tenantIdempotencyUnique: uniqueIndex("orders_tenant_idempotency_unique").on(table.tenantId, table.idempotencyKey),
   tenantOrderNumberUnique: uniqueIndex("orders_tenant_order_number_unique").on(table.tenantId, table.orderNumber),
   sourceTerminalLocalOrderIdx: index("orders_source_terminal_local_order_idx").on(table.sourceTerminalId, table.localOrderId),
+  // Composite indexes for common query patterns
+  tenantStatusDateIdx: index("orders_tenant_status_date_idx").on(table.tenantId, table.status, table.orderDate),
+  tenantPaymentStatusIdx: index("orders_tenant_payment_status_idx").on(table.tenantId, table.paymentStatus),
 }));
 
 export const insertOrderSchema = createInsertSchema(orders).omit({

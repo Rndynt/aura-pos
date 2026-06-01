@@ -15,6 +15,9 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
+import { auth, authDb } from '../../lib/auth';
+import { fromNodeHeaders } from 'better-auth/node';
+import { sql } from 'drizzle-orm';
 
 // ── Role type ─────────────────────────────────────────────────────────────────
 
@@ -34,6 +37,7 @@ declare global {
   namespace Express {
     interface Request {
       posRole?: PosRole;
+      userId?: string;
     }
   }
 }
@@ -44,14 +48,43 @@ export function hasRole(userRole: PosRole, required: PosRole): boolean {
   return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[required];
 }
 
-function resolveRoleFromRequest(req: Request): PosRole {
+const VALID_ROLES = new Set(Object.keys(ROLE_HIERARCHY));
+
+/**
+ * Resolve role from authenticated session.
+ * Queries the user table for the role field set during registration/linking.
+ */
+async function resolveRoleFromRequest(req: Request): Promise<PosRole> {
+  // Dev override via header (non-production only)
   if (process.env.NODE_ENV !== 'production') {
     const devRole = req.headers['x-pos-role'] as string | undefined;
     if (devRole && devRole in ROLE_HIERARCHY) {
       return devRole as PosRole;
     }
   }
-  // TODO: replace with real session/JWT extraction
+
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+
+    if (session?.user?.id) {
+      req.userId = session.user.id;
+
+      const rows = await authDb.execute(
+        sql`SELECT role FROM "user" WHERE id = ${session.user.id} LIMIT 1`
+      );
+      const dbRole = (rows as any[])[0]?.role;
+
+      if (dbRole && VALID_ROLES.has(dbRole)) {
+        return dbRole as PosRole;
+      }
+    }
+  } catch {
+    // Session resolution failed — fall through to default
+  }
+
+  // Default: cashier (lowest privileged authenticated role)
   return 'cashier';
 }
 
@@ -61,9 +94,14 @@ function resolveRoleFromRequest(req: Request): PosRole {
  * Attach `req.posRole` so downstream handlers can check permissions.
  * Call this early in the pipeline (after tenantMiddleware).
  */
-export function attachRole(req: Request, _res: Response, next: NextFunction): void {
-  req.posRole = resolveRoleFromRequest(req);
-  next();
+export async function attachRole(req: Request, _res: Response, next: NextFunction): Promise<void> {
+  try {
+    req.posRole = await resolveRoleFromRequest(req);
+    next();
+  } catch {
+    req.posRole = 'cashier';
+    next();
+  }
 }
 
 /**
@@ -73,8 +111,9 @@ export function attachRole(req: Request, _res: Response, next: NextFunction): vo
  *   router.post('/refunds', requireRole('manager'), RefundController.create)
  */
 export function requireRole(minimumRole: PosRole) {
-  return function roleGuard(req: Request, res: Response, next: NextFunction): void {
-    const role = req.posRole ?? resolveRoleFromRequest(req);
+  return async function roleGuard(req: Request, res: Response, next: NextFunction): Promise<void> {
+    // Resolve role lazily if attachRole wasn't called
+    const role = req.posRole ?? await resolveRoleFromRequest(req);
     if (!hasRole(role, minimumRole)) {
       res.status(403).json({
         error: 'Forbidden',

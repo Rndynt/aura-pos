@@ -23,15 +23,12 @@ export default function EmployeesPage() {
   };
 
   const handleAddNew = () => {
-    console.log("Add new employee");
   };
 
   const handleManageAccess = (employeeId: number) => {
-    console.log("Manage access for employee:", employeeId);
   };
 
   const handleDelete = (employeeId: number) => {
-    console.log("Delete employee:", employeeId);
   };
 
   return (

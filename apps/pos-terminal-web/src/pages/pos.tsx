@@ -309,16 +309,12 @@ export default function POSPage() {
   };
 
   const handleUpdateContinueOrder = async () => {
-    console.log("🔴 [UPDATE] handleUpdateContinueOrder called, continueOrderId:", continueOrderId);
-    console.log("🔴 [UPDATE] Cart items:", cart.items.length, cart.items);
     
     if (!ensureCartHasItems()) {
-      console.log("🔴 [UPDATE] No items in cart - aborting");
       return;
     }
     
     if (!continueOrderId) {
-      console.log("🔴 [UPDATE] No continueOrderId - aborting");
       toast({
         title: "Error",
         description: "No order ID found",
@@ -329,10 +325,8 @@ export default function POSPage() {
     
     try {
       setIsProcessingQuickCharge(true);
-      console.log("🔴 [UPDATE] Building order payload...");
       
       const items = cart.toBackendOrderItems();
-      console.log("🔴 [UPDATE] Backend items:", items);
       
       const orderPayload = {
         items,
@@ -343,16 +337,13 @@ export default function POSPage() {
         table_number: cart.tableNumber || undefined,
       };
       
-      console.log("🔴 [UPDATE] Full payload:", orderPayload);
       
       // Update the existing order
-      console.log("🔴 [UPDATE] Calling mutation for order:", continueOrderId);
       const orderResult = await updateOrderMutation.mutateAsync({
         orderId: continueOrderId,
         ...orderPayload,
       });
       
-      console.log("🔴 [UPDATE] Success! Response:", orderResult);
       
       setIsProcessingQuickCharge(false);
       toast({

@@ -82,7 +82,7 @@ router.post('/', async (req, res) => {
   try {
     // 1. Buat tenant
     const [tenant] = await db.insert(tenants).values({
-      id: `${normalSlug}-${Date.now()}`,
+      id: crypto.randomUUID(),
       name: businessName,
       slug: normalSlug,
       businessName,

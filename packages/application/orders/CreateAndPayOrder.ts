@@ -98,46 +98,7 @@ export class CreateAndPayOrder {
     } = input;
 
     // ------------------------------------------------------------------
-    // Idempotency check (before transaction – avoids unnecessary locking)
-    // ------------------------------------------------------------------
-    if (idempotency_key) {
-      const existing = await this.db
-        .select({ orderId: orderPayments.orderId })
-        .from(orderPayments)
-        .innerJoin(orders, eq(orderPayments.orderId, orders.id))
-        .where(
-          and(
-            eq(orders.tenantId, tenant_id),
-            eq(orderPayments.referenceNumber, idempotency_key)
-          )
-        )
-        .limit(1);
-
-      if (existing[0]?.orderId) {
-        const existingOrder = await this.db
-          .select()
-          .from(orders)
-          .where(and(eq(orders.id, existing[0].orderId), eq(orders.tenantId, tenant_id)))
-          .limit(1);
-
-        const existingPayments = await this.db
-          .select()
-          .from(orderPayments)
-          .where(eq(orderPayments.orderId, existing[0].orderId));
-
-        if (existingOrder[0]) {
-          return {
-            order: existingOrder[0],
-            payment: existingPayments[0] ?? null,
-            idempotent_replay: true,
-            remainingAmount: 0,
-          };
-        }
-      }
-    }
-
-    // ------------------------------------------------------------------
-    // Validate products belong to tenant (outside transaction)
+    // Validate products belong to tenant (outside transaction — pure read)
     // ------------------------------------------------------------------
     const productIds = [...new Set(items.map(i => i.product_id))];
     const validProducts = await this.db
@@ -152,7 +113,7 @@ export class CreateAndPayOrder {
     }
 
     // ------------------------------------------------------------------
-    // Price calculation (outside transaction – pure computation)
+    // Price calculation (outside transaction — pure computation)
     // ------------------------------------------------------------------
     const taxRateVal = tax_rate ?? DEFAULT_TAX_RATE;
     const serviceChargeRateVal = service_charge_rate ?? DEFAULT_SERVICE_CHARGE_RATE;
@@ -212,14 +173,61 @@ export class CreateAndPayOrder {
     }
 
     // ------------------------------------------------------------------
-    // Generate order number with retry (P1.3: unique constraint safety)
+    // Idempotency check — inside transaction to prevent duplicate orders
+    // under concurrent requests with the same idempotency_key.
+    // Uses SELECT ... FOR UPDATE to serialize concurrent checks.
     // ------------------------------------------------------------------
-    const orderNumber = await this.generateOrderNumber(tenant_id);
+
+    // ------------------------------------------------------------------
+    // Generate order number with retry (P1.3: unique constraint safety)
+    // Deferred to inside transaction to prevent race condition.
+    // ------------------------------------------------------------------
 
     // ------------------------------------------------------------------
     // TRUE ATOMIC TRANSACTION (P0.2)
     // ------------------------------------------------------------------
     const result = await this.db.transaction(async (tx) => {
+      // 0. Idempotency check inside transaction (prevents race condition)
+      if (idempotency_key) {
+        const existing = await tx
+          .select({ orderId: orderPayments.orderId })
+          .from(orderPayments)
+          .innerJoin(orders, eq(orderPayments.orderId, orders.id))
+          .where(
+            and(
+              eq(orders.tenantId, tenant_id),
+              eq(orderPayments.referenceNumber, idempotency_key)
+            )
+          )
+          .limit(1)
+          .for('update');
+
+        if (existing[0]?.orderId) {
+          const existingOrder = await tx
+            .select()
+            .from(orders)
+            .where(and(eq(orders.id, existing[0].orderId), eq(orders.tenantId, tenant_id)))
+            .limit(1);
+
+          const existingPayments = await tx
+            .select()
+            .from(orderPayments)
+            .where(eq(orderPayments.orderId, existing[0].orderId));
+
+          if (existingOrder[0]) {
+            return {
+              order: existingOrder[0],
+              payment: existingPayments[0] ?? null,
+              idempotent_replay: true,
+              remainingAmount: 0,
+            };
+          }
+        }
+      }
+
+      // Generate order number inside transaction to prevent race condition
+      const orderNumber = await this.generateOrderNumber(tenant_id, tx);
+
       // 1. Insert order
       const orderData: Omit<InsertOrder, 'id' | 'createdAt' | 'updatedAt'> = {
         tenantId: tenant_id,
@@ -330,8 +338,23 @@ export class CreateAndPayOrder {
           for (const product of trackedProducts) {
             const soldQty = soldQtyMap[product.id] ?? 0;
             if (soldQty === 0) continue;
-            const before = product.stockQty ?? 0;
+
+            // Use SELECT ... FOR UPDATE to prevent race condition
+            const [locked] = await this.db
+              .select({ id: products.id, stockQty: products.stockQty })
+              .from(products)
+              .where(and(eq(products.id, product.id), eq(products.tenantId, tenant_id)))
+              .for('update');
+
+            if (!locked) continue;
+
+            const before = locked.stockQty ?? 0;
             const after = before - soldQty;
+
+            if (after < 0) {
+              console.warn(`[CreateAndPay] Stock would go negative for product ${product.id}: ${before} - ${soldQty} = ${after}`);
+            }
+
             await this.db
               .update(products)
               .set({ stockQty: after, updatedAt: new Date() })
@@ -346,7 +369,9 @@ export class CreateAndPayOrder {
               quantityBefore: before,
               quantityAfter: after,
               notes: `Penjualan — Order ${orderLabel}`,
-            }).catch(() => {});
+            }).catch((err) => {
+              console.error(`[CreateAndPay] Failed to record inventory movement for product ${product.id}:`, err);
+            });
           }
         }
       }
@@ -362,8 +387,9 @@ export class CreateAndPayOrder {
   /**
    * Generate a unique order number for the tenant.
    * Uses count-based approach with retry on unique constraint violation (P1.3).
+   * Runs inside transaction to prevent race condition on concurrent orders.
    */
-  private async generateOrderNumber(tenantId: string, attempt = 0): Promise<string> {
+  private async generateOrderNumber(tenantId: string, tx?: any, attempt = 0): Promise<string> {
     const MAX_ATTEMPTS = 5;
     const today = new Date();
     const datePrefix = today.toISOString().split('T')[0].replace(/-/g, '');
@@ -372,7 +398,8 @@ export class CreateAndPayOrder {
     const startOfDay = new Date(today);
     startOfDay.setHours(0, 0, 0, 0);
 
-    const countResult = await this.db
+    const dbOrTx = tx ?? this.db;
+    const countResult = await dbOrTx
       .select({ value: count() })
       .from(orders)
       .where(

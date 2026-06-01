@@ -8,6 +8,7 @@ import * as TenantsController from '../controllers/TenantsController';
 import { db } from '@pos/infrastructure/database';
 import { tenants } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { requireOwner, requireManager } from '../middleware/rbac';
 
 const router = Router();
 
@@ -38,14 +39,14 @@ router.get('/profile', TenantsController.getTenantProfile);
 // GET /api/tenants/features - Get active features
 router.get('/features', TenantsController.getActiveFeatures);
 
-// PATCH /api/tenants/modules - Update module config flags
-router.patch('/modules', TenantsController.updateModuleConfig);
+// PATCH /api/tenants/modules - Update module config flags (owner only)
+router.patch('/modules', requireOwner, TenantsController.updateModuleConfig);
 
-// PATCH /api/tenants/plan - Switch subscription plan tier + sync plan_default features
-router.patch('/plan', TenantsController.updatePlanTier);
+// PATCH /api/tenants/plan - Switch subscription plan tier (owner only)
+router.patch('/plan', requireOwner, TenantsController.updatePlanTier);
 
-// POST /api/tenants/features/toggle - Toggle a single feature on/off
-router.post('/features/toggle', TenantsController.toggleFeature);
+// POST /api/tenants/features/toggle - Toggle a single feature on/off (owner only)
+router.post('/features/toggle', requireOwner, TenantsController.toggleFeature);
 
 // POST /api/tenants/features/check - Check feature access
 router.post('/features/check', TenantsController.checkFeatureAccess);

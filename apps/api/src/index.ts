@@ -24,8 +24,8 @@ import { fileURLToPath } from "url";
 const app = express();
 
 // Trust proxy headers (Nginx, Cloudflare, etc.)
-// Required so req.hostname returns the real subdomain behind a proxy
-app.set('trust proxy', true);
+// Set to 1 to trust only the first proxy hop (prevents X-Forwarded-For spoofing)
+app.set('trust proxy', 1);
 
 // Health check endpoint — must be registered before any auth/tenant middleware
 // so Coolify / load-balancers can reach it without credentials
@@ -97,10 +97,11 @@ app.use((req, res, next) => {
   const allowed =
     origin.endsWith(`.${BASE_DOMAIN}`) ||
     origin === `https://${BASE_DOMAIN}` ||
-    origin.includes('localhost') ||
-    origin.includes('replit.dev') ||
-    origin.includes('repl.co') ||
-    origin.includes('sisko.replit.dev');
+    origin === 'http://localhost:5000' ||
+    origin === 'http://localhost:5173' ||
+    origin === 'http://localhost:3000' ||
+    origin.endsWith('.replit.dev') ||
+    origin.endsWith('.repl.co');
   if (allowed) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -551,8 +552,15 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    res.status(status).json({ message });
-    throw err;
+    // Log error in development for debugging
+    if (process.env.NODE_ENV !== 'production') {
+      console.error(`[error-handler] ${status} ${message}`, err.stack);
+    }
+
+    if (!res.headersSent) {
+      res.status(status).json({ message });
+    }
+    // Do NOT throw after sending response — causes unhandled rejection crash
   });
 
   if (app.get("env") === "development") {

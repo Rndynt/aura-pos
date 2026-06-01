@@ -34,7 +34,6 @@ export default function StoreProfilePage() {
 
   const handleSave = () => {
     // TODO: wire up save API
-    console.log("Saving store profile:", formData);
   };
 
   return (

@@ -69,8 +69,21 @@ export async function deductStockForItems(
     const soldQty = soldQtyMap[product.id] ?? 0;
     if (soldQty === 0) continue;
 
-    const before = product.stockQty ?? 0;
+    // Use SELECT ... FOR UPDATE to prevent race condition on concurrent stock updates
+    const [locked] = await db
+      .select({ id: products.id, stockQty: products.stockQty })
+      .from(products)
+      .where(and(eq(products.id, product.id), eq(products.tenantId, tenantId)))
+      .for('update');
+
+    if (!locked) continue;
+
+    const before = locked.stockQty ?? 0;
     const after = before - soldQty;
+
+    if (after < 0) {
+      console.warn(`[stockDeduction] Stock would go negative for product ${product.id}: ${before} - ${soldQty} = ${after}. Proceeding with deduction.`);
+    }
 
     await db
       .update(products)
@@ -87,7 +100,9 @@ export async function deductStockForItems(
       quantityBefore: before,
       quantityAfter: after,
       notes: orderNumber ? `Penjualan — Order ${orderNumber}` : 'Penjualan',
-    }).catch(() => {});
+    }).catch((err) => {
+      console.error(`[stockDeduction] Failed to record inventory movement for product ${product.id}:`, err);
+    });
   }
 }
 
@@ -132,7 +147,16 @@ export async function reverseStockForItems(
     const returnQty = qtyMap[product.id] ?? 0;
     if (returnQty === 0) continue;
 
-    const before = product.stockQty ?? 0;
+    // Use SELECT ... FOR UPDATE to prevent race condition
+    const [locked] = await db
+      .select({ id: products.id, stockQty: products.stockQty })
+      .from(products)
+      .where(and(eq(products.id, product.id), eq(products.tenantId, tenantId)))
+      .for('update');
+
+    if (!locked) continue;
+
+    const before = locked.stockQty ?? 0;
     const after = before + returnQty;
 
     await db
@@ -150,7 +174,9 @@ export async function reverseStockForItems(
       quantityBefore: before,
       quantityAfter: after,
       notes: orderNumber ? `Pembatalan Order ${orderNumber}` : 'Pembatalan order',
-    }).catch(() => {});
+    }).catch((err) => {
+      console.error(`[stockDeduction] Failed to record return movement for product ${product.id}:`, err);
+    });
   }
 }
 
@@ -164,4 +190,5 @@ export const STOCK_DEDUCTED_STATES = new Set([
   'preparing',
   'ready',
   'served',
+  'completed',
 ]);
