@@ -77,6 +77,7 @@ export const syncOfflineOrders = asyncHandler(async (req: Request, res: Response
   const result = await container.syncOfflineOrder.execute({
     tenant_id: tenantId,
     terminal_id: parsed.data.terminal_id,
+    outlet_id: req.outletId ?? null,
     app_version: parsed.data.app_version,
     orders: parsed.data.orders as any,
   });

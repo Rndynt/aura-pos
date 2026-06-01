@@ -62,6 +62,7 @@ export interface SyncOrderItemResult {
 export interface SyncBatchInput {
   tenant_id: string;
   terminal_id: string;
+  outlet_id?: string | null;
   app_version?: string;
   orders: SyncOrderItemInput[];
 }
@@ -104,7 +105,7 @@ export class SyncOfflineOrder {
   }
 
   async execute(input: SyncBatchInput): Promise<SyncBatchOutput> {
-    const { tenant_id, terminal_id, app_version, orders: orderInputs } = input;
+    const { tenant_id, terminal_id, outlet_id, app_version, orders: orderInputs } = input;
 
     if (orderInputs.length === 0) {
       return { batch_id: 'empty', processed: 0, synced: 0, replayed: 0, failed: 0, conflicts: 0, results: [] };
@@ -252,6 +253,7 @@ export class SyncOfflineOrder {
         // ── Create order + payment ────────────────────────────────────────────
         const output = await this.createAndPay.execute({
           tenant_id,
+          outlet_id: outlet_id ?? null,
           items: item.items,
           order_type_id: item.order_type_id,
           customer_name: item.customer_name,

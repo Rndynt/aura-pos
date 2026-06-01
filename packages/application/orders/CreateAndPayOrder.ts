@@ -231,6 +231,7 @@ export class CreateAndPayOrder {
       // 1. Insert order
       const orderData: Omit<InsertOrder, 'id' | 'createdAt' | 'updatedAt'> = {
         tenantId: tenant_id,
+        outletId: outlet_id ?? null,
         orderTypeId: order_type_id,
         orderNumber,
         status: 'confirmed' as any, // Quick-pay orders start as confirmed
