@@ -108,7 +108,7 @@ export default function POSPage() {
 
   // Fetch orders for queue display
   const { data: ordersData, refetch: refetchOrders } = useOrders(undefined, {
-    refetchInterval: isOrderQueueEnabled ? 5000 : false,
+    refetchInterval: false, // SSE handles real-time updates; polling disabled to avoid redundant API calls
   });
   const orders: Order[] = ordersData?.orders || [];
 

@@ -65,17 +65,24 @@ export async function deductStockForItems(
     }
   }
 
+  // Batch lock all tracked products in a single SELECT FOR UPDATE
+  const productIdsForLock = trackedProducts.map(p => p.id);
+  const lockedProducts = await db
+    .select({ id: products.id, stockQty: products.stockQty })
+    .from(products)
+    .where(and(
+      eq(products.tenantId, tenantId),
+      inArray(products.id, productIdsForLock),
+    ))
+    .for('update');
+
+  const lockedMap = new Map(lockedProducts.map(p => [p.id, p]));
+
   for (const product of trackedProducts) {
     const soldQty = soldQtyMap[product.id] ?? 0;
     if (soldQty === 0) continue;
 
-    // Use SELECT ... FOR UPDATE to prevent race condition on concurrent stock updates
-    const [locked] = await db
-      .select({ id: products.id, stockQty: products.stockQty })
-      .from(products)
-      .where(and(eq(products.id, product.id), eq(products.tenantId, tenantId)))
-      .for('update');
-
+    const locked = lockedMap.get(product.id);
     if (!locked) continue;
 
     const before = locked.stockQty ?? 0;
@@ -143,17 +150,24 @@ export async function reverseStockForItems(
     }
   }
 
+  // Batch lock all tracked products in a single SELECT FOR UPDATE
+  const productIdsForLock = trackedProducts.map(p => p.id);
+  const lockedProducts = await db
+    .select({ id: products.id, stockQty: products.stockQty })
+    .from(products)
+    .where(and(
+      eq(products.tenantId, tenantId),
+      inArray(products.id, productIdsForLock),
+    ))
+    .for('update');
+
+  const lockedMap = new Map(lockedProducts.map(p => [p.id, p]));
+
   for (const product of trackedProducts) {
     const returnQty = qtyMap[product.id] ?? 0;
     if (returnQty === 0) continue;
 
-    // Use SELECT ... FOR UPDATE to prevent race condition
-    const [locked] = await db
-      .select({ id: products.id, stockQty: products.stockQty })
-      .from(products)
-      .where(and(eq(products.id, product.id), eq(products.tenantId, tenantId)))
-      .for('update');
-
+    const locked = lockedMap.get(product.id);
     if (!locked) continue;
 
     const before = locked.stockQty ?? 0;

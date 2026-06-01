@@ -18,11 +18,20 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-// Create postgres client for proper .returning() support
+// Create postgres client optimized for NeonDB (serverless PostgreSQL)
 let sql: ReturnType<typeof postgres>;
 
 try {
-  sql = postgres(DATABASE_URL);
+  sql = postgres(DATABASE_URL, {
+    max: 5,                    // NeonDB serverless — keep pool small
+    idle_timeout: 10,          // Close idle connections fast (save Neon compute)
+    connect_timeout: 10,       // 10s connection timeout
+    max_lifetime: 60 * 30,     // 30 min max lifetime (NeonDB suspends compute)
+    prepare: false,            // REQUIRED: NeonDB PgBouncer does not support prepared statements
+    transform: {
+      undefined: null,         // undefined → NULL for NeonDB compatibility
+    },
+  });
 } catch (error) {
   console.error(
     '[database] Failed to initialize database connection. Ensure DATABASE_URL is valid.',
@@ -41,6 +50,7 @@ export const db = (() => {
   }
 })();
 
+export { sql };
 export type Database = typeof db;
 
 // Type that accepts both regular database and transaction

@@ -19,6 +19,7 @@
     "@pos/features": "workspace:*",
     "@pos/infrastructure": "workspace:*",
     "better-auth": "^1.6.11",
+    "compression": "^1.8.1",
     "connect-pg-simple": "^10.0.0",
     "drizzle-orm": "^0.39.1",
     "drizzle-zod": "^0.7.0",

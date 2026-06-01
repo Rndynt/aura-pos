@@ -96,11 +96,18 @@ export const reorderCategories = asyncHandler(async (req: Request, res: Response
       throw createError('Invalid category ordering payload', 400, 'INVALID_CATEGORY_ORDERING');
     }
 
-    for (const [index, categoryId] of body.ordered_ids.entries()) {
-      await tx
-        .update(productCategories)
-        .set({ displayOrder: index, updatedAt: new Date() })
-        .where(and(eq(productCategories.tenantId, tenantId), eq(productCategories.id, categoryId)));
+    // Batch update using CASE WHEN — single query instead of N individual updates
+    if (body.ordered_ids.length > 0) {
+      const caseClauses = body.ordered_ids
+        .map((id, i) => `WHEN '${id.replace(/'/g, "''")}' THEN ${i}`)
+        .join(' ');
+      const idList = body.ordered_ids.map(id => `'${id.replace(/'/g, "''")}'`).join(', ');
+      await tx.execute(sql`
+        UPDATE ${productCategories}
+        SET "display_order" = CASE "id"::text ${sql.raw(caseClauses)} END,
+            "updated_at" = NOW()
+        WHERE "tenant_id" = ${tenantId} AND "id"::text IN (${sql.raw(idList)})
+      `);
     }
   });
 

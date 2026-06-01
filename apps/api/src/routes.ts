@@ -12,6 +12,9 @@ const cfdLatestState = new Map<string, string>();
 // Key: tenantId, Value: Set of connected WebSocket clients
 const cfdClients = new Map<string, Set<WebSocket>>();
 
+const MAX_CONNECTIONS_PER_TENANT = 100;
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
 function addCfdClient(tenantId: string, ws: WebSocket) {
   if (!cfdClients.has(tenantId)) cfdClients.set(tenantId, new Set());
   cfdClients.get(tenantId)!.add(ws);
@@ -83,6 +86,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── WebSocket server — path /ws/cfd?tenantId=xxx ──────────────────────────
   const wss = new WebSocketServer({ server: httpServer, path: '/ws/cfd' });
 
+  // Prevent memory leaks from too many listeners on the shared server
+  wss.setMaxListeners(50);
+
   wss.on('connection', (ws, req) => {
     // Parse tenantId from query string
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
@@ -93,6 +99,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
 
+    // Enforce max connections per tenant
+    const tenantClients = cfdClients.get(tenantId);
+    if (tenantClients && tenantClients.size >= MAX_CONNECTIONS_PER_TENANT) {
+      ws.close(1013, 'Too many connections for tenant');
+      return;
+    }
+
+    // Mark connection as alive for heartbeat tracking
+    (ws as any)._isAlive = true;
+
     addCfdClient(tenantId, ws);
 
     // Send the latest cached state immediately so CFD doesn't start blank
@@ -101,8 +117,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ws.send(latest);
     }
 
-    ws.on('close', () => removeCfdClient(tenantId, ws));
-    ws.on('error', () => removeCfdClient(tenantId, ws));
+    // Heartbeat: mark alive on pong
+    ws.on('pong', () => {
+      (ws as any)._isAlive = true;
+    });
+
+    // Clean up heartbeat interval and client tracking on close
+    ws.on('close', () => {
+      removeCfdClient(tenantId, ws);
+    });
+    ws.on('error', () => {
+      removeCfdClient(tenantId, ws);
+    });
+  });
+
+  // Ping all connected clients every 30 seconds; terminate unresponsive ones
+  const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if ((ws as any)._isAlive === false) {
+        return ws.terminate();
+      }
+      (ws as any)._isAlive = false;
+      ws.ping();
+    });
+  }, HEARTBEAT_INTERVAL_MS);
+
+  // Clean up heartbeat interval when server shuts down
+  wss.on('close', () => {
+    clearInterval(heartbeatInterval);
   });
 
   return httpServer;

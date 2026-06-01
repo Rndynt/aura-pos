@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { nanoid } from "nanoid";
 import type { Product, ProductVariant } from "@pos/domain/catalog/types";
 import type { SelectedOption } from "@pos/domain/orders/types";
@@ -162,11 +162,18 @@ export function useCart() {
     };
   }, [tenantId]);
 
-  // Persist to sessionStorage on every relevant state change
+  // Debounced persist to sessionStorage
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    const session = { items, customerName, tableNumber, paymentMethod, selectedOrderTypeId, orderType, orderNumber, orderDiscount };
-    saveSession(session);
-    saveCartSession(tenantId, session).catch(() => undefined);
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      const session = { items, customerName, tableNumber, paymentMethod, selectedOrderTypeId, orderType, orderNumber, orderDiscount };
+      saveSession(session);
+      saveCartSession(tenantId, session).catch(() => undefined);
+    }, 300);
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    };
   }, [items, customerName, tableNumber, paymentMethod, selectedOrderTypeId, orderType, orderNumber, orderDiscount]);
 
   const addItem = (
@@ -313,24 +320,31 @@ export function useCart() {
     });
   };
 
-  // ── Totals ────────────────────────────────────────────────────────────────
-  const itemsDiscountTotal = items.reduce((sum, item) => sum + getItemDiscountAmount(item), 0);
-  const subtotal = items.reduce((sum, item) => sum + getItemEffectiveTotal(item), 0);
-
-  const orderDiscountAmount =
-    orderDiscount && orderDiscount.value > 0
-      ? orderDiscount.type === "percent"
-        ? subtotal * (Math.min(orderDiscount.value, 100) / 100)
-        : Math.min(orderDiscount.value, subtotal)
-      : 0;
-
-  const discountedSubtotal = subtotal - orderDiscountAmount;
-
+  // ── Totals (memoized) ─────────────────────────────────────────────────────
   const taxRate = DEFAULT_TAX_RATE;
   const serviceChargeRate = DEFAULT_SERVICE_CHARGE_RATE;
-  const tax = discountedSubtotal * taxRate;
-  const serviceCharge = discountedSubtotal * serviceChargeRate;
-  const total = discountedSubtotal + tax + serviceCharge;
+
+  const totals = useMemo(() => {
+    const itemsDiscountTotal = items.reduce((sum, item) => sum + getItemDiscountAmount(item), 0);
+    const subtotal = items.reduce((sum, item) => sum + getItemEffectiveTotal(item), 0);
+
+    const orderDiscountAmount =
+      orderDiscount && orderDiscount.value > 0
+        ? orderDiscount.type === "percent"
+          ? subtotal * (Math.min(orderDiscount.value, 100) / 100)
+          : Math.min(orderDiscount.value, subtotal)
+        : 0;
+
+    const discountedSubtotal = subtotal - orderDiscountAmount;
+
+    const tax = discountedSubtotal * taxRate;
+    const serviceCharge = discountedSubtotal * serviceChargeRate;
+    const total = discountedSubtotal + tax + serviceCharge;
+
+    const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+
+    return { itemsDiscountTotal, subtotal, orderDiscountAmount, discountedSubtotal, tax, serviceCharge, total, itemCount };
+  }, [items, orderDiscount, taxRate, serviceChargeRate]);
 
   return {
     items,
@@ -343,17 +357,17 @@ export function useCart() {
     loadOrder,
     getItemPrice,
     toBackendOrderItems,
-    subtotal,
+    subtotal: totals.subtotal,
     taxRate,
     serviceChargeRate,
-    tax,
-    serviceCharge,
-    total,
-    itemsDiscountTotal,
+    tax: totals.tax,
+    serviceCharge: totals.serviceCharge,
+    total: totals.total,
+    itemsDiscountTotal: totals.itemsDiscountTotal,
     orderDiscount,
     setOrderDiscount,
-    orderDiscountAmount,
-    itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
+    orderDiscountAmount: totals.orderDiscountAmount,
+    itemCount: totals.itemCount,
     customerName,
     setCustomerName,
     tableNumber,

@@ -1,3 +1,4 @@
+import React, { Suspense, lazy } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -8,31 +9,45 @@ import { PwaUpdatePrompt } from "@/components/offline/PwaUpdatePrompt";
 import { PwaInstallPrompt } from "@/components/offline/PwaInstallPrompt";
 import { useEffect, useState } from "react";
 import HomePage from "@/pages/home";
-import MarketplacePage from "@/pages/marketplace";
 import POSPage from "@/pages/pos";
 import OrdersPage from "@/pages/orders";
 import TablesManagementPage from "@/pages/tables-management";
-import DashboardPage from "@/pages/dashboard";
-import ProductsPage from "@/pages/products";
-import ReportsPage from "@/pages/reports";
-import StockPage from "@/pages/stock";
-import EmployeesPage from "@/pages/employees";
-import StoreProfilePage from "@/pages/store-profile";
 import KitchenDisplayPage from "@/pages/kitchen-display";
 import KDSPage from "@/pages/kds";
 import KdsActivatePage from "@/pages/kds-activate";
 import CustomerDisplayPage from "@/pages/customer-display";
-import PrintersPage from "@/pages/printers";
 import NotFound from "@/pages/not-found";
-import LocalOrdersPage from "@/pages/local-orders";
-import SyncConflictsPage from "@/pages/sync-conflicts";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import RegisterTenantPage from "@/pages/register-tenant";
 import { TenantProvider, useTenant } from "@/context/TenantContext";
 import { OutletProvider } from "@/context/OutletContext";
 import { MainLayout } from "@/components/layout/MainLayout";
-import OutletsPage from "@/pages/outlets";
+
+// ── Lazy-loaded non-critical pages ───────────────────────────────────────────
+const ReportsPage = lazy(() => import("@/pages/reports"));
+const ProductsPage = lazy(() => import("@/pages/products"));
+const StockPage = lazy(() => import("@/pages/stock"));
+const EmployeesPage = lazy(() => import("@/pages/employees"));
+const StoreProfilePage = lazy(() => import("@/pages/store-profile"));
+const PrintersPage = lazy(() => import("@/pages/printers"));
+const LocalOrdersPage = lazy(() => import("@/pages/local-orders"));
+const SyncConflictsPage = lazy(() => import("@/pages/sync-conflicts"));
+const OutletsPage = lazy(() => import("@/pages/outlets"));
+const MarketplacePage = lazy(() => import("@/pages/marketplace"));
+const DashboardPage = lazy(() => import("@/pages/dashboard"));
+
+// ── Suspense fallback ────────────────────────────────────────────────────────
+function PageLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 animate-pulse" />
+        <span className="text-sm text-slate-400">Loading…</span>
+      </div>
+    </div>
+  );
+}
 
 const POSPageWithLayout = () => (
   <MainLayout hideBottomNav>
@@ -60,49 +75,65 @@ const HomePageWithLayout = () => (
 
 const MarketplacePageWithLayout = () => (
   <MainLayout hideBottomNav>
-    <MarketplacePage />
+    <Suspense fallback={<PageLoading />}>
+      <MarketplacePage />
+    </Suspense>
   </MainLayout>
 );
 
 const DashboardPageWithLayout = () => (
   <MainLayout>
-    <DashboardPage />
+    <Suspense fallback={<PageLoading />}>
+      <DashboardPage />
+    </Suspense>
   </MainLayout>
 );
 
 const ProductsPageWithLayout = () => (
   <MainLayout>
-    <ProductsPage />
+    <Suspense fallback={<PageLoading />}>
+      <ProductsPage />
+    </Suspense>
   </MainLayout>
 );
 
 const StockPageWithLayout = () => (
   <MainLayout>
-    <StockPage />
+    <Suspense fallback={<PageLoading />}>
+      <StockPage />
+    </Suspense>
   </MainLayout>
 );
 
 const EmployeesPageWithLayout = () => (
   <MainLayout>
-    <EmployeesPage />
+    <Suspense fallback={<PageLoading />}>
+      <EmployeesPage />
+    </Suspense>
   </MainLayout>
 );
 
 const ReportsPageWithLayout = () => (
   <MainLayout>
-    <ReportsPage />
+    <Suspense fallback={<PageLoading />}>
+      <ReportsPage />
+    </Suspense>
   </MainLayout>
 );
 
 const StoreProfilePageWithLayout = () => (
   <MainLayout>
-    <StoreProfilePage />
+    <Suspense fallback={<PageLoading />}>
+      <StoreProfilePage />
+    </Suspense>
   </MainLayout>
 );
 
 const PrintersPageWithLayout = () => (
   <MainLayout>
-    <PrintersPage />
+    <Suspense fallback={<PageLoading />}>
+      <PrintersPage />
+    </Suspense>
   </MainLayout>
 );
 
@@ -114,19 +145,25 @@ const KitchenDisplayPageWithLayout = () => (
 
 const LocalOrdersPageWithLayout = () => (
   <MainLayout>
-    <LocalOrdersPage />
+    <Suspense fallback={<PageLoading />}>
+      <LocalOrdersPage />
+    </Suspense>
   </MainLayout>
 );
 
 const SyncConflictsPageWithLayout = () => (
   <MainLayout>
-    <SyncConflictsPage />
+    <Suspense fallback={<PageLoading />}>
+      <SyncConflictsPage />
+    </Suspense>
   </MainLayout>
 );
 
 const OutletsPageWithLayout = () => (
   <MainLayout>
-    <OutletsPage />
+    <Suspense fallback={<PageLoading />}>
+      <OutletsPage />
+    </Suspense>
   </MainLayout>
 );
 

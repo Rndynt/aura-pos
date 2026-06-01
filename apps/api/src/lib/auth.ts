@@ -2,15 +2,11 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { admin, username, anonymous } from 'better-auth/plugins';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
 import * as authSchema from './auth-schema';
+import { db as sharedDb, sql as sharedSql } from '@pos/infrastructure/database';
 
-const DATABASE_URL = process.env.DATABASE_URL?.trim();
-if (!DATABASE_URL) {
-  throw new Error('[auth] DATABASE_URL is not set');
-}
-const authSql = postgres(DATABASE_URL);
-export const authDb = drizzle(authSql, { schema: authSchema });
+// Reuse the shared connection pool instead of creating a second one
+export const authDb = drizzle(sharedSql, { schema: authSchema });
 
 const BASE_DOMAIN = (process.env.BASE_DOMAIN || 'aurapos.my.id').trim();
 

@@ -85,7 +85,7 @@ export async function tenantMiddleware(
         return next();
       }
 
-      const rows = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
+      const rows = await db.select({ id: tenants.id, slug: tenants.slug, isActive: tenants.isActive }).from(tenants).where(eq(tenants.slug, slug)).limit(1);
       if (!rows.length) { res.status(404).json({ error: 'Tenant not found', slug }); return; }
       if (!rows[0].isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
 
@@ -117,7 +117,7 @@ export async function tenantMiddleware(
       return next();
     }
 
-    const rows = await db.select().from(tenants)
+    const rows = await db.select({ id: tenants.id, slug: tenants.slug, isActive: tenants.isActive }).from(tenants)
       .where(or(eq(tenants.id, tenantId), eq(tenants.slug, tenantId))).limit(1);
 
     if (!rows.length) { res.status(404).json({ error: 'Tenant not found' }); return; }

@@ -27,7 +27,12 @@ export function serveStatic(app: Express) {
     res.sendFile(path.resolve(distPath, "sw.js"));
   });
 
-  app.use(express.static(distPath));
+  // Static assets with long cache (Vite content-hashes filenames)
+  app.use(express.static(distPath, {
+    maxAge: '1y',
+    immutable: true,
+    etag: true,
+  }));
 
   app.use("*", (_req, res) => {
     res.sendFile(path.resolve(distPath, "index.html"));

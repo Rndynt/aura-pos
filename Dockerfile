@@ -1,6 +1,6 @@
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
 # Full install (devDeps required for: turbo, vite, esbuild, TypeScript)
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -24,7 +24,7 @@ FROM builder AS deploy-prep
 RUN pnpm --filter @pos/api deploy --prod --legacy /standalone
 
 # ── Stage 3: minimal runner ───────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 RUN apk add --no-cache curl
 
@@ -48,4 +48,5 @@ ENV PORT=5000
 EXPOSE 5000
 
 # Run from /app so Node's module resolution finds ./node_modules
-CMD ["node", "apps/api/dist/index.js"]
+# Use cluster.ts in production (multi-core), index.ts for development
+CMD ["node", "apps/api/dist/cluster.js"]
