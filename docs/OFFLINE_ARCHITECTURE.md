@@ -47,6 +47,7 @@ Server PostgreSQL  ──► source of truth
 4. **UI treats an order as local until `syncStatus === "synced"`** — a local order is NOT a server order until confirmed.
 5. **Cart cleared only after durable save** — `clearCartSession()` is called only after `createLocalOrder()` or server response succeeds.
 6. **No mutation via service worker** — the service worker only caches GET responses. All POSTs/PATCHes go through the outbox queue.
+7. **Local order number allocation is terminal-scoped and transactional** — `generateLocalOrderNumber()` increments the `sync_meta` sequence key `order_seq:{tenantId}:{terminalId}:{YYYYMMDD}` inside a Dexie transaction and checks `local_orders` for duplicates before returning.
 
 ---
 
@@ -70,7 +71,7 @@ Server PostgreSQL  ──► source of truth
 | `sync_outbox` | `id` | Durable mutation queue |
 | `sync_attempts` | `id` | Per-attempt audit log |
 | `sync_conflicts` | `id` | Local conflict records |
-| `sync_meta` | `key` | Sequence counters, cache timestamps |
+| `sync_meta` | `key` | Sequence counters keyed by tenant/terminal/date, cache timestamps |
 
 Database name: `AuraPoSOfflineDB`, current version: **2**
 
@@ -147,7 +148,7 @@ useOfflineOrderSubmit.submitOrder()
         └──[offline / network fallback]──► createLocalOrder()
                                    ├── Generate localId (nanoid)
                                    ├── Generate idempotencyKey
-                                   ├── Generate localOrderNumber (OFF-...)
+                                   ├── Generate localOrderNumber (OFF-...) via sync_meta transaction
                                    ├── Compute pricing (subtotal + tax + service)
                                    ├── Dexie transaction:
                                    │   ├── local_orders.put(order)

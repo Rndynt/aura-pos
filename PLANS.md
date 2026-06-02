@@ -3245,3 +3245,107 @@ Ensure offline order sync creates exactly one stock deduction and one inventory 
 ### Continuation Notes
 
 This batch is implemented and validated. Recommended next batch: clean up the unrelated API type-check dependency/type issues so `pnpm --filter @pos/api type-check` can pass independently.
+
+## Plan: Browser-safe local order number sequence allocation
+
+### Source
+- Tasklist: User-provided 5-item request for `generateLocalOrderNumber` local sequence hardening.
+- User request: Wrap `generateLocalOrderNumber` in a Dexie `sync_meta` transaction, re-read/update sequence inside it, include terminal id in sequence key when terminal-scoped, add duplicate fallback, and add a browser concurrency test for parallel local order creation.
+- Date started: 2026-06-02
+- Current status: Implemented and validated for `@pos/offline`.
+
+### Goal
+Prevent duplicate offline local order numbers when browser clients create local orders concurrently, while preserving terminal-scoped `OFF-{terminal}-{date}-{seq}` numbering.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active user tasklist
+- [x] Relevant docs (`docs/OFFLINE_ARCHITECTURE.md`)
+- [x] Relevant source files (`packages/offline/src/orderNumber.ts`, `packages/offline/src/localOrderService.ts`, `packages/offline/src/db.ts`)
+
+### Workstreams
+
+#### Frontend/Offline Workstream
+- Scope: Offline IndexedDB order number generation.
+- Files inspected: `packages/offline/src/orderNumber.ts`, `packages/offline/src/localOrderService.ts`, `packages/offline/src/db.ts`.
+- Findings: Existing sequence key was per tenant/date only and read/updated `sync_meta` outside a Dexie transaction.
+- Tasks: Completed. `generateLocalOrderNumber()` now uses a Dexie read-write transaction over `sync_meta` and `local_orders`, re-reads the sequence row inside the transaction, updates it before returning, and keys the counter by tenant, terminal, and date.
+- Risks: Existing `sync_meta` tenant/date-only keys remain unused for future allocations; this may restart per-terminal local sequences but duplicate detection protects against existing local order numbers.
+- Validation: `@pos/offline` test and type-check passed.
+
+#### Tests/Validation Workstream
+- Scope: Browser-like IndexedDB concurrency coverage.
+- Files inspected: offline package scripts and existing test availability.
+- Findings: No offline package test script existed; fake IndexedDB was needed for a browser IndexedDB-compatible test in Node.
+- Tasks: Completed. Added Node test runner coverage using `fake-indexeddb` to simulate browser IndexedDB, covering 25 parallel `createLocalOrder()` calls and duplicate fallback behavior.
+- Risks: This is browser IndexedDB simulation rather than an installed Playwright real-browser harness.
+- Validation: `pnpm --filter @pos/offline test` passed.
+
+#### Documentation Workstream
+- Scope: Offline architecture documentation and execution plan.
+- Files inspected: `docs/OFFLINE_ARCHITECTURE.md`, `PLANS.md`.
+- Findings: Offline docs listed local order number generation but not transaction/terminal sequence details.
+- Tasks: Completed. Updated offline architecture docs with terminal-scoped transactional local number allocation details.
+- Risks: None known.
+- Validation: Documentation reviewed.
+
+### Execution Order
+1. [x] Wrap local order number sequence allocation in Dexie transaction.
+2. [x] Re-read and update `sync_meta` inside the transaction.
+3. [x] Include `terminalId` in terminal-scoped sequence key.
+4. [x] Add duplicate detection and retry/random fallback.
+5. [x] Add browser IndexedDB concurrency test for parallel local order creation.
+6. [x] Update offline docs and plan.
+7. [x] Run validation, commit, create PR.
+
+### Progress
+
+#### Completed
+- [x] Task: Transaction-safe `generateLocalOrderNumber` sequence allocation.
+  - Files changed: `packages/offline/src/orderNumber.ts`.
+  - Validation: `pnpm --filter @pos/offline test`; `pnpm --filter @pos/offline type-check`.
+  - Docs updated: `docs/OFFLINE_ARCHITECTURE.md`.
+- [x] Task: Terminal-scoped sequence key and duplicate fallback.
+  - Files changed: `packages/offline/src/orderNumber.ts`.
+  - Validation: duplicate fallback test passed.
+  - Docs updated: `docs/OFFLINE_ARCHITECTURE.md`.
+- [x] Task: Browser concurrency test.
+  - Files changed: `packages/offline/src/__tests__/localOrderConcurrency.browser.test.ts`, `packages/offline/package.json`, `pnpm-lock.yaml`.
+  - Validation: offline package test passed.
+  - Docs updated: None.
+
+#### Partially Completed
+- [ ] Task: None.
+  - Completed:
+  - Remaining:
+  - Reason:
+
+#### Blocked
+- [ ] Task: None.
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+- [ ] Task: Real Playwright browser harness.
+  - Reason: The repository did not already include a Playwright test setup; this batch added a browser IndexedDB simulation with `fake-indexeddb` instead of introducing a larger end-to-end browser harness.
+
+### Validation Log
+- Command: pnpm --filter @pos/offline test
+- Result: Pass
+- Notes: Covers parallel local order creation and duplicate fallback.
+- Command: pnpm --filter @pos/offline type-check
+- Result: Pass
+- Notes: Validates offline package TypeScript including the new test.
+
+### Documentation Updates
+- File: `docs/OFFLINE_ARCHITECTURE.md`
+- Change: Documented transaction-safe, terminal-scoped local order sequence allocation and `sync_meta` key shape.
+
+### Checklist Updates
+- File: User tasklist in prompt
+- Change: All five requested implementation items completed and validated where practical.
+
+### Continuation Notes
+Recommended next batch: consider adding a real Playwright browser test harness if the project wants end-to-end multi-tab browser concurrency coverage beyond fake IndexedDB simulation.

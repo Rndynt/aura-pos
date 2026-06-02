@@ -10,6 +10,10 @@
     "nanoid": "^5.1.6"
   },
   "scripts": {
-    "type-check": "tsc -p tsconfig.json --noEmit"
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test src/__tests__/*.test.ts"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.5"
   }
 }
