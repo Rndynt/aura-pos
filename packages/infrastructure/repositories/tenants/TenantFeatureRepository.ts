@@ -32,6 +32,7 @@ export interface ITenantFeatureRepository {
   findActiveByTenant(tenantId: string): Promise<TenantFeature[]>;
   findByTenantAndFeature(tenantId: string, featureCode: string): Promise<TenantFeature | null>;
   create(tenantFeature: InsertTenantFeature): Promise<TenantFeature>;
+  upsertByTenantAndFeature(tenantFeature: InsertTenantFeature): Promise<TenantFeature>;
   update(id: string, tenantFeature: Partial<InsertTenantFeature>): Promise<TenantFeature>;
   deleteByTenantId(tenantId: string): Promise<void>;
 }
@@ -103,17 +104,44 @@ export class TenantFeatureRepository
   }
 
   /**
-   * Create a new tenant feature activation
+   * Create or refresh a tenant feature activation. The database enforces one
+   * row per (tenant_id, feature_code), so create is intentionally idempotent
+   * and updates the existing row when duplicate purchase/toggle requests race.
    */
   async create(tenantFeature: InsertTenantFeature): Promise<TenantFeature> {
+    return this.upsertByTenantAndFeature(tenantFeature);
+  }
+
+  /**
+   * Upsert a tenant feature by the tenant-scoped feature code.
+   */
+  async upsertByTenantAndFeature(tenantFeature: InsertTenantFeature): Promise<TenantFeature> {
     try {
+      const activatedAt = tenantFeature.activatedAt ?? new Date();
+
       const result = await this.db
         .insert(tenantFeatures)
-        .values(tenantFeature)
+        .values({
+          ...tenantFeature,
+          activatedAt,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [tenantFeatures.tenantId, tenantFeatures.featureCode],
+          set: {
+            activatedAt,
+            expiresAt: tenantFeature.expiresAt ?? null,
+            source: tenantFeature.source,
+            isActive: tenantFeature.isActive ?? true,
+            config: tenantFeature.config ?? null,
+            updatedAt: new Date(),
+          },
+        })
         .returning();
+
       return mapTenantFeatureToDomain(result[0]);
     } catch (error) {
-      this.handleError('create tenant feature', error);
+      this.handleError('upsert tenant feature by tenant and code', error);
     }
   }
 

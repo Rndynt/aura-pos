@@ -2523,3 +2523,148 @@ Make public tenant onboarding use one production-safe flow that creates all base
 ### Continuation Notes
 
 Recommended next batch: fix the existing API type-check blockers (`express-rate-limit` Express 5 type leakage vs Express 4 app types, and missing `compression` declaration) so `pnpm --filter @pos/api type-check` can pass cleanly.
+
+## Plan: Tenant feature uniqueness, dedupe migration, and upsert toggles
+
+### Source
+
+- Tasklist: User request with 5 implementation items for `tenant_features` duplicate prevention.
+- User request: Enforce unique `(tenant_id, feature_code)`, deduplicate existing rows by latest active row, add unique constraint after cleanup, switch feature toggle/purchase writes to upsert, and add duplicate toggle/purchase tests.
+- Date started: 2026-06-02
+- Current status: Implemented with targeted validation passing; API package type-check still blocked by pre-existing Express/compression type issues outside this change.
+
+### Goal
+
+Prevent duplicate tenant feature rows per tenant/feature, safely clean existing duplicates before adding the uniqueness guarantee, and make feature activation paths idempotent via upsert.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist: user-provided task list in current request
+- [x] Relevant docs: README migration/DB notes
+- [x] Relevant source files: `shared/schema.ts`, `packages/infrastructure/repositories/tenants/TenantFeatureRepository.ts`, `apps/api/src/http/controllers/TenantsController.ts`, existing API tests
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: Tenant feature toggle and plan feature synchronization paths.
+- Files inspected: `apps/api/src/http/controllers/TenantsController.ts`, `packages/infrastructure/repositories/tenants/TenantFeatureRepository.ts`.
+- Findings: Toggle used read-then-create/update; plan switching deleted plan defaults then inserted, which can conflict with a full unique tenant/feature row if a purchase row exists.
+- Tasks: Added repository upsert and route controller usage for new toggle rows and plan-default sync.
+- Risks: Tenant isolation and plan-tier enforcement preserved; upsert conflict target is tenant-scoped.
+- Validation: API tests passed; API type-check reached unrelated pre-existing Express/compression type blockers.
+
+#### Database/Schema Workstream
+
+- Scope: Drizzle schema and SQL migrations for `tenant_features` uniqueness.
+- Files inspected: `shared/schema.ts`, `migrations/0000_conscious_invisible_woman.sql`, current migration list.
+- Findings: Schema/migration defined `tenant_features_tenant_feature_unique` as a non-unique index despite its name.
+- Tasks: Converted schema to `uniqueIndex`; added migration that drops the old index, deduplicates by latest active row, then creates a unique index.
+- Risks: Deduplication order keeps active rows before inactive rows and uses timestamps/id for deterministic selection.
+- Validation: `pnpm run db:check` passed.
+
+#### Tests/Validation Workstream
+
+- Scope: Duplicate toggle/purchase behavior.
+- Files inspected: `apps/api/src/__tests__`.
+- Findings: Tests use Node test runner with lightweight fake DB chains.
+- Tasks: Added focused repository tests proving duplicate purchase/create and toggle activation paths use `onConflictDoUpdate` on `(tenant_id, feature_code)`.
+- Risks: Tests validate repository behavior without a live database.
+- Validation: API test command passed all discovered API tests, including the new repository tests.
+
+#### Documentation Workstream
+
+- Scope: Plan/checklist status.
+- Files inspected: `PLANS.md`, `README.md`.
+- Findings: README already documents migrations location and commands; no public API shape change expected.
+- Tasks: Updated `PLANS.md` with implementation and validation status.
+- Risks: None.
+- Validation: Final PLANS.md review.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Tenant-owned feature rows.
+- Files inspected: repository/controller feature queries.
+- Findings: Existing queries filter by tenant ID; uniqueness target is tenant-scoped.
+- Tasks: Preserved tenant filters and used `(tenant_id, feature_code)` as the conflict target.
+- Risks: None introduced.
+- Validation: Unit tests verify tenant/feature conflict target.
+
+### Execution Order
+
+1. Update schema and migration. Completed.
+2. Add repository upsert method and use it in toggle/plan sync creation paths. Completed.
+3. Add duplicate toggle/purchase tests. Completed.
+4. Run targeted validation. Completed with one pre-existing type-check blocker noted.
+5. Update plan status and commit. Completed in this batch.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Change `shared/schema.ts` `tenantFeatures` to enforce unique `(tenantId, featureCode)`.
+  - Files changed: `shared/schema.ts`
+  - Validation: `pnpm run db:check`; `pnpm --filter @pos/infrastructure type-check`
+  - Docs updated: `PLANS.md`
+- [x] Task: Add migration to deduplicate existing `tenant_features` by latest active row and add unique index after cleanup.
+  - Files changed: `migrations/0016_tenant_features_unique_upsert.sql`
+  - Validation: `pnpm run db:check`
+  - Docs updated: `PLANS.md`
+- [x] Task: Update tenant feature repository/use paths to upsert duplicate feature creation.
+  - Files changed: `packages/infrastructure/repositories/tenants/TenantFeatureRepository.ts`, `apps/api/src/http/controllers/TenantsController.ts`
+  - Validation: `pnpm --filter @pos/api test -- src/__tests__/tenant-feature-repository.test.ts`; `pnpm --filter @pos/infrastructure type-check`
+  - Docs updated: `PLANS.md`
+- [x] Task: Add duplicate toggle/purchase tests.
+  - Files changed: `apps/api/src/__tests__/tenant-feature-repository.test.ts`
+  - Validation: `pnpm --filter @pos/api test -- src/__tests__/tenant-feature-repository.test.ts`
+  - Docs updated: `PLANS.md`
+
+#### Partially Completed
+
+- [ ] Task: Full API package type-check clean result.
+  - Completed: Ran `pnpm --filter @pos/api type-check`.
+  - Remaining: Fix unrelated existing Express type-version and missing `compression` declaration errors.
+  - Reason: The failures are pre-existing type environment/dependency issues in `src/http/routes/index.ts` and `src/index.ts`, not caused by tenant feature changes.
+
+#### Blocked
+
+- [ ] Task: None for the requested implementation.
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+
+- [ ] Task: Live database migration execution.
+  - Reason: No live database was requested or configured for this batch; SQL migration was added and Drizzle check passed.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/api test -- src/__tests__/tenant-feature-repository.test.ts`
+- Result: Pass
+- Notes: The script discovered and ran all API tests; 37 tests passed including the new tenant feature repository tests.
+- Command: `pnpm --filter @pos/infrastructure type-check`
+- Result: Pass
+- Notes: Infrastructure package type-check passed.
+- Command: `pnpm run db:check`
+- Result: Pass
+- Notes: Drizzle migration/schema check reported everything fine.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Warning/fail due to pre-existing unrelated type issues
+- Notes: Existing Express 4/5 `RateLimitRequestHandler` type mismatch in `apps/api/src/http/routes/index.ts` and missing `compression` declaration in `apps/api/src/index.ts`.
+
+### Documentation Updates
+
+- File: `PLANS.md`
+- Change: Added and completed active execution plan with validation results and known unrelated type-check blocker.
+
+### Checklist Updates
+
+- File: User-provided tasklist in prompt
+- Change: All five requested tasks implemented and validated with targeted tests/checks; no source checklist file exists to edit.
+
+### Continuation Notes
+
+Recommended next batch: fix the existing API type-check blockers (`express-rate-limit` Express 5 type leakage vs Express 4 app types, and missing `compression` declaration) so `pnpm --filter @pos/api type-check` can pass cleanly.
