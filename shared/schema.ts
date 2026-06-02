@@ -554,7 +554,7 @@ export const tenantFeatures = pgTable("tenant_features", {
 }, (table) => ({
   tenantIdx: index("tenant_features_tenant_idx").on(table.tenantId),
   featureCodeIdx: index("tenant_features_feature_code_idx").on(table.featureCode),
-  tenantFeatureUnique: index("tenant_features_tenant_feature_unique").on(table.tenantId, table.featureCode),
+  tenantFeatureUnique: uniqueIndex("tenant_features_tenant_feature_unique").on(table.tenantId, table.featureCode),
 }));
 
 export const insertTenantFeatureSchema = createInsertSchema(tenantFeatures).omit({

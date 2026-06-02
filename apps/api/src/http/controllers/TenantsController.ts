@@ -147,7 +147,7 @@ export const toggleFeature = asyncHandler(async (req: Request, res: Response) =>
 
   let updated;
   if (!existing) {
-    updated = await repo.create({
+    updated = await repo.upsertByTenantAndFeature({
       tenantId,
       featureCode: feature_code,
       source: 'purchase',
@@ -260,16 +260,16 @@ export const updatePlanTier = asyncHandler(async (req: Request, res: Response) =
       ),
     );
 
-  // 3. Insert fresh plan_default features for the new plan
-  if (newFeatures.length > 0) {
-    await db.insert(tenantFeatures).values(
-      newFeatures.map((fc) => ({
-        tenantId,
-        featureCode: fc,
-        source: 'plan_default' as const,
-        isActive: true,
-      })),
-    );
+  // 3. Upsert fresh plan_default features for the new plan. This keeps plan
+  // switches idempotent after tenant_features enforces one row per feature.
+  const repo = container.tenantFeatureRepository;
+  for (const fc of newFeatures) {
+    await repo.upsertByTenantAndFeature({
+      tenantId,
+      featureCode: fc,
+      source: 'plan_default',
+      isActive: true,
+    } as any);
   }
 
   res.status(200).json({
