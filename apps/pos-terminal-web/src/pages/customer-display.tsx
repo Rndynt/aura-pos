@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ShoppingCart, CheckCircle2, Clock } from 'lucide-react';
 import {
   useCustomerDisplayReceiver,
+  getCfdTokenForUrl,
   type CFDMessage,
   type CFDItem,
 } from '@/hooks/useCustomerDisplay';
@@ -837,7 +838,11 @@ export default function CustomerDisplayPage() {
   const cfdUrl = (() => {
     const base = `${window.location.origin}/display`;
     const tid = tenantIdFromUrl || sessionTenantId || getActiveTenantId();
-    return tid ? `${base}?tenantId=${encodeURIComponent(tid)}` : base;
+    if (!tid) return base;
+    const params = new URLSearchParams({ tenantId: tid });
+    const cfdToken = getCfdTokenForUrl();
+    if (cfdToken) params.set('cfdKey', cfdToken);
+    return `${base}?${params.toString()}`;
   })();
 
   const handleEnterFullscreen = async () => {

@@ -1826,3 +1826,163 @@ Make KDS device pairing safer by using cryptographically secure activation codes
 
 ### Continuation Notes
 Recommended next batch: fix existing API type-check blockers, then add a dedicated DB-backed KDS pairing integration test covering lockout, atomic code consumption, and hashed-key authentication against a real `kds_devices` fixture.
+
+## Plan: CFD Device Token Tenant Isolation
+
+### Source
+
+- Tasklist: User-provided inline CFD security tasks.
+- User request: Add CFD device/session token similar to KDS key, validate `/api/cfd/update` and `/ws/cfd`, limit payload schema/size, and test cross-tenant isolation.
+- Date started: 2026-06-02
+- Current status: Implemented; API tests passed; POS terminal type-check passed; API type-check remains blocked by pre-existing unrelated type issues.
+
+### Goal
+
+Require a CFD-scoped token before any cross-device CFD state update or WebSocket subscription can read/write tenant CFD state, and prevent memory abuse from unbounded payloads.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: `apps/api/src/routes.ts`, CORS headers, CFD token validation and payload validation.
+- Files inspected: `apps/api/src/routes.ts`, `apps/api/src/http/routes/kds.ts`, `apps/api/src/index.ts`.
+- Findings: CFD previously trusted `x-tenant-id` and accepted arbitrary JSON before setting in-memory state; WebSocket accepted tenant ID without token.
+- Tasks: Added CFD token lookup, session token issuance, HTTP/WS tenant ownership enforcement, and payload schema/size limits.
+- Risks: Existing displays need a generated CFD token in URL/local storage for cross-device sync.
+- Validation: `pnpm --filter @pos/api test` passed.
+
+#### Database/Schema Workstream
+
+- Scope: CFD token persistence.
+- Files inspected: `migrations/0013_kds_pairing_security.sql`, tenant schema.
+- Findings: KDS stores hashed keys in a dedicated table; CFD had no table.
+- Tasks: Added `migrations/0014_cfd_device_tokens.sql` for `cfd_devices` with hashed token indexes.
+- Risks: Migration must be applied before production CFD token generation.
+- Validation: SQL not DB-applied in this environment.
+
+#### Frontend/UI Workstream
+
+- Scope: POS/CFD hook token propagation and display share URL.
+- Files inspected: `apps/pos-terminal-web/src/hooks/useCustomerDisplay.ts`, `apps/pos-terminal-web/src/pages/customer-display.tsx`.
+- Findings: Frontend only sent tenant ID and generated unauthenticated display URLs.
+- Tasks: Added CFD token generation/storage, `x-cfd-key` send header, WebSocket token query, and tokenized display URL.
+- Risks: If session-token generation fails, same-device BroadcastChannel still works but cross-device sync is unavailable.
+- Validation: `pnpm --filter @pos/terminal-web type-check` passed.
+
+#### Tests/Validation Workstream
+
+- Scope: Cross-tenant CFD tests and validation commands.
+- Files inspected: Existing API node:test patterns.
+- Findings: KDS tests use dependency injection; `registerRoutes` needed CFD dependency injection for tests.
+- Tasks: Added `apps/api/src/__tests__/cfd.test.ts` for unauthorized push/subscribe and payload limits.
+- Risks: API type-check still blocked by pre-existing unrelated type errors.
+- Validation: API test suite passed; API type-check failed on known unrelated errors.
+
+#### Documentation Workstream
+
+- Scope: Document CFD token behavior.
+- Files inspected: `docs/`.
+- Findings: No dedicated CFD security note existed.
+- Tasks: Added `docs/CFD_SECURITY.md`.
+- Risks: User-facing setup docs can be expanded later when pairing UX is formalized.
+- Validation: Documentation updated.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Prevent cross-tenant CFD read/write.
+- Files inspected: `apps/api/src/routes.ts`, `apps/api/src/__tests__/cfd.test.ts`.
+- Findings: The former implementation allowed tenant ID guessing for push and subscribe.
+- Tasks: Token tenant is now authoritative; requested tenant must match token tenant before state is cached or clients are added.
+- Risks: Query-string tokens can appear in logs; header/subprotocol support is also available for non-browser clients.
+- Validation: Cross-tenant API/WebSocket tests passed.
+
+### Execution Order
+
+1. Safety/security/data-integrity/tenant-isolation blockers
+2. Build/type/test blockers
+3. Dependency prerequisites
+4. Highest priority actionable tasks
+5. Lower priority actionable tasks
+6. Documentation sync
+7. Validation
+8. Final checklist update
+
+### Progress
+
+#### Completed
+
+- [x] Add CFD device/session token scoped to CFD read/write.
+  - Files changed: `apps/api/src/routes.ts`, `migrations/0014_cfd_device_tokens.sql`, `apps/pos-terminal-web/src/hooks/useCustomerDisplay.ts`, `apps/pos-terminal-web/src/pages/customer-display.tsx`.
+  - Validation: API tests and POS type-check passed.
+  - Docs updated: `docs/CFD_SECURITY.md`.
+- [x] Validate token and tenant ownership before `/api/cfd/update` caches state.
+  - Files changed: `apps/api/src/routes.ts`.
+  - Validation: API tests passed.
+  - Docs updated: `docs/CFD_SECURITY.md`.
+- [x] Validate token in `/ws/cfd` before adding CFD clients.
+  - Files changed: `apps/api/src/routes.ts`.
+  - Validation: API tests passed.
+  - Docs updated: `docs/CFD_SECURITY.md`.
+- [x] Limit CFD payload schema and size.
+  - Files changed: `apps/api/src/routes.ts`.
+  - Validation: API tests passed.
+  - Docs updated: `docs/CFD_SECURITY.md`.
+- [x] Add cross-tenant CFD tests.
+  - Files changed: `apps/api/src/__tests__/cfd.test.ts`.
+  - Validation: API tests passed.
+  - Docs updated: `docs/CFD_SECURITY.md`.
+
+#### Partially Completed
+
+- [ ] Full API type-check cleanup.
+  - Completed: Confirmed this batch did not add new route type-check errors.
+  - Remaining: Fix pre-existing `featureGuard.ts`, `routes/index.ts` rate-limit type mismatch, and missing `compression` declarations.
+  - Reason: Unrelated existing blockers remain outside the CFD task.
+
+#### Blocked
+
+- [ ] Clean `pnpm --filter @pos/api type-check`.
+  - Blocker: Existing unrelated TypeScript errors in `featureGuard.ts`, `routes/index.ts`, and missing `@types/compression` declaration.
+  - Required next step: Separate API type hygiene batch.
+
+#### Not Attempted
+
+- [ ] Formal CFD pairing/revocation management UI.
+  - Reason: The requested backend token/session enforcement and frontend token propagation were implemented; a full admin device-management UI was outside this batch.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/api test`
+- Result: Pass
+- Notes: 32 tests passed.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: Pass
+- Notes: POS terminal TypeScript validation passed.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Fail, unrelated/pre-existing blockers
+- Notes: Fails in `featureGuard.ts`, `routes/index.ts` express-rate-limit typings, and missing `compression` declaration.
+
+### Documentation Updates
+
+- File: `docs/CFD_SECURITY.md`
+- Change: Documented CFD token scope, HTTP/WebSocket auth, payload limits, and tenant isolation tests.
+- File: `PLANS.md`
+- Change: Added CFD device token tenant isolation plan and validation status.
+
+### Checklist Updates
+
+- File: N/A
+- Change: User provided inline tasklist; this plan and final report map completed/partial items.
+
+### Continuation Notes
+
+Recommended next batch: add a formal CFD device management/pairing UI and revoke flow, then fix existing API type-check blockers so full API type validation can pass.

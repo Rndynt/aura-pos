@@ -19,6 +19,8 @@ import type { CartItem } from './useCart';
 export type CfdConnectionStatus = 'connected' | 'reconnecting' | 'offline';
 
 export const CFD_CHANNEL = 'aurapos-cfd-v1';
+const CFD_TOKEN_STORAGE_KEY = `${CFD_CHANNEL}:token`;
+
 
 // ─── Message types ────────────────────────────────────────────────────────────
 export type CFDMessage =
@@ -66,10 +68,51 @@ export function toCFDItem(item: CartItem): CFDItem {
 }
 
 // ─── Build WebSocket URL (ws:// in dev, wss:// in prod) ──────────────────────
-function buildWsUrl(tenantId: string): string {
+function getStoredCfdToken(): string {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get('cfdKey') ?? params.get('cfdToken') ?? params.get('token');
+    if (fromUrl) {
+      localStorage.setItem(CFD_TOKEN_STORAGE_KEY, fromUrl);
+      return fromUrl;
+    }
+    return localStorage.getItem(CFD_TOKEN_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+async function ensureCfdToken(): Promise<string> {
+  const existing = getStoredCfdToken();
+  if (existing) return existing;
+
+  const response = await fetch('/api/cfd/session-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ deviceName: 'Customer Display' }),
+  });
+  if (!response.ok) return '';
+
+  const body = await response.json().catch(() => null);
+  const token = typeof body?.data?.token === 'string' ? body.data.token : '';
+  if (token) {
+    try { localStorage.setItem(CFD_TOKEN_STORAGE_KEY, token); } catch {}
+  }
+  return token;
+}
+
+export function getCfdTokenForUrl(): string {
+  return getStoredCfdToken();
+}
+
+// ─── Build WebSocket URL (ws:// in dev, wss:// in prod) ──────────────────────
+function buildWsUrl(tenantId: string, cfdToken: string): string {
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const host   = window.location.host;
-  return `${proto}://${host}/ws/cfd?tenantId=${encodeURIComponent(tenantId)}`;
+  const params = new URLSearchParams({ tenantId });
+  if (cfdToken) params.set('cfdKey', cfdToken);
+  return `${proto}://${host}/ws/cfd?${params.toString()}`;
 }
 
 // ─── Resolve tenantId untuk CFD receiver ─────────────────────────────────────
@@ -91,6 +134,15 @@ function resolveCfdTenantId(overrideTenantId?: string): string {
 // ─── Sender hook (dipakai di POS) ────────────────────────────────────────────
 export function useCustomerDisplaySender() {
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const cfdTokenRef = useRef('');
+
+  useEffect(() => {
+    let cancelled = false;
+    ensureCfdToken()
+      .then((token) => { if (!cancelled) cfdTokenRef.current = token; })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (typeof BroadcastChannel === 'undefined') return;
@@ -119,6 +171,7 @@ export function useCustomerDisplaySender() {
         headers: {
           'Content-Type': 'application/json',
           'x-tenant-id': tenantId,
+          ...(cfdTokenRef.current ? { 'x-cfd-key': cfdTokenRef.current } : {}),
         },
         body: JSON.stringify(msg),
         // fire-and-forget; jangan block UX
@@ -147,6 +200,7 @@ export function useCustomerDisplayReceiver(
 
   useEffect(() => {
     const tenantId = resolveCfdTenantId(tenantIdOverride);
+    let cfdToken = getStoredCfdToken();
 
     // ── Load state terakhir dari localStorage (cold-start) ────────────────
     try {
@@ -201,7 +255,8 @@ export function useCustomerDisplayReceiver(
 
       try {
         ws?.close();
-        ws = new WebSocket(buildWsUrl(tenantId));
+        cfdToken = getStoredCfdToken();
+        ws = new WebSocket(buildWsUrl(tenantId, cfdToken));
       } catch {
         scheduleReconnect();
         return;
