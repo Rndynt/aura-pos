@@ -674,3 +674,105 @@ Make API RBAC production-safer by requiring a real authenticated Better Auth ses
 
 ### Continuation Notes
 Recommended next batch: fix existing API type-check blockers (`featureGuard.ts`, Express/rate-limit type mismatch, and `@types/compression`) so `pnpm --filter @pos/api type-check` can pass, then consider whether read-only admin/reporting routes should also require authenticated viewer/cashier access.
+
+## Plan: Harden KDS order status transitions
+
+### Source
+- Tasklist: User request in chat (KDS status/update hardening)
+- User request: Force KDS status updates through kitchen mode/use case, restrict KDS statuses, validate outlet-bound KDS devices, and test completed/cancelled rejection.
+- Date started: 2026-06-02
+- Current status: Implemented; API type-check remains blocked by pre-existing unrelated errors.
+
+### Goal
+Ensure KDS API keys can only drive kitchen fulfillment transitions for their own tenant/outlet and cannot perform financial close or cancellation transitions.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs/source search for KDS/order status/outlet behavior
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: apps/api/src/http/routes/kds.ts and OrdersController delegation.
+- Files inspected: apps/api/src/http/routes/kds.ts, apps/api/src/http/controllers/OrdersController.ts, apps/api/src/http/routes/index.ts, apps/api/src/http/middleware/outlet.ts.
+- Findings: OrdersController already has kitchen mode that allows only confirmed/preparing/ready/served, but KDS route did not force mode before delegation.
+- Tasks: Implemented status allow-list pre-validation and forced `req.query.mode = 'kitchen'` before status delegation.
+- Risks: KDS can no longer reach POS/cashier completed/cancelled transition map through the KDS route.
+- Validation: API test pass; type-check attempted and blocked by pre-existing unrelated errors.
+
+#### Database/Schema Workstream
+- Scope: kds_devices outlet_id and orders outlet_id matching.
+- Files inspected: migrations/0010_multi_outlet.sql, shared/schema.ts.
+- Findings: kds_devices has outlet_id managed outside Drizzle schema; orders has outlet_id.
+- Tasks: Implemented selection of KDS device `outlet_id` and target order outlet validation when the device is outlet-bound.
+- Risks: Legacy orders with null outlet_id are rejected for outlet-bound KDS devices.
+- Validation: API tests pass for status guard; type-check attempted.
+
+#### Tests/Validation Workstream
+- Scope: KDS route tests.
+- Files inspected: apps/api/src/__tests__/rbac.test.ts, apps/api/src/__tests__/tenant-auth-guard.test.ts, apps/api/package.json.
+- Findings: API uses node:test via tsx.
+- Tasks: Added KDS route tests proving completed/cancelled are rejected before controller delegation and allowed statuses delegate in kitchen mode.
+- Risks: Tests use dependency injection rather than a live DB integration harness.
+- Validation: `pnpm --filter @pos/api test` passed.
+
+### Execution Order
+1. KDS status and kitchen-mode enforcement. Done.
+2. Outlet-bound device context/validation. Done.
+3. Tests for completed/cancelled rejection. Done.
+4. Type/test validation. Tests passed; type-check blocked by existing unrelated errors.
+5. Final plan update. Done.
+
+### Progress
+
+#### Completed
+- [x] Force KDS order status updates into kitchen mode.
+  - Files changed: apps/api/src/http/routes/kds.ts
+  - Validation: pnpm --filter @pos/api test (pass)
+  - Docs updated: PLANS.md
+- [x] Restrict KDS status payloads to confirmed/preparing/ready/served.
+  - Files changed: apps/api/src/http/routes/kds.ts
+  - Validation: pnpm --filter @pos/api test (pass)
+  - Docs updated: PLANS.md
+- [x] Validate outlet-bound KDS devices against target order outlet.
+  - Files changed: apps/api/src/http/routes/kds.ts
+  - Validation: pnpm --filter @pos/api test (pass)
+  - Docs updated: PLANS.md
+- [x] Add KDS tests for completed/cancelled rejection.
+  - Files changed: apps/api/src/__tests__/kds.test.ts
+  - Validation: pnpm --filter @pos/api test (pass)
+  - Docs updated: PLANS.md
+
+#### Partially Completed
+- [ ] None.
+
+#### Blocked
+- [ ] Full API type-check clean pass.
+  - Blocker: Pre-existing unrelated TypeScript errors in featureGuard, rate-limit/Express type mismatch, and missing @types/compression.
+  - Required next step: Fix existing API type-check blockers in a separate batch.
+
+#### Not Attempted
+- [ ] Live DB integration test for outlet-bound KDS device.
+  - Reason: Current API tests are lightweight node:test route tests without a live Postgres fixture.
+
+### Validation Log
+- Command: pnpm --filter @pos/api exec tsx --test src/__tests__/kds.test.ts
+- Result: Pass
+- Notes: KDS-only tests passed.
+- Command: pnpm --filter @pos/api test
+- Result: Pass
+- Notes: All API tests passed (18 tests).
+- Command: pnpm --filter @pos/api type-check
+- Result: Fail (pre-existing unrelated errors)
+- Notes: No KDS/test-specific errors remained after fixes; remaining errors are existing featureGuard/rate-limit/@types/compression issues.
+
+### Documentation Updates
+- File: PLANS.md
+- Change: Added and completed active KDS hardening plan with validation notes.
+
+### Continuation Notes
+Recommended next batch: fix existing API type-check blockers (`featureGuard.ts`, Express/rate-limit type mismatch, and missing `@types/compression`) so `pnpm --filter @pos/api type-check` can pass cleanly.

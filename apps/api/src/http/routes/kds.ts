@@ -6,26 +6,53 @@
 import type { Request, Response, NextFunction } from 'express';
 import { Router } from 'express';
 import { sql } from 'drizzle-orm';
-import { auth, authDb } from '../../lib/auth';
 import { fromNodeHeaders } from 'better-auth/node';
 import { nanoid } from 'nanoid';
-import * as OrdersController from '../controllers/OrdersController';
 
-const router = Router();
+export const KDS_ALLOWED_STATUSES = ['confirmed', 'preparing', 'ready', 'served'] as const;
+type KdsAllowedStatus = (typeof KDS_ALLOWED_STATUSES)[number];
+
+type KdsDeviceContext = {
+  deviceId: string;
+  tenantId: string;
+  deviceName: string;
+  outletId: string | null;
+};
+
+type KdsHandler = (req: Request, res: Response, next: NextFunction) => unknown;
+
+type KdsAuthDependencies = {
+  auth: typeof import('../../lib/auth')['auth'];
+  authDb: typeof import('../../lib/auth')['authDb'];
+};
+
+type KdsRouterDependencies = {
+  authDependencies?: KdsAuthDependencies;
+  ordersController?: typeof import('../controllers/OrdersController');
+  requireKdsKey?: (req: Request, res: Response) => Promise<KdsDeviceContext | null>;
+  listOrders?: KdsHandler;
+  updateOrderStatus?: KdsHandler;
+  validateOrderOutlet?: (input: { orderId: string; tenantId: string; outletId: string }) => Promise<boolean>;
+};
+
+export function isKdsAllowedStatus(status: unknown): status is KdsAllowedStatus {
+  return typeof status === 'string' && (KDS_ALLOWED_STATUSES as readonly string[]).includes(status);
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 async function requireSession(
   req: Request,
   res: Response,
+  authDependencies: KdsAuthDependencies,
 ): Promise<{ userId: string; tenantId: string } | null> {
   try {
-    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+    const session = await authDependencies.auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
     if (!session?.user) {
       res.status(401).json({ success: false, error: 'Unauthenticated' });
       return null;
     }
-    const rows = await authDb.execute(
+    const rows = await authDependencies.authDb.execute(
       sql`SELECT tenant_id FROM "user" WHERE id = ${session.user.id} LIMIT 1`,
     );
     const tenantId = (rows as any[])[0]?.tenant_id ?? null;
@@ -44,15 +71,16 @@ async function requireSession(
 async function requireKdsKey(
   req: Request,
   res: Response,
-): Promise<{ deviceId: string; tenantId: string; deviceName: string } | null> {
+  authDependencies: KdsAuthDependencies,
+): Promise<KdsDeviceContext | null> {
   const apiKey = req.headers['x-kds-key'] as string | undefined;
   if (!apiKey) {
     res.status(401).json({ success: false, error: 'Missing X-KDS-Key header' });
     return null;
   }
   try {
-    const rows = await authDb.execute(
-      sql`SELECT id, tenant_id, device_name
+    const rows = await authDependencies.authDb.execute(
+      sql`SELECT id, tenant_id, device_name, outlet_id
           FROM kds_devices
           WHERE api_key = ${apiKey} AND status = 'active'
           LIMIT 1`,
@@ -63,13 +91,14 @@ async function requireKdsKey(
       return null;
     }
     // Update last_seen_at in background — don't await
-    authDb
+    authDependencies.authDb
       .execute(sql`UPDATE kds_devices SET last_seen_at = now() WHERE id = ${device.id}`)
       .catch(() => {});
     return {
       deviceId: device.id,
       tenantId: device.tenant_id,
       deviceName: device.device_name ?? 'KDS',
+      outletId: device.outlet_id ?? null,
     };
   } catch (err) {
     console.error('[kds requireKdsKey]', err);
@@ -78,12 +107,49 @@ async function requireKdsKey(
   }
 }
 
+async function validateOrderOutlet(
+  input: { orderId: string; tenantId: string; outletId: string },
+  authDependencies: KdsAuthDependencies,
+): Promise<boolean> {
+  const rows = await authDependencies.authDb.execute(sql`
+    SELECT id
+    FROM orders
+    WHERE id = ${input.orderId}
+      AND tenant_id = ${input.tenantId}
+      AND outlet_id = ${input.outletId}
+    LIMIT 1
+  `);
+
+  return (rows as any[]).length > 0;
+}
+
+function applyKdsDeviceContext(req: Request, device: KdsDeviceContext): void {
+  req.tenantId = device.tenantId;
+  if (device.outletId) {
+    req.outletId = device.outletId;
+    req.query.outlet_id = device.outletId;
+  }
+}
+
+export async function createKdsRouter(dependencies: KdsRouterDependencies = {}): Promise<Router> {
+  const router = Router();
+  const [authDependencies, ordersController] = await Promise.all([
+    dependencies.authDependencies ? Promise.resolve(dependencies.authDependencies) : import('../../lib/auth'),
+    dependencies.ordersController ? Promise.resolve(dependencies.ordersController) : import('../controllers/OrdersController'),
+  ]);
+  const requireKdsDevice = dependencies.requireKdsKey
+    ?? ((req: Request, res: Response) => requireKdsKey(req, res, authDependencies));
+  const listOrdersHandler = dependencies.listOrders ?? ordersController.listOrders;
+  const updateOrderStatusHandler = dependencies.updateOrderStatus ?? ordersController.updateOrderStatus;
+  const validateOrderOutletHandler = dependencies.validateOrderOutlet
+    ?? ((input: { orderId: string; tenantId: string; outletId: string }) => validateOrderOutlet(input, authDependencies));
+
 // ─── Admin endpoints (require Better Auth session) ────────────────────────────
 
 /** POST /api/kds/generate-code — generate 4-digit activation code */
 router.post('/generate-code', async (req, res) => {
   try {
-    const session = await requireSession(req, res);
+    const session = await requireSession(req, res, authDependencies);
     if (!session) return;
 
     const code = String(Math.floor(1000 + Math.random() * 9000));
@@ -91,7 +157,7 @@ router.post('/generate-code', async (req, res) => {
     const expiresAtIso = expiresAt.toISOString();
     const deviceId = nanoid();
 
-    await authDb.execute(sql`
+    await authDependencies.authDb.execute(sql`
       INSERT INTO kds_devices (id, tenant_id, activation_code, activation_expires_at, status, created_at)
       VALUES (${deviceId}, ${session.tenantId}, ${code}, ${expiresAtIso}, 'pending', now())
     `);
@@ -106,10 +172,10 @@ router.post('/generate-code', async (req, res) => {
 /** GET /api/kds/devices — list active/pending devices for tenant */
 router.get('/devices', async (req, res) => {
   try {
-    const session = await requireSession(req, res);
+    const session = await requireSession(req, res, authDependencies);
     if (!session) return;
 
-    const rows = await authDb.execute(sql`
+    const rows = await authDependencies.authDb.execute(sql`
       SELECT id, device_name, status, created_at, activated_at, last_seen_at,
              activation_code, activation_expires_at
       FROM kds_devices
@@ -127,10 +193,10 @@ router.get('/devices', async (req, res) => {
 /** DELETE /api/kds/devices/:id — revoke a device */
 router.delete('/devices/:id', async (req, res) => {
   try {
-    const session = await requireSession(req, res);
+    const session = await requireSession(req, res, authDependencies);
     if (!session) return;
 
-    await authDb.execute(sql`
+    await authDependencies.authDb.execute(sql`
       UPDATE kds_devices
       SET status = 'revoked', api_key = null
       WHERE id = ${req.params.id} AND tenant_id = ${session.tenantId}
@@ -153,7 +219,7 @@ router.post('/check-code', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Kode harus 4 digit angka' });
     }
 
-    const rows = await authDb.execute(sql`
+    const rows = await authDependencies.authDb.execute(sql`
       SELECT id FROM kds_devices
       WHERE activation_code = ${String(code)}
         AND status = 'pending'
@@ -185,7 +251,7 @@ router.post('/verify-code', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Nama stasiun diperlukan' });
     }
 
-    const rows = await authDb.execute(sql`
+    const rows = await authDependencies.authDb.execute(sql`
       SELECT id, tenant_id FROM kds_devices
       WHERE activation_code = ${String(code)}
         AND status = 'pending'
@@ -203,7 +269,7 @@ router.post('/verify-code', async (req, res) => {
     const apiKey = nanoid(32);
     const name = deviceName.trim();
 
-    await authDb.execute(sql`
+    await authDependencies.authDb.execute(sql`
       UPDATE kds_devices
       SET api_key              = ${apiKey},
           device_name          = ${name},
@@ -233,12 +299,12 @@ router.post('/verify-code', async (req, res) => {
 
 /** GET /api/kds/orders — list active orders for the KDS device's tenant */
 router.get('/orders', async (req: Request, res: Response) => {
-  const device = await requireKdsKey(req, res);
+  const device = await requireKdsDevice(req, res);
   if (!device) return;
 
-  (req as any).tenantId = device.tenantId;
+  applyKdsDeviceContext(req, device);
   try {
-    await (OrdersController.listOrders as any)(
+    await (listOrdersHandler as any)(
       req,
       res,
       (err?: unknown) => {
@@ -260,12 +326,38 @@ router.get('/orders', async (req: Request, res: Response) => {
 
 /** PATCH /api/kds/orders/:id/status — update order status from KDS */
 router.patch('/orders/:id/status', async (req: Request, res: Response) => {
-  const device = await requireKdsKey(req, res);
+  const device = await requireKdsDevice(req, res);
   if (!device) return;
 
-  (req as any).tenantId = device.tenantId;
+  if (!isKdsAllowedStatus(req.body?.status)) {
+    return res.status(400).json({
+      success: false,
+      error: `KDS hanya boleh mengubah status ke: ${KDS_ALLOWED_STATUSES.join(', ')}`,
+      code: 'VALIDATION_ERROR',
+    });
+  }
+
+  applyKdsDeviceContext(req, device);
+  req.query.mode = 'kitchen';
+
+  if (device.outletId) {
+    const matchesOutlet = await validateOrderOutletHandler({
+      orderId: req.params.id,
+      tenantId: device.tenantId,
+      outletId: device.outletId,
+    });
+
+    if (!matchesOutlet) {
+      return res.status(404).json({
+        success: false,
+        error: 'Order tidak ditemukan untuk outlet KDS ini',
+        code: 'ORDER_NOT_FOUND',
+      });
+    }
+  }
+
   try {
-    await (OrdersController.updateOrderStatus as any)(
+    await (updateOrderStatusHandler as any)(
       req,
       res,
       (err?: unknown) => {
@@ -285,4 +377,20 @@ router.patch('/orders/:id/status', async (req: Request, res: Response) => {
   }
 });
 
-export default router;
+  return router;
+}
+
+const defaultKdsRouter = process.env.NODE_ENV === 'test'
+  ? await createKdsRouter({
+      authDependencies: {
+        auth: { api: { getSession: async () => null } },
+        authDb: { execute: async () => [] },
+      } as any,
+      ordersController: {
+        listOrders: (_req: Request, res: Response) => res.status(501).json({ success: false }),
+        updateOrderStatus: (_req: Request, res: Response) => res.status(501).json({ success: false }),
+      } as any,
+    })
+  : await createKdsRouter();
+
+export default defaultKdsRouter;
