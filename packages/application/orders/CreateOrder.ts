@@ -43,6 +43,7 @@ export interface CreateOrderInput {
 export interface CreateOrderOutput {
   order: Order;
   pricing: PriceCalculation;
+  idempotent_replay?: boolean;
 }
 
 export interface OrderItemInput {
@@ -69,6 +70,7 @@ export interface OrderItemInput {
 export interface IOrderRepository {
   create(order: InsertOrder, orderItems: OrderItemInput[], tenantId: string): Promise<DbOrder>;
   generateOrderNumber(tenantId: string): Promise<string>;
+  findByIdempotencyKey?(tenantId: string, idempotencyKey: string): Promise<any | null>;
 }
 
 export interface ITenantRepository {
@@ -98,6 +100,18 @@ export class CreateOrder {
 
       if (input.items.length === 0) {
         throw new Error('Order must contain at least one item');
+      }
+
+      const idempotencyKey = input.idempotency_key?.trim();
+      if (idempotencyKey && this.orderRepository.findByIdempotencyKey) {
+        const existingOrder = await this.orderRepository.findByIdempotencyKey(
+          input.tenant_id,
+          idempotencyKey,
+        );
+
+        if (existingOrder) {
+          return this.toReplayOutput(existingOrder);
+        }
       }
 
       const productQuantities = new Map<string, number>();
@@ -186,7 +200,7 @@ export class CreateOrder {
         input.customer_name,
         input.table_number,
         input.notes,
-        input.idempotency_key,
+        idempotencyKey,
         input.outlet_id,
       );
 
@@ -232,5 +246,52 @@ export class CreateOrder {
     } catch (error) {
       throw new Error(`Failed to create order: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  private toReplayOutput(existingOrder: any): CreateOrderOutput {
+    const items: OrderItem[] = Array.isArray(existingOrder.items)
+      ? existingOrder.items.map((item: any) => ({
+          id: item.id,
+          product_id: item.product_id ?? item.productId,
+          product_name: item.product_name ?? item.productName,
+          base_price: Number(item.base_price ?? item.unitPrice ?? 0),
+          variant_id: item.variant_id ?? item.variantId ?? undefined,
+          variant_name: item.variant_name ?? item.variantName ?? undefined,
+          variant_price_delta: Number(item.variant_price_delta ?? 0),
+          selected_options: item.selected_options ?? item.selectedOptions ?? [],
+          selected_option_groups: item.selected_option_groups ?? item.selectedOptionGroups ?? undefined,
+          quantity: Number(item.quantity ?? 0),
+          item_subtotal: Number(item.item_subtotal ?? item.itemSubtotal ?? 0),
+          notes: item.notes ?? undefined,
+          status: item.status ?? 'pending',
+        }))
+      : [];
+
+    const order = toDomainOrder(existingOrder, items);
+    const pricing = this.pricingFromOrder(order);
+
+    return {
+      order,
+      pricing,
+      idempotent_replay: true,
+    };
+  }
+
+  private pricingFromOrder(order: Order): PriceCalculation {
+    return {
+      base_price: 0,
+      variant_delta: 0,
+      options_delta: 0,
+      item_price: 0,
+      quantity: 0,
+      item_subtotal: 0,
+      order_subtotal: order.subtotal,
+      discounts: [],
+      total_discount: order.discount_amount,
+      subtotal_after_discount: order.subtotal - order.discount_amount,
+      tax_amount: order.tax_amount,
+      service_charge_amount: order.service_charge_amount,
+      total_amount: order.total_amount,
+    };
   }
 }

@@ -391,6 +391,7 @@ export class CreateAndPayOrder {
     return {
       order: result.order,
       payment: result.payment,
+      idempotent_replay: result.idempotent_replay,
       remainingAmount: Math.max(0, totalAmount - amount),
       inventory_sync_error: inventorySyncError,
     };

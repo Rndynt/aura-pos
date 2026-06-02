@@ -12,6 +12,13 @@ import { deductStockForItems, reverseStockForItems, STOCK_DEDUCTED_STATES, type 
 import { resolveInventoryPolicy, recordInventorySyncError, errorMessage, type InventorySyncOperation } from '@pos/application/inventory';
 
 
+function getIdempotencyKey(req: Request, bodyValue?: string): string | undefined {
+  const bodyKey = bodyValue?.trim();
+  const headerKey = req.get('x-idempotency-key')?.trim();
+  return bodyKey || headerKey || undefined;
+}
+
+
 async function assertOrderBelongsToOutlet(orderId: string, tenantId: string, outletId?: string | null): Promise<any | null> {
   if (!outletId) {
     return null;
@@ -128,6 +135,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     notes: z.string().optional(),
     tax_rate: z.number().optional(),
     service_charge_rate: z.number().optional(),
+    idempotency_key: z.string().min(8).max(128).optional(),
   });
 
   const parsed = bodySchema.safeParse(req.body);
@@ -135,16 +143,19 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
+  const idempotencyKey = getIdempotencyKey(req, parsed.data.idempotency_key);
+
   // Execute use case
   const result = await container.createOrder.execute({
     tenant_id: tenantId,
     outlet_id: req.outletId,
     ...parsed.data,
+    idempotency_key: idempotencyKey,
   });
 
   emitOrderQueueChanged(tenantId, { source: 'create_order', orderId: result.order.id });
 
-  res.status(201).json({
+  res.status(result.idempotent_replay ? 200 : 201).json({
     success: true,
     data: {
       order: result.order,
@@ -827,6 +838,8 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
+  const idempotencyKey = getIdempotencyKey(req, parsed.data.idempotency_key);
+
   // Execute via dedicated use case (single DB transaction – P0.2)
   const result = await container.createAndPayOrder.execute({
     tenant_id: tenantId,
@@ -841,7 +854,7 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
     payment_method: parsed.data.payment_method,
     transaction_ref: parsed.data.transaction_ref,
     payment_notes: parsed.data.payment_notes,
-    idempotency_key: parsed.data.idempotency_key,
+    idempotency_key: idempotencyKey,
     fulfillment_mode: parsed.data.fulfillment_mode,
   });
 

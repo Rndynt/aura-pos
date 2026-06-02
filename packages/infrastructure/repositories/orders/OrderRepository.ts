@@ -59,6 +59,7 @@ export interface IOrderRepository {
     filters?: Omit<OrderFilters, 'limit' | 'offset'>
   ): Promise<number>;
   findById(id: string, tenantId: string): Promise<any | null>;
+  findByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<any | null>;
   create(order: InsertOrder, orderItems: OrderItemInput[], tenantId: string): Promise<Order>;
   update(id: string, order: Partial<InsertOrder>, tenantId: string): Promise<Order>;
   updateWithItems(
@@ -280,6 +281,29 @@ export class OrderRepository
       };
     } catch (error) {
       this.handleError('find order by id', error);
+    }
+  }
+
+  /**
+   * Find a complete order by tenant-scoped idempotency key.
+   * Used to replay create-order retries without creating duplicate rows.
+   */
+  async findByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<any | null> {
+    try {
+      const orderResult = await this.db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(and(eq(orders.tenantId, tenantId), eq(orders.idempotencyKey, idempotencyKey)))
+        .limit(1);
+
+      const orderId = orderResult[0]?.id;
+      if (!orderId) {
+        return null;
+      }
+
+      return this.findById(orderId, tenantId);
+    } catch (error) {
+      this.handleError('find order by idempotency key', error);
     }
   }
 

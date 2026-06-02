@@ -103,6 +103,7 @@ class FakeTx extends FakeDb {
 class FakeSelect {
   private table: unknown;
   private limitCount: number | undefined;
+  private conditionValues: unknown[] = [];
 
   constructor(private readonly store: Store, private readonly fields: Record<string, unknown> = {}) {}
 
@@ -115,7 +116,8 @@ class FakeSelect {
     return this;
   }
 
-  where() {
+  where(condition?: unknown) {
+    this.conditionValues = collectConditionValues(condition);
     return this;
   }
 
@@ -151,9 +153,20 @@ class FakeSelect {
         rows = [{ value: this.store.orders.length }];
       } else {
         rows = [...this.store.orders];
+        const orderId = this.conditionValues.find((value) => typeof value === 'string' && value.startsWith('order-'));
+        if (orderId) rows = rows.filter((order) => order.id === orderId);
       }
     } else if (this.table === orderPayments) {
-      rows = [];
+      rows = [...this.store.payments];
+      const idempotencyKey = this.conditionValues.find((value) =>
+        typeof value === 'string'
+        && ((value as string).startsWith('retry-')
+          || (value as string).startsWith('parallel-')
+          || (value as string).startsWith('paid-'))
+      );
+      if (idempotencyKey) rows = rows.filter((payment) => payment.idempotencyKey === idempotencyKey);
+      const orderId = this.conditionValues.find((value) => typeof value === 'string' && (value as string).startsWith('order-'));
+      if (orderId) rows = rows.filter((payment) => payment.orderId === orderId);
     } else {
       rows = [];
     }
@@ -161,6 +174,19 @@ class FakeSelect {
     if (this.limitCount !== undefined) return rows.slice(0, this.limitCount);
     return rows;
   }
+}
+
+
+function collectConditionValues(value: unknown, seen = new WeakSet<object>()): unknown[] {
+  if (value == null) return [];
+  if (['string', 'number', 'boolean'].includes(typeof value)) return [value];
+  if (Array.isArray(value)) return value.flatMap((item) => collectConditionValues(item, seen));
+  if (typeof value === 'object') {
+    if (seen.has(value as object)) return [];
+    seen.add(value as object);
+    return Object.values(value as Record<string, unknown>).flatMap((item) => collectConditionValues(item, seen));
+  }
+  return [];
 }
 
 class FakeInsert {
@@ -218,6 +244,7 @@ class FakeInsert {
 
 class FakeUpdate {
   private pendingSet: Record<string, any> = {};
+  private conditionValues: unknown[] = [];
 
   constructor(private readonly store: Store, private readonly table: unknown) {}
 
@@ -226,7 +253,8 @@ class FakeUpdate {
     return this;
   }
 
-  where() {
+  where(condition?: unknown) {
+    this.conditionValues = collectConditionValues(condition);
     return this;
   }
 
@@ -366,6 +394,20 @@ describe('CreateAndPayOrder stock concurrency', () => {
     assert.equal(result.order.status, 'confirmed');
     assert.equal(result.order.closedAt, undefined);
     assert.equal(store.orders.length, 1);
+  });
+
+  it('replays create-and-pay retries without creating a second order or payment', async () => {
+    const { store, useCase } = buildUseCase(2);
+
+    const first = await useCase.execute(orderInput('retry-create-and-pay'));
+    const retry = await useCase.execute(orderInput('retry-create-and-pay'));
+
+    assert.equal(first.order.id, retry.order.id);
+    assert.equal(retry.idempotent_replay, true);
+    assert.equal(store.orders.length, 1);
+    assert.equal(store.payments.length, 1);
+    assert.equal(store.movements.length, 1);
+    assert.equal(store.product.stockQty, 1);
   });
 
   it('only auto-completes create-and-pay when explicit instant fulfillment mode is requested', async () => {

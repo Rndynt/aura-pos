@@ -94,9 +94,14 @@ await createLocalOrder({ ..., idempotencyKey });
 
 ## Online Path: Direct API
 
-**Endpoint:** `POST /api/orders/create-and-pay`
+**Endpoints:**
+
+- `POST /api/orders` for draft/create-only orders.
+- `POST /api/orders/create-and-pay` for atomic create-and-pay orders.
 
 **Request header:** `x-idempotency-key: TERM-ABC123-XY9Z8W:1716800000000:aBcD1234`
+
+**Request body fallback:** both endpoints also accept `idempotency_key` in the JSON body. If both are present, the body value is used.
 
 **Backend behaviour:**
 
@@ -107,11 +112,11 @@ First request:
   → Returns HTTP 201 with new order data
 
 Duplicate request (same key):
-  → Reads x-idempotency-key header
-  → Finds existing order with this key (unique index)
+  → Reads idempotency key from body or x-idempotency-key header
+  → Finds existing order with this tenant-scoped key before inserting
   → Returns HTTP 200 with SAME order data
   → Does NOT create a second order
-  → Does NOT charge again
+  → For create-and-pay, does NOT charge again
 ```
 
 ---

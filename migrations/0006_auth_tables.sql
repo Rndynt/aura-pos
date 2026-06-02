@@ -69,7 +69,6 @@ CREATE TABLE "verification" (
 );
 --> statement-breakpoint
 ALTER TABLE "order_payments" ADD COLUMN "idempotency_key" varchar(128);--> statement-breakpoint
-ALTER TABLE "orders" ADD COLUMN "idempotency_key" varchar(128);--> statement-breakpoint
 ALTER TABLE "orders" ADD COLUMN "closed_at" timestamp;--> statement-breakpoint
 ALTER TABLE "orders" ADD COLUMN "cancellation_reason" text;--> statement-breakpoint
 ALTER TABLE "products" ADD COLUMN "metadata" jsonb;--> statement-breakpoint
@@ -79,5 +78,4 @@ ALTER TABLE "session" ADD CONSTRAINT "session_user_id_user_id_fk" FOREIGN KEY ("
 CREATE INDEX "tables_tenant_idx" ON "tables" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "tables_status_idx" ON "tables" USING btree ("status");--> statement-breakpoint
 CREATE UNIQUE INDEX "tables_unique_per_tenant" ON "tables" USING btree ("tenant_id","table_number");--> statement-breakpoint
-CREATE UNIQUE INDEX "orders_tenant_idempotency_unique" ON "orders" USING btree ("tenant_id","idempotency_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "orders_tenant_order_number_unique" ON "orders" USING btree ("tenant_id","order_number");

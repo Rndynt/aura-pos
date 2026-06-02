@@ -3,6 +3,7 @@ import { queryClient } from "@/lib/queryClient";
 import type { Order, OrderItem, OrderPayment } from "@pos/domain/orders/types";
 import { getActiveTenantId } from "@/lib/tenant";
 import { buildApiHeaders, getActiveOutletId } from "@/lib/outlet";
+import { generateIdempotencyKey, getOrCreateTerminalIdentity } from "@pos/offline";
 
 async function fetchWithTenantHeader(url: string) {
   const res = await fetch(url, {
@@ -16,10 +17,10 @@ async function fetchWithTenantHeader(url: string) {
   return res.json();
 }
 
-async function postWithTenantHeader(url: string, data: unknown) {
+async function postWithTenantHeader(url: string, data: unknown, extraHeaders?: Record<string, string>) {
   const res = await fetch(url, {
     method: "POST",
-    headers: buildApiHeaders({ "Content-Type": "application/json" }),
+    headers: buildApiHeaders({ "Content-Type": "application/json", ...extraHeaders }),
     body: JSON.stringify(data),
     credentials: "include",
   });
@@ -85,15 +86,35 @@ type CreateOrderInput = {
   table_number?: string;
   notes?: string;
   order_type_id?: string;
+  idempotency_key?: string;
   initial_payment?: {
     amount: number;
     payment_method: "cash" | "card" | "ewallet" | "other";
   };
 };
 
+
+async function withCreateOrderIdempotency<T extends { idempotency_key?: string }>(data: T): Promise<T & { idempotency_key: string }> {
+  if (data.idempotency_key?.trim()) {
+    return { ...data, idempotency_key: data.idempotency_key.trim() };
+  }
+
+  const tenantId = getActiveTenantId();
+  const terminal = await getOrCreateTerminalIdentity(tenantId);
+  return {
+    ...data,
+    idempotency_key: generateIdempotencyKey(terminal.terminalId),
+  };
+}
+
 export function useCreateOrder() {
   return useMutation<Order, Error, CreateOrderInput>({
-    mutationFn: (data) => postWithTenantHeader("/api/orders", data),
+    mutationFn: async (data) => {
+      const payload = await withCreateOrderIdempotency(data);
+      return postWithTenantHeader("/api/orders", payload, {
+        "x-idempotency-key": payload.idempotency_key,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
     },

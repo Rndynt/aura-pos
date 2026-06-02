@@ -1558,6 +1558,7 @@
             }
           ],
           "isUnique": true,
+          "where": "\"orders\".\"idempotency_key\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

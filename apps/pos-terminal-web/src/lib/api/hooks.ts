@@ -19,6 +19,8 @@ import {
   getCachedProducts,
   saveCachedProducts,
   updateCatalogCachedAt,
+  getOrCreateTerminalIdentity,
+  generateIdempotencyKey,
 } from "@pos/offline";
 
 /**
@@ -82,9 +84,13 @@ async function fetchWithTenantHeader(url: string) {
 }
 
 // Helper to add tenant header to mutations
-async function mutateWithTenantHeader(method: string, url: string, data?: unknown) {
-  const tenantId = getActiveTenantId();
-  const headers = buildApiHeaders({ "Content-Type": "application/json" });
+async function mutateWithTenantHeader(
+  method: string,
+  url: string,
+  data?: unknown,
+  extraHeaders?: Record<string, string>,
+) {
+  const headers = buildApiHeaders({ "Content-Type": "application/json", ...extraHeaders });
   const res = await fetch(url, {
     method,
     headers,
@@ -245,12 +251,27 @@ export type CreateOrderInput = {
     notes?: string;
   }>;
   order_type_id?: string;
+  idempotency_key?: string;
   customer_name?: string;
   table_number?: string;
   notes?: string;
   tax_rate?: number;
   service_charge_rate?: number;
 };
+
+
+async function withCreateOrderIdempotency<T extends { idempotency_key?: string }>(data: T): Promise<T & { idempotency_key: string }> {
+  if (data.idempotency_key?.trim()) {
+    return { ...data, idempotency_key: data.idempotency_key.trim() };
+  }
+
+  const tenantId = getActiveTenantId();
+  const terminal = await getOrCreateTerminalIdentity(tenantId);
+  return {
+    ...data,
+    idempotency_key: generateIdempotencyKey(terminal.terminalId),
+  };
+}
 
 export type CreateOrderResponse = {
   order: Order;
@@ -264,7 +285,12 @@ export type CreateOrderResponse = {
 
 export function useCreateOrder() {
   return useMutation<CreateOrderResponse, Error, CreateOrderInput>({
-    mutationFn: (data) => mutateWithTenantHeader("POST", "/api/orders", data),
+    mutationFn: async (data) => {
+      const payload = await withCreateOrderIdempotency(data);
+      return mutateWithTenantHeader("POST", "/api/orders", payload, {
+        "x-idempotency-key": payload.idempotency_key,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders/open"] });
@@ -387,7 +413,12 @@ export type CreateAndPayResponse = CreateOrderResponse & {
 
 export function useCreateAndPay() {
   return useMutation<CreateAndPayResponse, Error, CreateAndPayInput>({
-    mutationFn: (data) => mutateWithTenantHeader("POST", "/api/orders/create-and-pay", data),
+    mutationFn: async (data) => {
+      const payload = await withCreateOrderIdempotency(data);
+      return mutateWithTenantHeader("POST", "/api/orders/create-and-pay", payload, {
+        "x-idempotency-key": payload.idempotency_key,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
     },

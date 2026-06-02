@@ -403,7 +403,9 @@ export const orders = pgTable("orders", {
   orderNumberIdx: index("orders_order_number_idx").on(table.orderNumber),
   statusIdx: index("orders_status_idx").on(table.status),
   orderDateIdx: index("orders_order_date_idx").on(table.orderDate),
-  tenantIdempotencyUnique: uniqueIndex("orders_tenant_idempotency_unique").on(table.tenantId, table.idempotencyKey),
+  tenantIdempotencyUnique: uniqueIndex("orders_tenant_idempotency_unique")
+    .on(table.tenantId, table.idempotencyKey)
+    .where(sql`${table.idempotencyKey} IS NOT NULL`),
   tenantOrderNumberUnique: uniqueIndex("orders_tenant_order_number_unique").on(table.tenantId, table.orderNumber),
   sourceTerminalLocalOrderIdx: index("orders_source_terminal_local_order_idx").on(table.sourceTerminalId, table.localOrderId),
   // Composite indexes for common query patterns

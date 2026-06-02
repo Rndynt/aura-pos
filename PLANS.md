@@ -2808,3 +2808,163 @@ Close cross-outlet data access gaps for authenticated non-owner POS roles and ou
 
 ### Continuation Notes
 Recommended next batch: fix unrelated API type-check blockers (`express-rate-limit` Express type mismatch and missing `@types/compression`) so `pnpm --filter @pos/api type-check` can be used as a clean validation gate.
+
+## Plan: orders idempotency retry hardening
+
+### Source
+
+- Tasklist: User request on 2026-06-02 for `orders_tenant_idempotency_unique`, create-order idempotency, replay lookup, and retry tests.
+- User request: Add partial unique migration/schema support, idempotency key support to `POST /api/orders` + frontend create order, replay lookup before insert in `CreateOrder`, and retry tests for create order/create-and-pay.
+- Date started: 2026-06-02
+- Current status: Implemented; targeted tests pass. Full repo type-check has unrelated pre-existing API typing failures in route rate limiter/compression declarations.
+
+### Goal
+
+Make order creation retry-safe by enforcing `(tenant_id, idempotency_key)` uniqueness only for non-null keys, replaying existing orders before inserting duplicates, propagating frontend idempotency keys, and validating retry behavior for draft and create-and-pay flows.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (user-provided list)
+- [x] Relevant docs (`docs/dev/IDEMPOTENCY.md`)
+- [x] Relevant source files (`shared/schema.ts`, migrations, OrdersController, CreateOrder/CreateAndPayOrder, order repository, POS hooks/page, existing idempotency/concurrency tests)
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: `POST /api/orders`, `POST /api/orders/create-and-pay`, `CreateOrder` replay behavior.
+- Files inspected: `apps/api/src/http/controllers/OrdersController.ts`, `packages/application/orders/CreateOrder.ts`, `packages/application/orders/CreateAndPayOrder.ts`, `packages/infrastructure/repositories/orders/OrderRepository.ts`.
+- Findings: create-and-pay only accepted body idempotency despite offline client sending header; create order did not accept or replay idempotency keys.
+- Tasks: Added header/body normalization, tenant-scoped repository replay lookup, `CreateOrder` replay output, and create-and-pay replay status propagation.
+- Risks: Concurrent duplicate inserts still depend on the DB partial unique index as the final safety net if both requests pass the pre-insert lookup simultaneously.
+- Validation: API tests pass; app/application/infrastructure/terminal-web type-checks pass. Full root type-check blocked by unrelated API typings.
+
+#### Database/Schema Workstream
+
+- Scope: orders idempotency column/index representation.
+- Files inspected: `shared/schema.ts`, `migrations/0004_orders_idempotency_key.sql`, `migrations/0006_auth_tables.sql`, migration snapshots.
+- Findings: `0004` already has partial unique raw SQL; `0006` duplicated the column/index and created a non-partial duplicate; schema omitted `.where(...)` for orders.
+- Tasks: Kept `0004` as the final raw SQL migration, removed duplicate `0006` order idempotency column/index statements, and aligned schema/snapshots to partial unique.
+- Risks: Existing deployed DBs that already applied the non-partial duplicate may need manual reconciliation outside this patch.
+- Validation: Static migration inspection and type-check of shared package via root type-check partial run.
+
+#### Frontend/UI Workstream
+
+- Scope: POS create order API hooks.
+- Files inspected: `apps/pos-terminal-web/src/lib/api/hooks.ts`, `apps/pos-terminal-web/src/hooks/api/useOrders.ts`, `apps/pos-terminal-web/src/pages/pos.tsx`, `apps/pos-terminal-web/src/hooks/useOfflineOrderSubmit.ts`.
+- Findings: online create-order hook did not generate/pass idempotency keys; offline create-and-pay sent idempotency header only.
+- Tasks: Generate idempotency keys in create-order/create-and-pay hooks when callers do not supply one, include them in body and `x-idempotency-key` header, and make API backend honor header fallback.
+- Risks: Hook-generated keys are per mutation invocation; callers that intentionally retry outside React Query can still pass an explicit `idempotency_key`.
+- Validation: `@pos/terminal-web` type-check passes.
+
+#### Tests/Validation Workstream
+
+- Scope: Retry/idempotency tests for create order and create-and-pay.
+- Files inspected: existing API tests for record payment and create-and-pay concurrency.
+- Findings: create-and-pay fake DB needed condition filtering to simulate idempotency replay accurately; no CreateOrder retry tests existed.
+- Tasks: Added `CreateOrder` retry/cross-tenant tests and create-and-pay retry test, while preserving existing concurrency/stock tests.
+- Risks: Tests use fakes and do not replace DB integration coverage for unique-violation races.
+- Validation: Full `@pos/api` test suite passes.
+
+#### Documentation Workstream
+
+- Scope: Idempotency documentation and PLANS.
+- Files inspected: `docs/dev/IDEMPOTENCY.md`, `PLANS.md`.
+- Findings: docs already described partial unique index and create-and-pay; they did not describe `POST /api/orders` idempotency support.
+- Tasks: Updated docs for both endpoints, header/body behavior, and replay semantics.
+- Risks: None known.
+- Validation: Manual review.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Tenant-scoped idempotency lookup and DB uniqueness.
+- Files inspected: backend/create-order repository and migration schema.
+- Findings: Unique scope must remain `(tenant_id, idempotency_key)`; replay lookup must include tenant.
+- Tasks: Repository lookup filters by tenant and tests verify same key across tenants creates separate orders.
+- Risks: None known.
+- Validation: CreateOrder cross-tenant retry test passes.
+
+### Execution Order
+
+1. Fix migration/schema partial unique representation. Done.
+2. Add backend idempotency normalization and `CreateOrder` replay lookup. Done.
+3. Add frontend create-order key propagation. Done.
+4. Add retry tests for create order and create-and-pay. Done.
+5. Update docs and validation log. Done.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Choose final `orders_tenant_idempotency_unique` migration as partial unique where `idempotency_key IS NOT NULL`.
+  - Files changed: `migrations/0004_orders_idempotency_key.sql`, `migrations/0006_auth_tables.sql`, migration snapshots.
+  - Validation: Inspected migration SQL; targeted tests pass.
+  - Docs updated: `docs/dev/IDEMPOTENCY.md` already documents partial unique and remains aligned.
+- [x] Task: Make `shared/schema.ts` represent the partial unique index.
+  - Files changed: `shared/schema.ts`, migration snapshots.
+  - Validation: Root type-check reached shared package successfully; app-specific type-checks pass.
+  - Docs updated: `docs/dev/IDEMPOTENCY.md`.
+- [x] Task: Add idempotency key support to `POST /api/orders` and frontend create order.
+  - Files changed: `OrdersController.ts`, POS API hooks.
+  - Validation: API tests and terminal-web type-check pass.
+  - Docs updated: `docs/dev/IDEMPOTENCY.md`.
+- [x] Task: Implement replay lookup before insert in `CreateOrder`.
+  - Files changed: `CreateOrder.ts`, `OrderRepository.ts`.
+  - Validation: CreateOrder retry tests pass.
+  - Docs updated: `docs/dev/IDEMPOTENCY.md`.
+- [x] Task: Add retry tests for create order and create-and-pay.
+  - Files changed: `create-order-idempotency.test.ts`, `create-and-pay-stock-concurrency.test.ts`, `CreateAndPayOrder.ts`.
+  - Validation: Full `@pos/api` test suite passes.
+  - Docs updated: `PLANS.md`.
+
+#### Partially Completed
+
+- [ ] Task: Full monorepo type-check.
+  - Completed: `@pos/terminal-web`, `@pos/application`, and `@pos/infrastructure` type-checks passed; root type-check completed several packages before API failure.
+  - Remaining: Fix unrelated `@pos/api` Express/rate-limit type mismatch and missing `@types/compression`.
+  - Reason: Failures are pre-existing/dependency typing issues outside the idempotency change scope.
+
+#### Blocked
+
+- [ ] Task: Full root `pnpm type-check` green.
+  - Blocker: `apps/api/src/http/routes/index.ts` Express v4/v5 type mismatch with `RateLimitRequestHandler`, plus missing `compression` declaration in `apps/api/src/index.ts`.
+  - Required next step: Normalize Express type dependency versions and add/declare compression typings.
+
+#### Not Attempted
+
+- [ ] Task: Database integration race test against real Postgres.
+  - Reason: Current batch added deterministic fake/use-case retry tests; real DB concurrency coverage can be a follow-up if a test database is provisioned.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/api exec tsx --test src/__tests__/create-order-idempotency.test.ts src/__tests__/create-and-pay-stock-concurrency.test.ts`
+- Result: Passed.
+- Notes: 8 tests passed.
+- Command: `pnpm --filter @pos/api test`
+- Result: Passed.
+- Notes: 44 tests passed.
+- Command: `pnpm --filter @pos/terminal-web type-check && pnpm --filter @pos/application type-check && pnpm --filter @pos/infrastructure type-check`
+- Result: Passed.
+- Notes: Validates touched frontend/application/infrastructure packages.
+- Command: `pnpm type-check`
+- Result: Failed.
+- Notes: Unrelated/pre-existing API typing failures in `apps/api/src/http/routes/index.ts` and missing `compression` declaration in `apps/api/src/index.ts`.
+
+### Documentation Updates
+
+- File: `docs/dev/IDEMPOTENCY.md`
+- Change: Added `POST /api/orders` idempotency support, header/body fallback behavior, and replay semantics for duplicate keys.
+- File: `PLANS.md`
+- Change: Added and completed execution plan for this batch.
+
+### Checklist Updates
+
+- File: User-provided checklist (no separate repository checklist file named by user).
+- Change: All five requested items implemented in this batch; partial note only for full root type-check due unrelated blocker.
+
+### Continuation Notes
+
+Next safest batch is to fix the unrelated API type-check blockers (`express-rate-limit` Express type mismatch and `compression` typings), then add optional real-Postgres duplicate-key race coverage for create order/create-and-pay.
