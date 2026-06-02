@@ -17,7 +17,7 @@ Customer Facing Display (CFD) cross-device sync is tenant-scoped and requires a 
 - Optional `x-tenant-id`: when present, it must match the tenant that owns the CFD token.
 - A whitelisted CFD message payload. Unknown fields, oversized strings, too many line items, invalid numbers, and payloads above 16 KiB are rejected.
 
-The server validates the token and tenant ownership before updating the in-memory latest CFD state or broadcasting to WebSocket clients.
+The server validates the token and tenant ownership before storing the latest CFD state in Redis (with TTL, keyed by tenant/outlet/device) and broadcasting to WebSocket clients through the distributed pub/sub channel. When Redis is not configured, local development falls back to process-local state only.
 
 ## WebSocket subscribe
 
@@ -34,3 +34,7 @@ The WebSocket is closed with policy violation code `1008` when the token is miss
 ## Tenant isolation tests
 
 `apps/api/src/__tests__/cfd.test.ts` covers cross-tenant update rejection, cross-tenant WebSocket subscription rejection, tenant-only broadcasting, and schema/size limits.
+
+## Production Redis requirements
+
+Production multi-instance deployments must configure Redis for CFD pub/sub and latest-state storage. See `docs/PRODUCTION_CACHE_PUBSUB.md` for required environment variables, key namespaces, TTL behavior, and fallback limitations.

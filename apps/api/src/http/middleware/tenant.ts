@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { db } from '@pos/infrastructure/database';
 import { tenants } from '@shared/schema';
 import { eq, or } from 'drizzle-orm';
+import { cacheKeys, getCacheJson, setCacheJson } from '../../services/distributedCache';
+import { invalidateTenantResolutionCache } from '../../services/cacheInvalidation';
 
 declare global {
   namespace Express {
@@ -34,35 +36,23 @@ function extractSlugFromHost(hostname: string): string | null {
   return slug;
 }
 
-// ── In-memory tenant cache (TTL: 60s) ────────────────────────────────────────
-// Reduces DB queries on every request. Entries are invalidated on tenant update.
+// ── Shared tenant resolution cache (TTL: 60s) ───────────────────────────────
+// Reduces DB queries on every request. Entries are invalidated on tenant update
+// through the instance-safe cache invalidation channel.
 interface TenantCacheEntry {
   id: string;
   slug: string;
   isActive: boolean;
-  ts: number;
 }
 
-const tenantCache = new Map<string, TenantCacheEntry>();
-const TENANT_CACHE_TTL = 60_000; // 60 seconds
+const TENANT_CACHE_TTL_SECONDS = 60;
 
-function getCachedTenant(key: string): TenantCacheEntry | null {
-  const entry = tenantCache.get(key);
-  if (!entry) return null;
-  if (Date.now() - entry.ts > TENANT_CACHE_TTL) {
-    tenantCache.delete(key);
-    return null;
-  }
-  return entry;
+async function getCachedTenant(key: string): Promise<TenantCacheEntry | null> {
+  return getCacheJson<TenantCacheEntry>(cacheKeys.tenant(key));
 }
 
-function setCachedTenant(key: string, entry: TenantCacheEntry): void {
-  // Cap cache size to prevent memory leaks
-  if (tenantCache.size > 1000) {
-    const oldest = tenantCache.keys().next().value;
-    if (oldest) tenantCache.delete(oldest);
-  }
-  tenantCache.set(key, entry);
+async function setCachedTenant(key: string, entry: TenantCacheEntry): Promise<void> {
+  await setCacheJson(cacheKeys.tenant(key), entry, TENANT_CACHE_TTL_SECONDS);
 }
 
 function getFirstHeaderValue(value: string | string[] | undefined): string | undefined {
@@ -204,7 +194,7 @@ export const tenantAuthGuard = createTenantAuthGuard();
 
 /** Call this after updating a tenant to invalidate cache */
 export function invalidateTenantCache(slugOrId: string): void {
-  tenantCache.delete(slugOrId);
+  void invalidateTenantResolutionCache(slugOrId, [slugOrId]);
 }
 
 export async function tenantMiddleware(
@@ -220,7 +210,7 @@ export async function tenantMiddleware(
 
     // ── 1. Subdomain: {slug}.aurapos.my.id ───────────────────────────────────
     if (slug) {
-      const cached = getCachedTenant(slug);
+      const cached = await getCachedTenant(slug);
       if (cached) {
         if (!cached.isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
         req.tenantId = cached.id;
@@ -232,8 +222,8 @@ export async function tenantMiddleware(
       if (!rows.length) { res.status(404).json({ error: 'Tenant not found', slug }); return; }
       if (!rows[0].isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
 
-      setCachedTenant(slug, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive, ts: Date.now() });
-      setCachedTenant(rows[0].id, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive, ts: Date.now() });
+      await setCachedTenant(slug, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive });
+      await setCachedTenant(rows[0].id, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive });
 
       req.tenantId = rows[0].id;
       req.tenantSlug = slug;
@@ -246,7 +236,7 @@ export async function tenantMiddleware(
       req.tenantId = sessionUser.tenantId;
       req.authTenantUser = sessionUser;
 
-      const cached = getCachedTenant(sessionUser.tenantId);
+      const cached = await getCachedTenant(sessionUser.tenantId);
       if (cached) {
         if (!cached.isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
         req.tenantSlug = cached.slug;
@@ -259,8 +249,8 @@ export async function tenantMiddleware(
       if (!rows.length) { res.status(404).json({ error: 'Tenant not found' }); return; }
       if (!rows[0].isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
 
-      setCachedTenant(rows[0].id, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive, ts: Date.now() });
-      setCachedTenant(rows[0].slug, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive, ts: Date.now() });
+      await setCachedTenant(rows[0].id, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive });
+      await setCachedTenant(rows[0].slug, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive });
 
       req.tenantId = rows[0].id;
       req.tenantSlug = rows[0].slug;
@@ -289,7 +279,7 @@ export async function tenantMiddleware(
       return;
     }
 
-    const cached = getCachedTenant(tenantId);
+    const cached = await getCachedTenant(tenantId);
     if (cached) {
       if (!cached.isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
       req.tenantId = cached.id;
@@ -303,8 +293,9 @@ export async function tenantMiddleware(
     if (!rows.length) { res.status(404).json({ error: 'Tenant not found' }); return; }
     if (!rows[0].isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
 
-    setCachedTenant(tenantId, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive, ts: Date.now() });
-    setCachedTenant(rows[0].id, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive, ts: Date.now() });
+    await setCachedTenant(tenantId, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive });
+    await setCachedTenant(rows[0].id, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive });
+    await setCachedTenant(rows[0].slug, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive });
 
     req.tenantId = rows[0].id;
     req.tenantSlug = rows[0].slug;
