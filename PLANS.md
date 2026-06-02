@@ -3491,3 +3491,209 @@ Make tenant/outlet-scoped order queue, order history, and report/list queries us
 ### Continuation Notes
 
 Run `DATABASE_URL=<postgres> pnpm --filter @pos/api check:order-query-plans` after applying migrations in a staging/production-like database, then investigate any PostgreSQL-specific planner differences if the script reports sequential scans.
+
+## Plan: Distributed pubsub and cache hardening
+
+### Source
+
+- Tasklist: User request with 5 infrastructure/cache items
+- User request: Replace in-memory pub/sub, persist CFD state, use namespaced Redis/cache, add instance-safe invalidation, document production config.
+- Date started: 2026-06-02
+- Current status: In progress
+
+### Goal
+
+Move order queue and CFD cross-instance signaling away from process-local only behavior, store latest CFD state in Redis with TTL when configured, centralize tenant/feature/module/outlet cache namespaces, and document production runtime requirements.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active user tasklist
+- [x] Relevant docs (`docs/CFD_SECURITY.md`, architecture docs searched for CFD/order queue/offline notes)
+- [x] Relevant source files (`apps/api/src/routes.ts`, `apps/api/src/http/services/orderQueueEvents.ts`, tenant/feature/outlet routes and middleware)
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: CFD websocket update path, order queue SSE events, tenant/feature/module/outlet caches.
+- Files inspected: `apps/api/src/routes.ts`, `apps/api/src/http/services/orderQueueEvents.ts`, `apps/api/src/http/middleware/tenant.ts`, `apps/api/src/http/middleware/featureGuard.ts`, `apps/api/src/http/routes/outlets.ts`, `apps/api/src/http/controllers/TenantsController.ts`.
+- Findings: CFD latest state and order queue events are process-local; tenant/feature/module caches are in-memory only; invalidation helpers are local-only and not always called after tenant/module/feature/outlet mutations.
+- Tasks: Add shared Redis cache/pubsub service with local fallback, wire route publish/subscribe, add invalidation helpers and mutation calls.
+- Risks: Redis is optional in dev; production must configure Redis for cross-instance behavior.
+- Validation: API type-check and tests where possible.
+
+#### Database/Schema Workstream
+
+- Scope: No schema migration planned because Redis is selected for pub/sub/cache/state.
+- Files inspected: `packages/infrastructure/database.ts`, package dependency graph.
+- Findings: Postgres client exists but Redis better matches requested TTL cache/state use cases.
+- Tasks: Add Redis dependency/config docs only.
+- Risks: Production without Redis falls back to local process behavior and is not multi-instance safe.
+- Validation: Type-check.
+
+#### Frontend/UI Workstream
+
+- Scope: No perceptible UI changes expected.
+- Files inspected: Not applicable beyond CFD/order queue API contract.
+- Findings: Existing websocket/SSE contracts can stay unchanged.
+- Tasks: None.
+- Risks: None.
+- Validation: No screenshot required because no UI change.
+
+#### Tests/Validation Workstream
+
+- Scope: Existing CFD/order queue tests and type-check.
+- Files inspected: `apps/api/src/__tests__/cfd.test.ts`.
+- Findings: Dependency injection needed to keep local test behavior deterministic.
+- Tasks: Preserve testability with fallbacks.
+- Risks: Full workspace may have pre-existing failures.
+- Validation: Targeted API type-check/test.
+
+#### Documentation Workstream
+
+- Scope: README and production docs.
+- Files inspected: `README.md`, `docs/CFD_SECURITY.md`.
+- Findings: Redis/pubsub config not yet documented.
+- Tasks: Add production cache/pubsub env docs.
+- Risks: Must be honest about fallback behavior.
+- Validation: Docs reviewed.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Namespaced cache keys and tenant-scoped pub/sub channels.
+- Files inspected: CFD and tenant middleware.
+- Findings: CFD token tenant checks already exist; cache keys need tenant/outlet/device namespace discipline.
+- Tasks: Use namespaced keys and tenant-scoped channels; invalidate by tenant/outlet safely.
+- Risks: Never allow cross-tenant cache key overlap.
+- Validation: Type-check and tests.
+
+### Execution Order
+
+1. Safety/security/data-integrity/tenant-isolation blockers
+2. Build/type/test blockers
+3. Dependency prerequisites
+4. Highest priority actionable tasks
+5. Lower priority actionable tasks
+6. Documentation sync
+7. Validation
+8. Final checklist update
+
+### Progress
+
+#### Completed
+
+- [ ] Task:
+  - Files changed:
+  - Validation:
+  - Docs updated:
+
+#### Partially Completed
+
+- [ ] Task:
+  - Completed:
+  - Remaining:
+  - Reason:
+
+#### Blocked
+
+- [ ] Task:
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+
+- [ ] Task:
+  - Reason:
+
+### Validation Log
+
+- Command: Pending
+- Result: Pending
+- Notes: Pending
+
+### Documentation Updates
+
+- File: Pending
+- Change: Pending
+
+### Checklist Updates
+
+- File: PLANS.md
+- Change: Added active execution plan for distributed pubsub/cache hardening.
+
+### Continuation Notes
+
+Continue by adding Redis-backed pub/sub/cache services, then wire CFD/order queue/tenant-feature-module-outlet invalidation and run validation.
+
+### Completion Update (2026-06-02)
+
+### Progress
+
+#### Completed
+
+- [x] Replace process-local order queue pub/sub with Redis-backed distributed pub/sub plus local development fallback.
+  - Files changed: `apps/api/src/http/services/orderQueueEvents.ts`, `apps/api/src/services/distributedCache.ts`.
+  - Validation: `pnpm --filter @pos/api type-check`, `pnpm --filter @pos/api test -- cfd.test.ts`, `pnpm --filter @pos/api build`.
+  - Docs updated: `docs/PRODUCTION_CACHE_PUBSUB.md`, `README.md`.
+- [x] Replace process-local CFD fan-out/latest-state handling with Redis-backed pub/sub and Redis latest state TTL keyed by tenant/outlet/device.
+  - Files changed: `apps/api/src/routes.ts`, `apps/api/src/services/distributedCache.ts`.
+  - Validation: CFD tests passed as part of `pnpm --filter @pos/api test -- cfd.test.ts`.
+  - Docs updated: `docs/CFD_SECURITY.md`, `docs/PRODUCTION_CACHE_PUBSUB.md`.
+- [x] Use namespaced shared cache keys for tenant, feature, module, and outlet caches.
+  - Files changed: `apps/api/src/services/distributedCache.ts`, `apps/api/src/http/middleware/tenant.ts`, `apps/api/src/http/middleware/featureGuard.ts`, `apps/api/src/http/routes/outlets.ts`.
+  - Validation: API type-check passed.
+  - Docs updated: `docs/PRODUCTION_CACHE_PUBSUB.md`.
+- [x] Add instance-safe invalidation from tenant feature/module/plan and outlet mutations.
+  - Files changed: `apps/api/src/services/cacheInvalidation.ts`, `apps/api/src/http/controllers/TenantsController.ts`, `apps/api/src/http/routes/outlets.ts`.
+  - Validation: API type-check and tests passed.
+  - Docs updated: `docs/PRODUCTION_CACHE_PUBSUB.md`.
+- [x] Fix API type-check blockers discovered during validation.
+  - Files changed: `apps/api/src/http/routes/index.ts`, `apps/api/src/index.ts`, `apps/api/package.json`, `pnpm-lock.yaml`.
+  - Validation: API type-check passed.
+  - Docs updated: none.
+
+#### Partially Completed
+
+- [ ] None.
+
+#### Blocked
+
+- [ ] None.
+
+#### Not Attempted
+
+- [ ] Postgres LISTEN/NOTIFY alternative.
+  - Reason: Redis was selected because it satisfies pub/sub, TTL-backed CFD state, and shared cache/invalidation requirements in one production dependency.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Passed
+- Notes: Also fixed Express middleware type mismatch and missing compression typings found during validation.
+- Command: `pnpm --filter @pos/api test -- cfd.test.ts`
+- Result: Passed (script runs all API tests; 45 passed)
+- Notes: Confirms CFD tenant-token isolation and existing API tests still pass.
+- Command: `pnpm --filter @pos/api build`
+- Result: Passed
+- Notes: API bundle completed with esbuild.
+
+### Documentation Updates
+
+- File: `README.md`
+- Change: Added Redis/pubsub/cache environment variables.
+- File: `docs/CFD_SECURITY.md`
+- Change: Updated CFD state/pubsub behavior from in-memory to Redis-backed production behavior.
+- File: `docs/PRODUCTION_CACHE_PUBSUB.md`
+- Change: Added production Redis config, key namespaces, channels, TTL, and fallback limitations.
+
+### Checklist Updates
+
+- File: `PLANS.md`
+- Change: Marked distributed pubsub/cache tasks completed and recorded validation.
+
+### Continuation Notes
+
+No blocker remains for this batch. A future batch can add integration tests against a real Redis service if the CI environment provisions Redis.

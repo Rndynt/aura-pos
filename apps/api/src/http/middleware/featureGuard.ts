@@ -3,41 +3,21 @@
  * Protects API routes by checking tenant's active features and module configs.
  * Call requireFeature / requireModule before the route handler.
  *
- * Results are cached in-memory for 5 minutes per tenant+key to avoid
- * hitting the DB on every protected request.  Call the exported
- * invalidate*Cache helpers when features/modules are toggled.
+ * Results are cached through the shared cache layer for 5 minutes per
+ * tenant+key to avoid hitting the DB on every protected request. Call the
+ * exported invalidate*Cache helpers when features/modules are toggled.
  */
 
 import type { Request, Response, NextFunction } from 'express';
 import { db } from '@pos/infrastructure/database';
 import { tenantFeatures, tenantModuleConfigs } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
+import { cacheKeys, deleteCacheKey, deleteCachePattern, getCacheJson, setCacheJson } from '../../services/distributedCache';
+import { invalidateFeatureAccessCache, invalidateModuleAccessCache } from '../../services/cacheInvalidation';
 
-// ── In-memory cache ──────────────────────────────────────────────────────────
+// ── Shared cache ─────────────────────────────────────────────────────────────
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-interface CacheEntry<T> {
-  value: T;
-  expiresAt: number;
-}
-
-const featureCache = new Map<string, CacheEntry<boolean>>();
-const moduleCache = new Map<string, CacheEntry<boolean>>();
-
-function cacheGet<T>(map: Map<string, CacheEntry<T>>, key: string): T | undefined {
-  const entry = map.get(key);
-  if (!entry) return undefined;
-  if (Date.now() > entry.expiresAt) {
-    map.delete(key);
-    return undefined;
-  }
-  return entry.value;
-}
-
-function cacheSet<T>(map: Map<string, CacheEntry<T>>, key: string, value: T): void {
-  map.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
-}
+const CACHE_TTL_SECONDS = 5 * 60; // 5 minutes
 
 // ── Cache invalidation ───────────────────────────────────────────────────────
 
@@ -48,15 +28,11 @@ function cacheSet<T>(map: Map<string, CacheEntry<T>>, key: string, value: T): vo
  */
 export function invalidateFeatureCache(tenantId: string, featureCode?: string): void {
   if (featureCode) {
-    featureCache.delete(`${tenantId}:${featureCode}`);
+    void deleteCacheKey(cacheKeys.feature(tenantId, featureCode));
   } else {
-    const prefix = `${tenantId}:`;
-    for (const key of Array.from(featureCache.keys())) {
-      if (key.startsWith(prefix)) {
-        featureCache.delete(key);
-      }
-    }
+    void deleteCachePattern(cacheKeys.feature(tenantId, '*'));
   }
+  void invalidateFeatureAccessCache(tenantId, featureCode);
 }
 
 /**
@@ -66,15 +42,11 @@ export function invalidateFeatureCache(tenantId: string, featureCode?: string): 
  */
 export function invalidateModuleCache(tenantId: string, moduleKey?: string): void {
   if (moduleKey) {
-    moduleCache.delete(`${tenantId}:${moduleKey}`);
+    void deleteCacheKey(cacheKeys.module(tenantId, moduleKey));
   } else {
-    const prefix = `${tenantId}:`;
-    for (const key of Array.from(moduleCache.keys())) {
-      if (key.startsWith(prefix)) {
-        moduleCache.delete(key);
-      }
-    }
+    void deleteCachePattern(cacheKeys.module(tenantId, '*'));
   }
+  void invalidateModuleAccessCache(tenantId, moduleKey);
 }
 
 /**
@@ -99,10 +71,10 @@ export function requireFeature(featureCode: string) {
       return;
     }
 
-    const cacheKey = `${tenantId}:${featureCode}`;
+    const cacheKey = cacheKeys.feature(tenantId, featureCode);
 
     // ── cache hit ────────────────────────────────────────────────────────
-    const cached = cacheGet(featureCache, cacheKey);
+    const cached = await getCacheJson<boolean>(cacheKey);
     if (cached === true) {
       next();
       return;
@@ -132,7 +104,7 @@ export function requireFeature(featureCode: string) {
         .limit(1);
 
       const isActive = rows.length > 0;
-      cacheSet(featureCache, cacheKey, isActive);
+      await setCacheJson(cacheKey, isActive, CACHE_TTL_SECONDS);
 
       if (!isActive) {
         res.status(403).json({
@@ -165,10 +137,10 @@ export function requireModule(moduleKey: string) {
       return;
     }
 
-    const cacheKey = `${tenantId}:${moduleKey}`;
+    const cacheKey = cacheKeys.module(tenantId, moduleKey);
 
     // ── cache hit ────────────────────────────────────────────────────────
-    const cached = cacheGet(moduleCache, cacheKey);
+    const cached = await getCacheJson<boolean>(cacheKey);
     if (cached === true) {
       next();
       return;
@@ -191,7 +163,7 @@ export function requireModule(moduleKey: string) {
 
       if (!col) {
         // Unknown module key — treat as disabled
-        cacheSet(moduleCache, cacheKey, false);
+        await setCacheJson(cacheKey, false, CACHE_TTL_SECONDS);
         res.status(403).json({
           success: false,
           error: `Modul '${moduleKey}' tidak aktif untuk tenant ini.`,
@@ -210,7 +182,7 @@ export function requireModule(moduleKey: string) {
       const row = rows[0] as Record<string, unknown> | undefined;
       const isEnabled = !!row?.[moduleKey];
 
-      cacheSet(moduleCache, cacheKey, isEnabled);
+      await setCacheJson(cacheKey, isEnabled, CACHE_TTL_SECONDS);
 
       if (!isEnabled) {
         res.status(403).json({

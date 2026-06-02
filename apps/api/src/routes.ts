@@ -10,16 +10,17 @@ import { tenantAuthGuard, tenantMiddleware } from "./http/middleware/tenant";
 import { errorHandler } from "./http/middleware/errorHandler";
 import routes from "./http/routes";
 import { auth, authDb } from "./lib/auth";
-
-// ─── Per-tenant CFD state (in-memory) ────────────────────────────────────────
-// Key: tenantId, Value: latest validated CFD message JSON string
-const cfdLatestState = new Map<string, string>();
+import { cacheChannels, cacheKeys, getCacheString, publishEvent, setCacheString, subscribeEvent } from "./services/distributedCache";
+import { startCacheInvalidationSubscriber } from "./services/cacheInvalidation";
 
 // Key: tenantId, Value: Set of connected WebSocket clients
 const cfdClients = new Map<string, Set<WebSocket>>();
 
 const MAX_CONNECTIONS_PER_TENANT = 100;
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const CFD_LATEST_STATE_TTL_SECONDS = Number(process.env.CFD_STATE_TTL_SECONDS ?? 60 * 60 * 12);
+const CFD_DEFAULT_OUTLET_KEY = "global";
+let cfdPubSubStarted = false;
 export const CFD_MAX_PAYLOAD_BYTES = 16 * 1024;
 
 const boundedString = (max: number) => z.string().trim().min(1).max(max);
@@ -119,6 +120,37 @@ function broadcastToTenant(tenantId: string, payload: string) {
       client.send(payload);
     }
   }
+}
+
+function ensureCfdPubSubStarted(): void {
+  if (cfdPubSubStarted) return;
+  cfdPubSubStarted = true;
+
+  void subscribeEvent(cacheChannels.cfd, (payload, meta) => {
+    if (meta.isLocalEcho) return;
+    const tenantId = typeof payload.tenantId === 'string' ? payload.tenantId : null;
+    const message = typeof payload.message === 'string' ? payload.message : null;
+    if (!tenantId || !message) return;
+    broadcastToTenant(tenantId, message);
+  });
+}
+
+function getCfdOutletKey(req: Request, url?: URL): string {
+  return getHeaderValue(req, 'x-outlet-id')
+    ?? url?.searchParams.get('outletId')?.trim()
+    ?? CFD_DEFAULT_OUTLET_KEY;
+}
+
+function cfdLatestStateKey(device: CfdDeviceContext, outletId: string): string {
+  return cacheKeys.cfdLatest(device.tenantId, outletId || CFD_DEFAULT_OUTLET_KEY, device.deviceId);
+}
+
+async function storeCfdLatestState(device: CfdDeviceContext, outletId: string, payload: string): Promise<void> {
+  await setCacheString(cfdLatestStateKey(device, outletId), payload, CFD_LATEST_STATE_TTL_SECONDS);
+}
+
+async function getCfdLatestState(device: CfdDeviceContext, outletId: string): Promise<string | null> {
+  return getCacheString(cfdLatestStateKey(device, outletId));
 }
 
 function hashCfdApiKey(apiKey: string): string {
@@ -261,6 +293,8 @@ export async function registerRoutes(
   app: Express,
   dependencies: RegisterRoutesDependencies = {},
 ): Promise<Server> {
+  startCacheInvalidationSubscriber();
+  ensureCfdPubSubStarted();
   const cfdAuthDependencies = dependencies.cfdAuthDependencies ?? { auth, authDb };
   const requireHttpCfdDevice = dependencies.requireCfdToken
     ?? ((req: Request) => requireCfdHttpToken(req, cfdAuthDependencies));
@@ -319,8 +353,10 @@ export async function registerRoutes(
       const payload = serializeValidatedCfdMessage(req.body, res);
       if (!payload) return;
 
-      cfdLatestState.set(device.tenantId, payload);
+      const outletId = getCfdOutletKey(req);
+      await storeCfdLatestState(device, outletId, payload);
       broadcastToTenant(device.tenantId, payload);
+      void publishEvent(cacheChannels.cfd, { tenantId: device.tenantId, outletId, deviceId: device.deviceId, message: payload });
 
       res.json({ success: true, clientCount: cfdClients.get(device.tenantId)?.size ?? 0 });
     } catch (err) {
@@ -394,8 +430,10 @@ export async function registerRoutes(
 
     addCfdClient(device.tenantId, ws);
 
-    // Send the latest cached state immediately so CFD doesn't start blank
-    const latest = cfdLatestState.get(device.tenantId);
+    // Send the latest Redis-cached state immediately so CFD does not start blank.
+    // State is scoped by tenant/outlet/device; outlet defaults to "global" for legacy clients.
+    const outletId = getCfdOutletKey(req as Request, url);
+    const latest = await getCfdLatestState(device, outletId);
     if (latest && ws.readyState === WebSocket.OPEN) {
       ws.send(latest);
     }

@@ -10,6 +10,12 @@ import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { db } from '@pos/infrastructure/database';
 import { tenants, tenantFeatures } from '@shared/schema';
+import {
+  invalidateFeatureAccessCache,
+  invalidateModuleAccessCache,
+  invalidateTenantFeatureModuleAndOutletCaches,
+  invalidateTenantResolutionCache,
+} from '../../services/cacheInvalidation';
 
 // ─── Plan → Feature mapping (must stay in sync with marketplace.tsx PLANS) ────
 const PLAN_FEATURE_MAP: Record<string, string[]> = {
@@ -157,6 +163,8 @@ export const toggleFeature = asyncHandler(async (req: Request, res: Response) =>
     updated = await repo.update(existing.id, { isActive: !existing.is_active } as any);
   }
 
+  await invalidateFeatureAccessCache(tenantId, feature_code, 'tenant_feature_toggle');
+
   res.status(200).json({
     success: true,
     data: { feature_code: updated.feature_code, is_active: updated.is_active },
@@ -222,6 +230,8 @@ export const updateModuleConfig = asyncHandler(async (req: Request, res: Respons
     .where(eq(tenantModuleConfigs.tenantId, tenantId))
     .limit(1);
 
+  await invalidateModuleAccessCache(tenantId, undefined, 'tenant_module_config_update');
+
   res.status(200).json({ success: true, data: updated });
 });
 
@@ -271,6 +281,11 @@ export const updatePlanTier = asyncHandler(async (req: Request, res: Response) =
       isActive: true,
     } as any);
   }
+
+  await Promise.all([
+    invalidateTenantResolutionCache(tenantId, [tenantId], 'tenant_plan_tier_update'),
+    invalidateTenantFeatureModuleAndOutletCaches(tenantId, 'tenant_plan_tier_update'),
+  ]);
 
   res.status(200).json({
     success: true,

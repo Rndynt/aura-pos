@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import '../register-paths.ts';
-import express, { type Request, Response, NextFunction } from "express";
+import express, { type Request, Response, NextFunction, type RequestHandler } from "express";
 import compression from "compression";
 import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
 import { auth, authDb } from "./lib/auth";
@@ -25,7 +25,7 @@ import { fileURLToPath } from "url";
 const app = express();
 
 // Compress HTTP responses (gzip/brotli) for payloads > 1KB
-app.use(compression({ threshold: 1024, level: 6 }));
+app.use(compression({ threshold: 1024, level: 6 }) as unknown as RequestHandler);
 
 // Trust proxy headers (Nginx, Cloudflare, etc.)
 // Set to 1 to trust only the first proxy hop (prevents X-Forwarded-For spoofing)

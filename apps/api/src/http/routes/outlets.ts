@@ -5,10 +5,15 @@ import { eq, and, count, inArray } from 'drizzle-orm';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { z } from 'zod';
 import { requireManager } from '../middleware/rbac';
+import { cacheKeys, getCacheJson, setCacheJson } from '../../services/distributedCache';
+import { invalidateOutletCache } from '../../services/cacheInvalidation';
 
 const router = Router();
 
 const MAX_FREE_OUTLETS = 1;
+const OUTLET_CACHE_TTL_SECONDS = 60;
+
+type OutletRow = typeof outlets.$inferSelect;
 
 async function getPurchasedOutletSlots(tenantId: string): Promise<number> {
   const rows = await db
@@ -31,22 +36,44 @@ async function getPurchasedOutletSlots(tenantId: string): Promise<number> {
 // GET /api/outlets — list all outlets for tenant
 router.get('/', asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
+  const cacheKey = cacheKeys.outlets(tenantId);
+  const cached = await getCacheJson<OutletRow[]>(cacheKey);
+  if (cached) {
+    res.json({ outlets: cached });
+    return;
+  }
+
   const rows = await db
     .select()
     .from(outlets)
     .where(and(eq(outlets.tenantId, tenantId), eq(outlets.isActive, true)))
     .orderBy(outlets.createdAt);
+  await setCacheJson(cacheKey, rows, OUTLET_CACHE_TTL_SECONDS);
   res.json({ outlets: rows });
 }));
 
 // GET /api/outlets/current — return active outlet for this request
 router.get('/current', asyncHandler(async (req, res) => {
+  const tenantId = req.tenantId!;
   const outletId = req.outletId;
   if (!outletId) {
     throw createError('No active outlet', 404);
   }
-  const rows = await db.select().from(outlets).where(eq(outlets.id, outletId)).limit(1);
+
+  const cacheKey = cacheKeys.outlet(tenantId, outletId);
+  const cached = await getCacheJson<OutletRow>(cacheKey);
+  if (cached) {
+    res.json({ outlet: cached });
+    return;
+  }
+
+  const rows = await db
+    .select()
+    .from(outlets)
+    .where(and(eq(outlets.id, outletId), eq(outlets.tenantId, tenantId)))
+    .limit(1);
   if (!rows.length) throw createError('Outlet not found', 404);
+  await setCacheJson(cacheKey, rows[0], OUTLET_CACHE_TTL_SECONDS);
   res.json({ outlet: rows[0] });
 }));
 
@@ -73,6 +100,8 @@ router.post('/', requireManager, asyncHandler(async (req, res) => {
     .values({ ...body, tenantId, isDefault: false })
     .returning();
 
+  await invalidateOutletCache(tenantId, created.id, 'outlet_create');
+
   res.status(201).json({ outlet: created });
 }));
 
@@ -97,6 +126,7 @@ router.patch('/:id', requireManager, asyncHandler(async (req, res) => {
     .returning();
 
   if (!updated) throw createError('Outlet tidak ditemukan', 404);
+  await invalidateOutletCache(tenantId, id, 'outlet_update');
   res.json({ outlet: updated });
 }));
 
@@ -117,7 +147,9 @@ router.delete('/:id', requireManager, asyncHandler(async (req, res) => {
   await db
     .update(outlets)
     .set({ isActive: false, updatedAt: new Date() })
-    .where(eq(outlets.id, id));
+    .where(and(eq(outlets.id, id), eq(outlets.tenantId, tenantId)));
+
+  await invalidateOutletCache(tenantId, id, 'outlet_delete');
 
   res.json({ success: true });
 }));
@@ -215,6 +247,8 @@ router.put('/:outletId/product-configs/:productId', requireManager, asyncHandler
       set: { isAvailable: body.isAvailable, updatedAt: new Date() },
     })
     .returning();
+
+  await invalidateOutletCache(tenantId, outletId, 'outlet_product_config_update');
 
   res.json({ config });
 }));

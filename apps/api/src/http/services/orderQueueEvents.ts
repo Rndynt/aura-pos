@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { cacheChannels, publishEvent, subscribeEvent } from '../../services/distributedCache';
 
 type QueueListener = {
   tenantId: string;
@@ -7,6 +8,7 @@ type QueueListener = {
 };
 
 const listeners = new Set<QueueListener>();
+let pubSubStarted = false;
 
 // Clean up stale listeners every 30 seconds
 const CLEANUP_INTERVAL = 30_000;
@@ -23,7 +25,39 @@ const cleanupInterval = setInterval(() => {
 }, CLEANUP_INTERVAL);
 cleanupInterval.unref?.();
 
+function writeOrderQueueMessage(tenantId: string, payload: Record<string, unknown>) {
+  const message = `event: order_queue_updated\ndata: ${JSON.stringify({
+    tenantId,
+    ...payload,
+    ts: payload.ts ?? Date.now(),
+  })}\n\n`;
+
+  for (const listener of listeners) {
+    if (listener.tenantId === tenantId) {
+      try {
+        listener.res.write(message);
+      } catch {
+        listeners.delete(listener);
+      }
+    }
+  }
+}
+
+function ensureOrderQueuePubSubStarted(): void {
+  if (pubSubStarted) return;
+  pubSubStarted = true;
+
+  void subscribeEvent(cacheChannels.orderQueue, (payload, meta) => {
+    if (meta.isLocalEcho) return;
+    const tenantId = typeof payload.tenantId === 'string' ? payload.tenantId : null;
+    if (!tenantId) return;
+    writeOrderQueueMessage(tenantId, payload);
+  });
+}
+
 export function subscribeOrderQueue(tenantId: string, res: Response) {
+  ensureOrderQueuePubSubStarted();
+
   const listener: QueueListener = { tenantId, res, lastPing: Date.now() };
   listeners.add(listener);
 
@@ -67,19 +101,7 @@ export function subscribeOrderQueue(tenantId: string, res: Response) {
 }
 
 export function emitOrderQueueChanged(tenantId: string, payload: Record<string, unknown>) {
-  const message = `event: order_queue_updated\ndata: ${JSON.stringify({
-    tenantId,
-    ...payload,
-    ts: Date.now(),
-  })}\n\n`;
-
-  for (const listener of listeners) {
-    if (listener.tenantId === tenantId) {
-      try {
-        listener.res.write(message);
-      } catch {
-        listeners.delete(listener);
-      }
-    }
-  }
+  const eventPayload = { tenantId, ...payload, ts: Date.now() };
+  writeOrderQueueMessage(tenantId, eventPayload);
+  void publishEvent(cacheChannels.orderQueue, eventPayload);
 }

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { db } from '@pos/infrastructure/database';
 import catalogRoutes from './catalog';
 import ordersRoutes from './orders';
@@ -15,23 +15,28 @@ import { apiLimiter, registerLimiter, kdsLimiter, orderLimiter } from '../middle
 
 const router = Router();
 
+// express-rate-limit v8 publishes Express 5-flavoured handler types while this
+// API app is pinned to Express 4. Cast once at the route boundary so workspace
+// type-checking remains stable without changing runtime behavior.
+const asExpress4Handler = (handler: unknown): RequestHandler => handler as RequestHandler;
+
 // ── Public (rate-limited) ──────────────────────────────────────────────────────
-router.use('/register', registerLimiter, registrationRoutes);
+router.use('/register', asExpress4Handler(registerLimiter), registrationRoutes);
 
 // ── General API rate limit ─────────────────────────────────────────────────────
-router.use(apiLimiter);
+router.use(asExpress4Handler(apiLimiter));
 
 // ── Outlet middleware (runs after tenantMiddleware, resolves req.outletId) ────
 router.use(outletMiddleware);
 
 // ── Tenant-scoped ─────────────────────────────────────────────────────────────
 router.use('/catalog', catalogRoutes);
-router.use('/orders', orderLimiter, ordersRoutes);
+router.use('/orders', asExpress4Handler(orderLimiter), ordersRoutes);
 router.use('/tenants', tenantsRoutes);
 router.use('/tables', createTablesRouter(db));
 router.use('/sync', syncRoutes);
 router.use('/terminals', terminalsRoutes);
-router.use('/kds', kdsLimiter, kdsRoutes);
+router.use('/kds', asExpress4Handler(kdsLimiter), kdsRoutes);
 router.use('/outlets', outletsRoutes);
 router.use('/inventory', inventoryRoutes);
 
