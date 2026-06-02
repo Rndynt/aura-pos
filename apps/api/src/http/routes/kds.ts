@@ -1,10 +1,12 @@
 /**
  * KDS Device Management Routes
- * Handles KDS device pairing (4-digit activation code) and API key auth.
+ * Handles KDS device pairing (6-digit activation code) and hashed API key auth.
  */
 
+import { createHash, randomInt } from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { sql } from 'drizzle-orm';
 import { fromNodeHeaders } from 'better-auth/node';
 import { nanoid } from 'nanoid';
@@ -20,6 +22,25 @@ type KdsDeviceContext = {
 };
 
 type KdsHandler = (req: Request, res: Response, next: NextFunction) => unknown;
+
+const KDS_ACTIVATION_CODE_LENGTH = 6;
+const KDS_ACTIVATION_CODE_MIN = 10 ** (KDS_ACTIVATION_CODE_LENGTH - 1);
+const KDS_ACTIVATION_CODE_MAX = 10 ** KDS_ACTIVATION_CODE_LENGTH;
+const KDS_MAX_ACTIVATION_ATTEMPTS = 5;
+const KDS_ACTIVATION_LOCKOUT_MINUTES = 10;
+const KDS_ACTIVATION_CODE_PATTERN = new RegExp(`^\\d{${KDS_ACTIVATION_CODE_LENGTH}}$`);
+
+const kdsPairingLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too Many Requests',
+    message: 'Terlalu banyak percobaan pairing KDS. Coba lagi dalam 5 menit.',
+    code: 'KDS_PAIRING_RATE_LIMIT',
+  },
+}) as unknown as KdsHandler;
 
 type KdsAuthDependencies = {
   auth: typeof import('../../lib/auth')['auth'];
@@ -73,16 +94,18 @@ async function requireKdsKey(
   res: Response,
   authDependencies: KdsAuthDependencies,
 ): Promise<KdsDeviceContext | null> {
-  const apiKey = req.headers['x-kds-key'] as string | undefined;
+  const headerValue = req.headers['x-kds-key'];
+  const apiKey = Array.isArray(headerValue) ? headerValue[0] : headerValue;
   if (!apiKey) {
     res.status(401).json({ success: false, error: 'Missing X-KDS-Key header' });
     return null;
   }
   try {
+    const apiKeyHash = hashKdsApiKey(apiKey);
     const rows = await authDependencies.authDb.execute(
       sql`SELECT id, tenant_id, device_name, outlet_id
           FROM kds_devices
-          WHERE api_key = ${apiKey} AND status = 'active'
+          WHERE api_key = ${apiKeyHash} AND status = 'active'
           LIMIT 1`,
     );
     const device = (rows as any[])[0];
@@ -131,6 +154,40 @@ function applyKdsDeviceContext(req: Request, device: KdsDeviceContext): void {
   }
 }
 
+function generateActivationCode(): string {
+  return String(randomInt(KDS_ACTIVATION_CODE_MIN, KDS_ACTIVATION_CODE_MAX));
+}
+
+function isValidActivationCode(code: unknown): code is string {
+  return typeof code === 'string' && KDS_ACTIVATION_CODE_PATTERN.test(code);
+}
+
+function hashKdsApiKey(apiKey: string): string {
+  return createHash('sha256').update(apiKey, 'utf8').digest('hex');
+}
+
+async function registerKdsActivationFailure(
+  authDependencies: KdsAuthDependencies,
+  code: string,
+): Promise<{ lockedUntil: string | null } | null> {
+  const rows = await authDependencies.authDb.execute(sql`
+    UPDATE kds_devices
+    SET activation_attempts = COALESCE(activation_attempts, 0) + 1,
+        activation_locked_until = CASE
+          WHEN COALESCE(activation_attempts, 0) + 1 >= ${KDS_MAX_ACTIVATION_ATTEMPTS}
+            THEN now() + (${KDS_ACTIVATION_LOCKOUT_MINUTES} * interval '1 minute')
+          ELSE activation_locked_until
+        END
+    WHERE activation_code = ${code}
+      AND status = 'pending'
+      AND activation_expires_at > now()
+    RETURNING activation_locked_until
+  `);
+
+  const row = (rows as any[])[0];
+  return row ? { lockedUntil: row.activation_locked_until ?? null } : null;
+}
+
 export async function createKdsRouter(dependencies: KdsRouterDependencies = {}): Promise<Router> {
   const router = Router();
   const [authDependencies, ordersController] = await Promise.all([
@@ -146,13 +203,13 @@ export async function createKdsRouter(dependencies: KdsRouterDependencies = {}):
 
 // ─── Admin endpoints (require Better Auth session) ────────────────────────────
 
-/** POST /api/kds/generate-code — generate 4-digit activation code */
+/** POST /api/kds/generate-code — generate 6-digit activation code */
 router.post('/generate-code', async (req, res) => {
   try {
     const session = await requireSession(req, res, authDependencies);
     if (!session) return;
 
-    const code = String(Math.floor(1000 + Math.random() * 9000));
+    const code = generateActivationCode();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
     const expiresAtIso = expiresAt.toISOString();
     const deviceId = nanoid();
@@ -212,22 +269,31 @@ router.delete('/devices/:id', async (req, res) => {
 // ─── Public endpoints (no session required) ───────────────────────────────────
 
 /** POST /api/kds/check-code — validate that a code exists and is not expired */
-router.post('/check-code', async (req, res) => {
+router.post('/check-code', kdsPairingLimiter, async (req, res) => {
   try {
-    const { code } = req.body;
-    if (!code || !/^\d{4}$/.test(String(code))) {
-      return res.status(400).json({ success: false, error: 'Kode harus 4 digit angka' });
+    const rawCode = String(req.body?.code ?? '');
+    if (!isValidActivationCode(rawCode)) {
+      return res.status(400).json({ success: false, error: `Kode harus ${KDS_ACTIVATION_CODE_LENGTH} digit angka` });
     }
 
     const rows = await authDependencies.authDb.execute(sql`
       SELECT id FROM kds_devices
-      WHERE activation_code = ${String(code)}
+      WHERE activation_code = ${rawCode}
         AND status = 'pending'
         AND activation_expires_at > now()
+        AND (activation_locked_until IS NULL OR activation_locked_until <= now())
       LIMIT 1
     `);
 
     if (!(rows as any[]).length) {
+      const failure = await registerKdsActivationFailure(authDependencies, rawCode);
+      if (failure?.lockedUntil) {
+        return res.status(423).json({
+          success: false,
+          error: 'Kode terkunci sementara karena terlalu banyak percobaan. Coba lagi nanti.',
+          lockedUntil: failure.lockedUntil,
+        });
+      }
       return res
         .status(404)
         .json({ success: false, error: 'Kode tidak valid atau sudah kadaluarsa' });
@@ -240,45 +306,52 @@ router.post('/check-code', async (req, res) => {
   }
 });
 
-/** POST /api/kds/verify-code — activate device, returns API key */
-router.post('/verify-code', async (req, res) => {
+/** POST /api/kds/verify-code — activate device, returns raw API key once */
+router.post('/verify-code', kdsPairingLimiter, async (req, res) => {
   try {
-    const { code, deviceName } = req.body;
-    if (!code || !/^\d{4}$/.test(String(code))) {
-      return res.status(400).json({ success: false, error: 'Kode harus 4 digit angka' });
+    const rawCode = String(req.body?.code ?? '');
+    const { deviceName } = req.body;
+    if (!isValidActivationCode(rawCode)) {
+      return res.status(400).json({ success: false, error: `Kode harus ${KDS_ACTIVATION_CODE_LENGTH} digit angka` });
     }
     if (!deviceName || typeof deviceName !== 'string' || !deviceName.trim()) {
       return res.status(400).json({ success: false, error: 'Nama stasiun diperlukan' });
     }
 
-    const rows = await authDependencies.authDb.execute(sql`
-      SELECT id, tenant_id FROM kds_devices
-      WHERE activation_code = ${String(code)}
-        AND status = 'pending'
-        AND activation_expires_at > now()
-      LIMIT 1
-    `);
-
-    const device = (rows as any[])[0];
-    if (!device) {
-      return res
-        .status(404)
-        .json({ success: false, error: 'Kode tidak valid atau sudah kadaluarsa' });
-    }
-
     const apiKey = nanoid(32);
+    const apiKeyHash = hashKdsApiKey(apiKey);
     const name = deviceName.trim();
 
-    await authDependencies.authDb.execute(sql`
+    const rows = await authDependencies.authDb.execute(sql`
       UPDATE kds_devices
-      SET api_key              = ${apiKey},
+      SET api_key              = ${apiKeyHash},
           device_name          = ${name},
           status               = 'active',
           activated_at         = now(),
           activation_code      = null,
-          activation_expires_at = null
-      WHERE id = ${device.id}
+          activation_expires_at = null,
+          activation_locked_until = null
+      WHERE activation_code = ${rawCode}
+        AND status = 'pending'
+        AND activation_expires_at > now()
+        AND (activation_locked_until IS NULL OR activation_locked_until <= now())
+      RETURNING id, tenant_id
     `);
+
+    const device = (rows as any[])[0];
+    if (!device) {
+      const failure = await registerKdsActivationFailure(authDependencies, rawCode);
+      if (failure?.lockedUntil) {
+        return res.status(423).json({
+          success: false,
+          error: 'Kode terkunci sementara karena terlalu banyak percobaan. Coba lagi nanti.',
+          lockedUntil: failure.lockedUntil,
+        });
+      }
+      return res
+        .status(404)
+        .json({ success: false, error: 'Kode tidak valid, sudah dipakai, atau sudah kadaluarsa' });
+    }
 
     res.json({
       success: true,

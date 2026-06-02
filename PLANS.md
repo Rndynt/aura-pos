@@ -1685,3 +1685,144 @@ Make public owner registration safe against partial tenant/auth state, seed mult
 ### Continuation Notes
 
 Recommended next batch: fix existing API type-check blockers in `featureGuard.ts`, `routes/index.ts`, and compression declarations, then optionally add a real PostgreSQL integration test harness for transaction rollback.
+
+## Plan: KDS pairing security hardening
+
+### Source
+- Tasklist: User request for KDS code generation, brute-force controls, atomic activation, and API key hashing.
+- User request: Harden `apps/api/src/http/routes/kds.ts` KDS pairing flow.
+- Date started: 2026-06-02
+- Current status: Implemented; API type-check still blocked by unrelated pre-existing errors.
+
+### Goal
+Make KDS device pairing safer by using cryptographically secure activation codes, endpoint-specific throttling and lockout controls, atomic one-time code consumption, and database-only API key hashes while returning the raw key once during pairing.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: `apps/api/src/http/routes/kds.ts`, KDS pairing and device authentication.
+- Files inspected: `apps/api/src/http/routes/kds.ts`, `apps/api/src/http/middleware/rateLimiter.ts`, `apps/api/src/http/routes/index.ts`.
+- Findings: KDS activation used 4-digit `Math.random`, plaintext `api_key` lookup/storage, non-atomic select-then-update verification, and only a broad `/api/kds` limiter.
+- Tasks: Implemented 6-digit `crypto.randomInt` codes, hashed API key lookup/storage, atomic verification update, endpoint-specific pairing limiter, and DB-backed failure/lockout handling for matching pending codes.
+- Risks: Existing plaintext API keys rely on migration backfill via PostgreSQL `pgcrypto`.
+- Validation: API tests passed; API type-check blocked by unrelated pre-existing errors.
+
+#### Database/Schema Workstream
+- Scope: KDS device columns used by pairing security.
+- Files inspected: `migrations/0010_multi_outlet.sql`, route SQL references.
+- Findings: `kds_devices` is managed outside Drizzle schema in current repo; outlet migration already alters it directly.
+- Tasks: Added `0013_kds_pairing_security.sql` with `activation_attempts`, `activation_locked_until`, API key SHA-256 backfill, and KDS lookup indexes.
+- Risks: Migration assumes `kds_devices` already exists and `pgcrypto` can be enabled.
+- Validation: Static review plus API tests/type-check attempt.
+
+#### Frontend/UI Workstream
+- Scope: KDS activation/admin pages.
+- Files inspected: `apps/pos-terminal-web/src/pages/kds-activate.tsx`, `apps/pos-terminal-web/src/pages/kitchen-display.tsx`.
+- Findings: UI assumed 4-digit codes, so API moving to 6 digits required synchronized UI labels, dots, and input length.
+- Tasks: Updated comments, copy, digit dots, input guard, and auto-submit length to 6 digits.
+- Risks: No screenshot taken because the change is primarily backend/security plus small copy/input sync, and no runnable web-app screenshot was explicitly requested.
+- Validation: POS terminal type-check passed.
+
+#### Tests/Validation Workstream
+- Scope: Existing API tests and type checking.
+- Files inspected: `apps/api/src/__tests__/kds.test.ts`.
+- Findings: Existing tests cover KDS status transition delegation, not pairing.
+- Tasks: Ran relevant API test suite and type-check commands.
+- Risks: Pairing flow still lacks a dedicated DB-backed integration test harness for the new atomic update/lockout SQL.
+- Validation: `pnpm --filter @pos/api test` passed; `pnpm --filter @pos/api type-check` failed on unrelated existing type issues.
+
+#### Documentation Workstream
+- Scope: README/docs/plan if behavior changes.
+- Files inspected: README, KDS UI copy.
+- Findings: KDS code length was documented in UI comments/copy more than formal docs.
+- Tasks: Synced changed UI comments/copy and this execution plan.
+- Risks: None identified.
+- Validation: File review.
+
+#### Security/Tenant Isolation Workstream
+- Scope: KDS key auth, one-time pairing code behavior, brute-force protections.
+- Files inspected: KDS route and route mounting.
+- Findings: Tenant comes from session for generation and from active device lookup for KDS requests; pairing code was race-prone and brute-forceable.
+- Tasks: Preserved tenant-bound device lookup while hardening credential material and pairing flow.
+- Risks: Existing active devices require migration to hash stored plaintext keys before the new hashed lookup can authenticate them.
+- Validation: API tests passed.
+
+### Execution Order
+1. Add DB migration for KDS pairing security columns/key hashing. Completed.
+2. Harden backend KDS route helpers and endpoint flow. Completed.
+3. Sync KDS frontend code length/copy. Completed.
+4. Run validation. Completed with noted API type-check blocker.
+5. Update plan status. Completed.
+
+### Progress
+
+#### Completed
+- [x] Replace KDS activation code generation with cryptographically secure 6-digit numeric codes.
+  - Files changed: `apps/api/src/http/routes/kds.ts`.
+  - Validation: API tests passed; API type-check attempted.
+  - Docs updated: UI comments/copy and this plan.
+- [x] Add endpoint-specific KDS pairing throttling, failure counter, and temporary lockout.
+  - Files changed: `apps/api/src/http/routes/kds.ts`, `migrations/0013_kds_pairing_security.sql`.
+  - Validation: API tests passed; API type-check attempted.
+  - Docs updated: This plan.
+- [x] Make KDS verification consume pending codes atomically.
+  - Files changed: `apps/api/src/http/routes/kds.ts`.
+  - Validation: API tests passed; API type-check attempted.
+  - Docs updated: This plan.
+- [x] Store only hashed KDS API keys in the database and return the raw key once during pairing.
+  - Files changed: `apps/api/src/http/routes/kds.ts`, `migrations/0013_kds_pairing_security.sql`.
+  - Validation: API tests passed; API type-check attempted.
+  - Docs updated: This plan.
+- [x] Sync KDS frontend activation UI to 6-digit codes.
+  - Files changed: `apps/pos-terminal-web/src/pages/kds-activate.tsx`, `apps/pos-terminal-web/src/pages/kitchen-display.tsx`.
+  - Validation: POS terminal type-check passed.
+  - Docs updated: UI comments/copy and this plan.
+
+#### Partially Completed
+- [ ] Dedicated DB-backed integration coverage for pairing lockout/atomic update.
+  - Completed: Existing API suite was run and passed.
+  - Remaining: Add a real PostgreSQL integration test harness for the new SQL if/when the project has stable DB test fixtures for `kds_devices`.
+  - Reason: Current KDS tests mock order-status auth/delegation and do not include a KDS pairing database fixture.
+
+#### Blocked
+- [ ] Clean API type-check.
+  - Blocker: Existing unrelated TypeScript errors in `featureGuard.ts`, `routes/index.ts` express-rate-limit type mismatch, and missing `compression` declarations.
+  - Required next step: Fix those pre-existing API type issues in a separate cleanup batch.
+
+#### Not Attempted
+- [ ] Alphanumeric one-time pairing token.
+  - Reason: Implemented the requested 6-8 digit option as a 6-digit numeric code using `crypto.randomInt`; alphanumeric token remains an optional future alternative.
+
+### Validation Log
+- Command: `pnpm --filter @pos/api test`
+- Result: Pass
+- Notes: 28 tests passed.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: Pass
+- Notes: POS terminal TypeScript validation passed.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Fail, unrelated/pre-existing blockers
+- Notes: Fails in `featureGuard.ts`, `routes/index.ts` express-rate-limit typings, and missing `compression` declaration; no remaining `kds.ts` type errors after casting the local pairing limiter to the repository's Express handler type.
+
+### Documentation Updates
+- File: PLANS.md
+- Change: Added and completed KDS pairing security hardening plan.
+- File: `apps/pos-terminal-web/src/pages/kds-activate.tsx`
+- Change: Updated KDS activation comments/copy to 6-digit codes.
+- File: `apps/pos-terminal-web/src/pages/kitchen-display.tsx`
+- Change: Updated KDS admin launcher comments/copy to 6-digit codes.
+
+### Checklist Updates
+- File: N/A
+- Change: User provided inline tasklist; final report maps completed/partial items.
+
+### Continuation Notes
+Recommended next batch: fix existing API type-check blockers, then add a dedicated DB-backed KDS pairing integration test covering lockout, atomic code consumption, and hashed-key authentication against a real `kds_devices` fixture.
