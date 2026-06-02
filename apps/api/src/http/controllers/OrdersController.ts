@@ -8,7 +8,52 @@ import { z } from 'zod';
 import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { emitOrderQueueChanged, subscribeOrderQueue } from '../services/orderQueueEvents';
-import { deductStockForItems, reverseStockForItems, STOCK_DEDUCTED_STATES } from '../helpers/stockDeduction';
+import { deductStockForItems, reverseStockForItems, STOCK_DEDUCTED_STATES, type StockContext, type StockItem } from '../helpers/stockDeduction';
+import { resolveInventoryPolicy, recordInventorySyncError, errorMessage, type InventorySyncOperation } from '@pos/application/inventory';
+
+
+async function applyOrderInventoryMovement(
+  tenantId: string,
+  items: StockItem[],
+  ctx: StockContext,
+  operation: InventorySyncOperation,
+): Promise<{ policy: 'strict' | 'allow_negative'; syncErrorId?: string }> {
+  const policy = await resolveInventoryPolicy(tenantId);
+  const moveStock = operation === 'deduct_sale' ? deductStockForItems : reverseStockForItems;
+
+  if (policy.policy === 'strict') {
+    try {
+      await moveStock(tenantId, items, ctx, { allowNegativeStock: false });
+      return { policy: policy.policy };
+    } catch (error: any) {
+      throw createError(
+        `Inventory movement must succeed before order confirmation/completion in strict mode: ${errorMessage(error)}`,
+        Number(error?.statusCode) || 409,
+        error?.code || 'INVENTORY_MOVEMENT_REQUIRED',
+      );
+    }
+  }
+
+  try {
+    await moveStock(tenantId, items, ctx, { allowNegativeStock: true });
+    return { policy: policy.policy };
+  } catch (error) {
+    const record = await recordInventorySyncError({
+      tenantId,
+      outletId: ctx.outletId ?? null,
+      orderId: ctx.orderId ?? null,
+      productId: items.length === 1 ? items[0]?.productId ?? null : null,
+      operation,
+      payload: { operation, items, context: ctx, policy: 'allow_negative' },
+      error,
+    });
+    console.warn(
+      `[inventory_sync_errors] Recorded ${operation} failure for retry`,
+      { tenantId, orderId: ctx.orderId, syncErrorId: record.id, error: errorMessage(error) },
+    );
+    return { policy: policy.policy, syncErrorId: record.id };
+  }
+}
 
 /**
  * GET /api/orders/queue/stream
@@ -175,7 +220,7 @@ export const createKitchenTicket = asyncHandler(async (req: Request, res: Respon
   try {
     const confirmResult = await container.confirmOrder.execute({ order_id: id, tenant_id: tenantId });
     if (confirmResult.order.items?.length) {
-      await deductStockForItems(
+      await applyOrderInventoryMovement(
         tenantId,
         confirmResult.order.items.map((item: any) => ({
           productId: item.productId ?? item.product_id,
@@ -186,10 +231,14 @@ export const createKitchenTicket = asyncHandler(async (req: Request, res: Respon
           orderNumber: confirmResult.order.order_number,
           outletId: req.outletId ?? null,
         },
-      ).catch(() => {});
+        'deduct_sale',
+      );
     }
     emitOrderQueueChanged(tenantId, { source: 'confirm_order', orderId: id });
-  } catch {
+  } catch (error: any) {
+    if (error?.code === 'INVENTORY_MOVEMENT_REQUIRED' || error?.code === 'INSUFFICIENT_STOCK') {
+      throw error;
+    }
     // Non-fatal — order may already be confirmed or in a later state; proceed to create ticket.
   }
 
@@ -391,7 +440,7 @@ export const confirmOrder = asyncHandler(async (req: Request, res: Response) => 
 
   // Deduct stock for tracked products — stock decreases on CONFIRMATION, not on payment
   if (result.order.items?.length) {
-    await deductStockForItems(
+    await applyOrderInventoryMovement(
       tenantId,
       result.order.items.map((item: any) => ({
         productId: item.productId ?? item.product_id,
@@ -402,7 +451,8 @@ export const confirmOrder = asyncHandler(async (req: Request, res: Response) => 
         orderNumber: result.order.order_number,
         outletId: req.outletId ?? null,
       },
-    ).catch(() => {}); // Non-fatal — stock deduction must not block order flow
+      'deduct_sale',
+    );
   }
 
   emitOrderQueueChanged(tenantId, { source: 'confirm_order', orderId: result.order.id });
@@ -565,7 +615,7 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
     STOCK_DEDUCTED_STATES.has(orderBeforeCancel.status) &&
     orderBeforeCancel.items?.length
   ) {
-    await reverseStockForItems(
+    await applyOrderInventoryMovement(
       tenantId,
       orderBeforeCancel.items.map((item: any) => ({
         productId: item.productId ?? item.product_id,
@@ -576,7 +626,8 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
         orderNumber: orderBeforeCancel.order_number,
         outletId: req.outletId ?? null,
       },
-    ).catch(() => {}); // Non-fatal — stock reversal must not block cancel flow
+      'reverse_return',
+    );
   }
 
   emitOrderQueueChanged(tenantId, { source: 'cancel_order', orderId: result.order.id });
@@ -767,6 +818,7 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
       payment: result.payment,
       remainingAmount: result.remainingAmount,
       idempotent_replay: result.idempotent_replay ?? false,
+      inventory_sync_error: result.inventory_sync_error ?? null,
     },
   });
 });

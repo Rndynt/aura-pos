@@ -28,6 +28,8 @@ import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE } from '@pos/core/pricing
 import { calculateSelectedOptionsDelta, flattenSelectedOptions } from '../catalog';
 import type { SelectedOption, SelectedOptionGroup } from '@pos/domain/orders/types';
 import { deductStockForItems } from '../inventory/stockMovements';
+import { resolveInventoryPolicy } from '../inventory/inventoryPolicy';
+import { recordInventorySyncError } from '../inventory/inventorySyncErrors';
 
 // ---------------------------------------------------------------------------
 // Input / Output types
@@ -70,6 +72,7 @@ export interface CreateAndPayOrderOutput {
   payment: any;
   idempotent_replay?: boolean;
   remainingAmount: number;
+  inventory_sync_error?: any;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +185,8 @@ export class CreateAndPayOrder {
     // Generate order number with retry (P1.3: unique constraint safety)
     // Deferred to inside transaction to prevent race condition.
     // ------------------------------------------------------------------
+
+    const inventoryPolicy = await resolveInventoryPolicy(tenant_id, this.db);
 
     // ------------------------------------------------------------------
     // TRUE ATOMIC TRANSACTION (P0.2)
@@ -309,31 +314,67 @@ export class CreateAndPayOrder {
         .where(and(eq(orders.id, newOrder.id), eq(orders.tenantId, tenant_id)))
         .returning();
 
-      // 6. Deduct stock and record inventory movement inside the same
-      // transaction as order creation and payment. Quick-pay should either
-      // commit the order, payment, product stock, and movement together, or
-      // roll them all back (for example when tracked stock is insufficient).
-      await deductStockForItems(
-        tenant_id,
-        computedItems.map((item) => ({
-          productId: item.product_id,
-          quantity: item.quantity,
-        })),
-        {
-          orderId: updatedOrder.id,
-          orderNumber: updatedOrder.orderNumber,
-          outletId: outlet_id ?? null,
-        },
-        { tx, allowNegativeStock: false },
-      );
+      // 6. Strict inventory tenants must commit stock update + movement ledger
+      // inside the same transaction as order creation and payment. Allow-negative
+      // tenants perform the movement after the financial transaction; failures are
+      // durable retry/audit records and do not orphan the order/payment.
+      if (inventoryPolicy.policy === 'strict') {
+        await deductStockForItems(
+          tenant_id,
+          computedItems.map((item) => ({
+            productId: item.product_id,
+            quantity: item.quantity,
+          })),
+          {
+            orderId: updatedOrder.id,
+            orderNumber: updatedOrder.orderNumber,
+            outletId: outlet_id ?? null,
+          },
+          { tx, allowNegativeStock: false },
+        );
+      }
 
       return { order: updatedOrder, payment: newPayment };
     });
+
+    let inventorySyncError: any = null;
+
+    if (inventoryPolicy.policy === 'allow_negative' && !result.idempotent_replay) {
+      const movementItems = computedItems.map((item) => ({
+        productId: item.product_id,
+        quantity: item.quantity,
+      }));
+      const movementContext = {
+        orderId: result.order.id,
+        orderNumber: result.order.orderNumber,
+        outletId: outlet_id ?? null,
+      };
+
+      try {
+        await deductStockForItems(tenant_id, movementItems, movementContext, { allowNegativeStock: true });
+      } catch (error) {
+        inventorySyncError = await recordInventorySyncError({
+          tenantId: tenant_id,
+          outletId: outlet_id ?? null,
+          orderId: result.order.id,
+          productId: movementItems.length === 1 ? movementItems[0]?.productId ?? null : null,
+          operation: 'deduct_sale',
+          payload: {
+            operation: 'deduct_sale',
+            items: movementItems,
+            context: movementContext,
+            policy: 'allow_negative',
+          },
+          error,
+        });
+      }
+    }
 
     return {
       order: result.order,
       payment: result.payment,
       remainingAmount: Math.max(0, totalAmount - amount),
+      inventory_sync_error: inventorySyncError,
     };
   }
 

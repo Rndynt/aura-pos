@@ -106,6 +106,13 @@ This is a **1-click checkout path** for counter service or pre-set table orders.
 
 ---
 
+## Inventory Policy for Confirm / Quick-Pay Completion
+
+Online order flows resolve a per-tenant inventory policy from `tenant_module_configs.config.inventory_policy` (or `inventoryPolicy`). Supported values are `strict` and `allow_negative`. If no override is configured, tenants with the inventory module enabled default to `strict`; tenants without the module default to `allow_negative` so order flow is not blocked by inventory operations.
+
+- **Strict inventory**: tracked stock update and `inventory_movements` ledger insert must succeed before `/api/orders/:id/confirm`, kitchen-ticket auto-confirm, or quick-pay completion returns success. For quick-pay (`/api/orders/create-and-pay`), order, payment, stock update, and ledger insert are in the same database transaction.
+- **Allow-negative inventory**: tracked stock can go below zero. If the stock/ledger movement fails, the order response can still proceed, but the failure is persisted in `inventory_sync_errors` with the tenant/order/product context and is picked up by the retry job. This replaces silent `.catch(() => {})` inventory failures.
+
 ## Atomic Order+Payment (P3)
 
 To prevent "orphaned orders" (order created but payment fails), AuraPoS uses atomic creation:
@@ -113,15 +120,17 @@ To prevent "orphaned orders" (order created but payment fails), AuraPoS uses ato
 ```
 Customer clicks "Charge"
   ↓
-Create Order + Record Payment + Deduct tracked stock + Insert inventory movement
-  in single endpoint (`/api/orders/create-and-pay`)
+Create Order + Record Payment in single endpoint (`/api/orders/create-and-pay`)
   ↓
-All succeed → Order with payment recorded and inventory ledger updated ✅
-Any transactional step fails → Nothing created, stock unchanged, cart can retry ✅
-(Insufficient tracked stock) → Transaction rolls back instead of overselling ✅
+Strict inventory tenant: also deduct tracked stock + insert inventory movement in the same transaction
+Allow-negative tenant: commit order/payment first, then attempt stock movement; durable retry record is created if movement fails
+  ↓
+Strict success → Order with payment recorded and inventory ledger updated ✅
+Strict inventory failure → Transaction rolls back; cart can retry ✅
+Allow-negative inventory failure → Order/payment remain; `inventory_sync_errors` retry/audit record is queued ✅
 ```
 
-**Result**: Order, payment, product stock, and inventory movement ledger stay in sync for quick-pay, with no orphaned orders or post-commit stock deduction gap.
+**Result**: Strict tenants keep order, payment, product stock, and inventory movement ledger in sync for quick-pay. Allow-negative tenants preserve order/payment availability while making inventory movement failures durable and retryable instead of silent.
 
 ---
 
