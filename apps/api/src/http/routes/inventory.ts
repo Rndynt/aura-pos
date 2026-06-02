@@ -48,7 +48,7 @@ async function isAdvancedInventoryEnabled(tenantId: string): Promise<boolean> {
 
 /**
  * All recognised movement types.
- * OFFLINE_SALE is written by the offline sync path.
+ * OFFLINE_SALE is retained for legacy/manual rows; current offline sync uses SALE with terminal metadata.
  */
 const MOVEMENT_TYPES = [
   'SALE',
@@ -389,7 +389,7 @@ router.get('/report', asyncHandler(async (req, res) => {
   const toIso = to.toISOString();
   const outletId = req.outletId ?? null;
 
-  // 1. Top 10 produk terlaku (SALE + OFFLINE_SALE dalam periode)
+  // 1. Top 10 produk terlaku (SALE plus legacy OFFLINE_SALE dalam periode)
   const topSoldResult = await db.execute(sql`
     SELECT
       im.product_id   AS "productId",

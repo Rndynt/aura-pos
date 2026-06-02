@@ -22,6 +22,8 @@ export interface StockContext {
   orderNumber?: string;
   /** Tag movement to a specific outlet for per-outlet reporting (global pool remains shared) */
   outletId?: string | null;
+  /** Optional terminal/device source metadata for synced/offline movements. */
+  terminalId?: string | null;
 }
 
 export interface StockMovementOptions {
@@ -74,7 +76,7 @@ export async function deductStockForItems(
   ctx: StockContext = {},
   options: StockMovementOptions = {},
 ): Promise<void> {
-  const { orderId, orderNumber, outletId } = ctx;
+  const { orderId, orderNumber, outletId, terminalId } = ctx;
   const { allowNegativeStock = false } = options;
   if (!items.length) return;
 
@@ -144,6 +146,7 @@ export async function deductStockForItems(
         productId: product.id,
         orderId: orderId ?? null,
         outletId: outletId ?? null,
+        terminalId: terminalId ?? null,
         movementType: 'SALE',
         quantityDelta: -soldQty,
         quantityBefore: before,
@@ -164,7 +167,7 @@ export async function reverseStockForItems(
   ctx: StockContext = {},
   options: StockMovementOptions = {},
 ): Promise<void> {
-  const { orderId, orderNumber, outletId } = ctx;
+  const { orderId, orderNumber, outletId, terminalId } = ctx;
   if (!items.length) return;
 
   const productIds = [...new Set(items.map((i) => i.productId).filter(Boolean))];
@@ -208,6 +211,7 @@ export async function reverseStockForItems(
         productId: product.id,
         orderId: orderId ?? null,
         outletId: outletId ?? null,
+        terminalId: terminalId ?? null,
         movementType: 'RETURN',
         quantityDelta: returnQty,
         quantityBefore: before,

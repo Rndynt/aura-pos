@@ -3117,3 +3117,131 @@ Ensure POS terminal mutation calls made through the shared `apiRequest` helper i
 ### Continuation Notes
 
 This header task is implemented and validated. No continuation is required for this batch.
+
+## Plan: Offline sync inventory stock/ledger idempotency
+
+### Source
+
+- Tasklist: User request in current turn
+- User request: Align `SyncOfflineOrder.writeInventoryMovements` with `CreateAndPayOrder`, choose one stock+ledger owner, prevent duplicate movements, add idempotency uniqueness, and test sync stock/ledger behavior.
+- Date started: 2026-06-02
+- Current status: Implemented; API type-check has unrelated pre-existing dependency/type mismatch warnings.
+
+### Goal
+
+Ensure offline order sync creates exactly one stock deduction and one inventory ledger entry per product by making the order/payment use case the owner of stock+ledger writes, while preserving sync metadata on that canonical movement.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (current user request)
+- [x] Relevant docs (`docs/dev/IDEMPOTENCY.md`, `docs/dev/SYNC_PROTOCOL.md`, `docs/OFFLINE_ARCHITECTURE.md`, `docs/dev/CONFLICT_RESOLUTION.md`, `docs/OFFLINE_PRODUCTION_GRADE_POS_TASKS.md`)
+- [x] Relevant source files (`SyncOfflineOrder`, `CreateAndPayOrder`, `stockMovements`, schema/tests, inventory API route comments)
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: `SyncOfflineOrder`, `CreateAndPayOrder`, inventory stock helper, inventory route documentation comments.
+- Files inspected: `packages/application/sync/SyncOfflineOrder.ts`, `packages/application/orders/CreateAndPayOrder.ts`, `packages/application/inventory/stockMovements.ts`, `apps/api/src/http/routes/inventory.ts`.
+- Findings: Sync previously wrote `offline_sale` ledger rows and decremented stock after `CreateAndPayOrder` already deducted stock and wrote `SALE`; this duplicated stock/ledger effects.
+- Tasks: Removed duplicate sync writer; passed sync terminal metadata into canonical movement.
+- Risks: Keep idempotent replay behavior unchanged; update in-memory sync product snapshot only for subsequent batch conflict checks.
+- Validation: API test suite and application type-check passed.
+
+#### Database/Schema Workstream
+
+- Scope: Inventory movements uniqueness.
+- Files inspected: `shared/schema.ts`, `migrations/0009_sprint5_conflicts.sql`, migration folder.
+- Findings: `inventory_movements` lacked a unique marker/index for order/product/movement.
+- Tasks: Added partial unique index on `(order_id, product_id, movement_type)` where `order_id` is not null, with migration deduplicating existing duplicate rows for the same key before index creation.
+- Risks: Legacy `OFFLINE_SALE` rows remain supported/visible; new synced offline sales use canonical `SALE` rows.
+- Validation: Application type-check passed.
+
+#### Tests/Validation Workstream
+
+- Scope: Offline sync stock/ledger regression test.
+- Files inspected: `apps/api/src/__tests__/create-and-pay-stock-concurrency.test.ts`, test script config.
+- Findings: Existing fake DB tests covered CreateAndPay stock behavior, no sync-specific duplicate regression existed.
+- Tasks: Added sync regression test verifying exactly one stock deduction and one ledger entry per product.
+- Risks: API type-check still fails on unrelated Express/rate-limit/compression declaration issues.
+- Validation: API test suite passed; application type-check passed; API type-check attempted and failed on unrelated pre-existing errors.
+
+### Execution Order
+
+1. Remove duplicate sync inventory writer and imports. Completed.
+2. Add terminal metadata pass-through to canonical `SALE` movements. Completed.
+3. Add unique idempotency index in schema and migration. Completed.
+4. Add sync regression tests. Completed.
+5. Run validation and update this plan with results. Completed.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Make `CreateAndPayOrder`/stock movement helper the single stock+ledger owner for synced offline orders.
+  - Files changed: `packages/application/sync/SyncOfflineOrder.ts`, `packages/application/orders/CreateAndPayOrder.ts`, `packages/application/inventory/stockMovements.ts`.
+  - Validation: `pnpm --filter @pos/application type-check`; `pnpm --filter @pos/api test`.
+  - Docs updated: `PLANS.md`, `docs/dev/CONFLICT_RESOLUTION.md`, `docs/OFFLINE_PRODUCTION_GRADE_POS_TASKS.md`, `apps/api/src/http/routes/inventory.ts` comments.
+- [x] Task: Add inventory movement idempotency uniqueness.
+  - Files changed: `shared/schema.ts`, `migrations/0017_inventory_movements_order_product_movement_unique.sql`.
+  - Validation: `pnpm --filter @pos/application type-check`.
+  - Docs updated: `PLANS.md`.
+- [x] Task: Add sync regression coverage for one stock deduction and one ledger row per product.
+  - Files changed: `apps/api/src/__tests__/create-and-pay-stock-concurrency.test.ts`.
+  - Validation: `pnpm --filter @pos/api test`.
+  - Docs updated: `PLANS.md`.
+
+#### Partially Completed
+
+- [ ] Task: None.
+  - Completed:
+  - Remaining:
+  - Reason:
+
+#### Blocked
+
+- [ ] Task: API package type-check clean pass.
+  - Blocker: Existing dependency/type issues in `apps/api/src/http/routes/index.ts` for Express/rate-limit types and missing `@types/compression` declaration in `apps/api/src/index.ts`.
+  - Required next step: Resolve dependency/type declarations separately; not caused by this inventory sync change.
+
+#### Not Attempted
+
+- [ ] Task: None.
+  - Reason:
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/api test -- create-and-pay-stock-concurrency.test.ts`
+- Result: Pass (script still ran all API tests; 45 tests passed)
+- Notes: Initial targeted regression run passed.
+- Command: `pnpm --filter @pos/application type-check && pnpm --filter @pos/api type-check`
+- Result: Partial; application type-check passed, API type-check failed on unrelated pre-existing Express/rate-limit/compression type issues.
+- Notes: No application-layer type errors from this change.
+- Command: `pnpm --filter @pos/application type-check && pnpm --filter @pos/api test`
+- Result: Pass
+- Notes: Application type-check passed and API suite passed (45 tests).
+
+### Documentation Updates
+
+- File: `PLANS.md`
+- Change: Added and completed this execution plan.
+- File: `docs/dev/CONFLICT_RESOLUTION.md`
+- Change: Updated offline stock-conflict wording from `offline_sale` to canonical `SALE` movement.
+- File: `docs/OFFLINE_PRODUCTION_GRADE_POS_TASKS.md`
+- Change: Updated inventory ledger status to document canonical `SALE` movements for synced offline orders and legacy `OFFLINE_SALE` support.
+- File: `apps/api/src/http/routes/inventory.ts`
+- Change: Updated inventory route comments to note `OFFLINE_SALE` is retained for legacy/manual rows while current offline sync uses `SALE` with terminal metadata.
+
+### Checklist Updates
+
+- File: `PLANS.md`
+- Change: Marked implementation and validation complete, with API type-check blocker documented.
+- File: `docs/OFFLINE_PRODUCTION_GRADE_POS_TASKS.md`
+- Change: Marked the synced offline inventory movement checklist item complete with corrected behavior.
+
+### Continuation Notes
+
+This batch is implemented and validated. Recommended next batch: clean up the unrelated API type-check dependency/type issues so `pnpm --filter @pos/api type-check` can pass independently.

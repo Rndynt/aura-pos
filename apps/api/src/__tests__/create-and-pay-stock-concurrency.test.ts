@@ -7,7 +7,8 @@ process.env.DATABASE_URL ||= 'postgres://user:pass@127.0.0.1:5432/aurapos_test';
 process.env.BETTER_AUTH_SECRET ||= 'test-secret-with-at-least-32-characters';
 
 const { CreateAndPayOrder } = await import('@pos/application/orders/CreateAndPayOrder');
-const { inventoryMovements, orderItems, orderPayments, orders, products, tenants } = await import('@shared/schema');
+const { SyncOfflineOrder } = await import('@pos/application/sync/SyncOfflineOrder');
+const { inventoryMovements, orderItems, orderPayments, orders, products, tenants, syncBatches, syncEvents, serverSyncConflicts, tables } = await import('@shared/schema');
 const { getBusinessDateForTimezone } = await import('@pos/application/orders/orderNumberSequence');
 
 type ProductRow = {
@@ -147,6 +148,9 @@ class FakeSelect {
         id: product.id,
         isActive: product.isActive,
         stockQty: product.stockQty,
+        stockTrackingEnabled: product.stockTrackingEnabled,
+        name: 'Limited Product',
+        basePrice: '10',
       }));
     } else if (this.table === orders) {
       if ('value' in this.fields) {
@@ -156,13 +160,16 @@ class FakeSelect {
         const orderId = this.conditionValues.find((value) => typeof value === 'string' && value.startsWith('order-'));
         if (orderId) rows = rows.filter((order) => order.id === orderId);
       }
+    } else if (this.table === tables) {
+      rows = [];
     } else if (this.table === orderPayments) {
       rows = [...this.store.payments];
       const idempotencyKey = this.conditionValues.find((value) =>
         typeof value === 'string'
         && ((value as string).startsWith('retry-')
           || (value as string).startsWith('parallel-')
-          || (value as string).startsWith('paid-'))
+          || (value as string).startsWith('paid-')
+          || (value as string).startsWith('sync-'))
       );
       if (idempotencyKey) rows = rows.filter((payment) => payment.idempotencyKey === idempotencyKey);
       const orderId = this.conditionValues.find((value) => typeof value === 'string' && (value as string).startsWith('order-'));
@@ -225,6 +232,10 @@ class FakeInsert {
       return [row];
     }
 
+    if (this.table === syncBatches) {
+      return [{ id: `batch-${Date.now()}`, ...this.pendingValues }];
+    }
+
     return [];
   }
 
@@ -235,9 +246,19 @@ class FakeInsert {
     return this.execute().then(onfulfilled, onrejected);
   }
 
+  async catch<TResult = never>(
+    onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | null,
+  ) {
+    return this.execute().catch(onrejected);
+  }
+
   private async execute(): Promise<void> {
     if (this.table === inventoryMovements) {
       this.store.movements.push({ id: `movement-${this.store.movements.length + 1}`, ...this.pendingValues });
+    }
+
+    if (this.table === syncEvents || this.table === serverSyncConflicts) {
+      return;
     }
   }
 }
@@ -275,6 +296,30 @@ class FakeUpdate {
     return [];
   }
 
+
+  async then<TResult1 = void, TResult2 = never>(
+    onfulfilled?: ((value: void) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null,
+  ) {
+    return this.execute().then(onfulfilled, onrejected);
+  }
+
+  async catch<TResult = never>(
+    onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | null,
+  ) {
+    return this.execute().catch(onrejected);
+  }
+
+  private async execute(): Promise<void> {
+    if (this.table === orders) {
+      const orderId = this.conditionValues.find((value) => typeof value === 'string' && (value as string).startsWith('order-'));
+      const order = orderId
+        ? this.store.orders.find((candidate) => candidate.id === orderId)
+        : this.store.orders.at(-1);
+      if (order) Object.assign(order, this.pendingSet);
+    }
+  }
+
   private extractQuantityDelta(sqlExpression: any): number {
     const chunks = sqlExpression?.queryChunks ?? [];
     const operator = chunks.some((chunk: any) => Array.isArray(chunk.value) && chunk.value.some((value: string) => value.includes('+')))
@@ -302,9 +347,12 @@ function buildUseCase(initialStockQty: number) {
     orderNumberSequences: {},
   };
 
+  const db = new FakeDb(store) as any;
   return {
     store,
-    useCase: new CreateAndPayOrder(new FakeDb(store) as any),
+    db,
+    useCase: new CreateAndPayOrder(db),
+    syncUseCase: new SyncOfflineOrder(db),
   };
 }
 
@@ -421,6 +469,48 @@ describe('CreateAndPayOrder stock concurrency', () => {
     assert.equal(result.order.paymentStatus, 'paid');
     assert.equal(result.order.status, 'completed');
     assert.ok(result.order.closedAt instanceof Date);
+  });
+
+  it('syncing an offline order creates exactly one stock deduction and one ledger entry per product', async () => {
+    const { store, syncUseCase } = buildUseCase(5);
+
+    const result = await syncUseCase.execute({
+      tenant_id: 'tenant-1',
+      terminal_id: 'terminal-sync-1',
+      outlet_id: null,
+      orders: [
+        {
+          local_order_id: 'local-order-1',
+          local_order_number: 'OFF-0001',
+          idempotency_key: 'sync-offline-order-1',
+          items: [
+            {
+              product_id: 'product-1',
+              product_name: 'Limited Product',
+              base_price: 10,
+              quantity: 2,
+            },
+          ],
+          tax_rate: 0,
+          service_charge_rate: 0,
+          amount: 20,
+          payment_method: 'cash',
+          source_terminal_id: 'terminal-sync-1',
+        },
+      ],
+    });
+
+    assert.equal(result.synced, 1);
+    assert.equal(result.failed, 0);
+    assert.equal(store.product.stockQty, 3);
+    assert.equal(store.orders.length, 1);
+    assert.equal(store.payments.length, 1);
+    assert.equal(store.movements.length, 1);
+    assert.equal(store.movements[0].movementType, 'SALE');
+    assert.equal(store.movements[0].quantityDelta, -2);
+    assert.equal(store.movements[0].quantityBefore, 5);
+    assert.equal(store.movements[0].quantityAfter, 3);
+    assert.equal(store.movements[0].terminalId, 'terminal-sync-1');
   });
 
 });

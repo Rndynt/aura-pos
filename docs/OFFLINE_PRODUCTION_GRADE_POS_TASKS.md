@@ -393,7 +393,7 @@ Make AuraPoS a production-grade offline-first POS PWA that remains usable by cas
 - [ ] `inventory_items` — master stock record separate from `products.stockQty`.
 - [ ] `inventory_stock_snapshots` — periodic balance snapshot.
 - [ ] `inventory_adjustments` — reason + actor.
-- [ ] Offline sale sync writes `offline_sale` movement.
+- [x] Offline sale sync delegates stock deduction and the canonical `SALE` ledger row to `CreateAndPayOrder`; sync terminal metadata is stamped on that movement instead of writing a duplicate `offline_sale` row.
 - [ ] Refund/void creates reverse movement.
 - [ ] Inventory report endpoint.
 
@@ -579,8 +579,8 @@ Make AuraPoS a production-grade offline-first POS PWA that remains usable by cas
 
 ### Sprint 8 — Inventory Ledger ✅
 
-- [x] `inventory_movements` wired for all payment paths (SALE via CreateAndPayOrder + OrdersController, OFFLINE_SALE via SyncOfflineOrder, RETURN on cancellation, ADJUSTMENT_IN/OUT on manual adjust).
-- [x] `OFFLINE_SALE` movement type added to enum and frontend labels.
+- [x] `inventory_movements` wired for payment paths (SALE via CreateAndPayOrder/stock movement helper, including synced offline orders with terminal metadata; RETURN on cancellation, ADJUSTMENT_IN/OUT on manual adjust).
+- [x] `OFFLINE_SALE` movement type retained in enum/frontend labels for legacy or manual rows; new synced offline sales use canonical `SALE` rows.
 - [x] Movement report endpoint `GET /api/inventory/report` — top 10 terlaku, breakdown tipe, nilai stok, unit terjual (period: 7/30/90 hari).
 - [x] Movement filtering + pagination `GET /api/inventory/movements?type=&dateFrom=&dateTo=&limit=&offset=`.
 - [x] `actorId` captured in manual adjustment routes.

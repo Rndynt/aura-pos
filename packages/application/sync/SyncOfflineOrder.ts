@@ -8,7 +8,7 @@
  * Sprint 5 additions:
  *  - Phase 10.2: Price conflict detection (PRICE_CHANGED) — accepts offline price + audit note
  *  - Phase 10.3: Stock conflict detection (STOCK_INSUFFICIENT) — allows negative stock (configurable)
- *  - Phase 17.1: Writes inventory_movements ledger after each successful sync
+ *  - Inventory stock/ledger ownership stays in CreateAndPayOrder to avoid duplicate deductions
  */
 
 import type { Database } from '@pos/infrastructure/database';
@@ -21,7 +21,6 @@ import {
   orders,
   products,
   tables,
-  inventoryMovements,
 } from '../../../shared/schema';
 import { eq, and, inArray, ne } from 'drizzle-orm';
 import { ConflictType } from './conflictTypes';
@@ -272,6 +271,7 @@ export class SyncOfflineOrder {
           payment_notes: item.payment_notes,
           idempotency_key: item.idempotency_key,
           fulfillment_mode: item.fulfillment_mode,
+          inventory_terminal_id: item.source_terminal_id ?? terminal_id,
         });
 
         const status: SyncItemStatus = output.idempotent_replay ? 'replayed' : 'synced';
@@ -299,17 +299,18 @@ export class SyncOfflineOrder {
             .catch(() => undefined);
         }
 
-        // ── Phase 17.1: Write inventory_movements ledger ──────────────────────
-        if (output.order?.id && !output.idempotent_replay) {
-          await this.writeInventoryMovements(
-            tenant_id,
-            outlet_id ?? null,
-            terminal_id,
-            output.order.id,
-            item.items,
-            productMap,
-          );
+        // Keep the pre-fetched stock snapshot current for later conflict checks
+        // in this same batch. The actual stock update and movement ledger write
+        // are owned by CreateAndPayOrder/deductStockForItems.
+        if (!output.idempotent_replay) {
+          for (const orderItem of item.items) {
+            const serverProduct = productMap.get(orderItem.product_id);
+            if (serverProduct?.stockTrackingEnabled) {
+              serverProduct.stockQty = (serverProduct.stockQty ?? 0) - orderItem.quantity;
+            }
+          }
         }
+
       } catch (err) {
         const { status, message } = classifyError(err);
         result = {
@@ -368,53 +369,4 @@ export class SyncOfflineOrder {
     return { batch_id: batchId, processed: orderInputs.length, synced, replayed, failed, conflicts, results };
   }
 
-  /**
-   * Phase 17.1 — Write inventory_movements ledger rows after a successful sync.
-   * Decrements product.stock_qty for tracked products and records the movement.
-   * Default policy: allow negative stock (offline sales always go through).
-   */
-  private async writeInventoryMovements(
-    tenantId: string,
-    outletId: string | null,
-    terminalId: string,
-    orderId: string,
-    items: CreateAndPayOrderItemInput[],
-    productMap: Map<string, { id: string; stockQty: number | null; stockTrackingEnabled: boolean; name: string; basePrice: string }>,
-  ): Promise<void> {
-    for (const item of items) {
-      const serverProduct = productMap.get(item.product_id);
-      if (!serverProduct?.stockTrackingEnabled) continue;
-
-      const quantityBefore = serverProduct.stockQty ?? 0;
-      const quantityDelta = -item.quantity;
-      const quantityAfter = quantityBefore + quantityDelta;
-
-      // Write ledger row
-      await this.db
-        .insert(inventoryMovements)
-        .values({
-          tenantId,
-          outletId,
-          productId: item.product_id,
-          orderId,
-          terminalId,
-          movementType: 'offline_sale',
-          quantityDelta,
-          quantityBefore,
-          quantityAfter,
-          notes: `Offline sale sync — order ${orderId}`,
-        })
-        .catch(() => undefined);
-
-      // Update in-memory map so subsequent items in same batch see updated qty
-      serverProduct.stockQty = quantityAfter;
-
-      // Decrement product.stock_qty in DB
-      await this.db
-        .update(products)
-        .set({ stockQty: quantityAfter, updatedAt: new Date() })
-        .where(and(eq(products.id, item.product_id), eq(products.tenantId, tenantId)))
-        .catch(() => undefined);
-    }
-  }
 }

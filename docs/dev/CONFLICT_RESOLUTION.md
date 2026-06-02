@@ -154,7 +154,7 @@ if (product.stock_tracking_enabled) {
     .reduce((sum, i) => sum + i.quantity, 0);
 
   if (product.stock_qty < totalQuantity) {
-    // Still create the order — offline_sale must not be silently dropped
+    // Still create the order — the canonical SALE movement must not be silently dropped
     // Stock can go negative; flag for review
     await db.insert(serverSyncConflicts).values({
       conflictType: "STOCK_INSUFFICIENT",

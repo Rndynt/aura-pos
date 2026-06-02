@@ -694,6 +694,9 @@ export const inventoryMovements = pgTable("inventory_movements", {
   outletIdx: index("inventory_movements_outlet_idx").on(table.outletId),
   productIdx: index("inventory_movements_product_idx").on(table.productId),
   orderIdx: index("inventory_movements_order_idx").on(table.orderId),
+  orderProductMovementUnique: uniqueIndex("inventory_movements_order_product_movement_unique")
+    .on(table.orderId, table.productId, table.movementType)
+    .where(sql`${table.orderId} IS NOT NULL`),
 }));
 
 export const insertInventoryMovementSchema = createInsertSchema(inventoryMovements).omit({ id: true, createdAt: true });

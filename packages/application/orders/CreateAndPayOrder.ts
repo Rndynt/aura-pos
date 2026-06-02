@@ -66,6 +66,8 @@ export interface CreateAndPayOrderInput {
   transaction_ref?: string;
   payment_notes?: string;
   idempotency_key?: string;
+  /** Optional terminal/device source metadata stamped onto inventory movements. */
+  inventory_terminal_id?: string;
   /**
    * Explicit fulfillment shortcut for non-kitchen quick-sale orders.
    * Default `standard` keeps the operational lifecycle at confirmed/preparing/ready/served
@@ -106,6 +108,7 @@ export class CreateAndPayOrder {
       transaction_ref,
       payment_notes,
       idempotency_key,
+      inventory_terminal_id,
       fulfillment_mode = 'standard',
     } = input;
 
@@ -347,6 +350,7 @@ export class CreateAndPayOrder {
             orderId: updatedOrder.id,
             orderNumber: updatedOrder.orderNumber,
             outletId: outlet_id ?? null,
+            terminalId: inventory_terminal_id ?? null,
           },
           { tx, allowNegativeStock: false },
         );
@@ -366,6 +370,7 @@ export class CreateAndPayOrder {
         orderId: result.order.id,
         orderNumber: result.order.orderNumber,
         outletId: outlet_id ?? null,
+        terminalId: inventory_terminal_id ?? null,
       };
 
       try {
