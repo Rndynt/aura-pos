@@ -57,6 +57,14 @@ const batchBodySchema = z.object({
   orders: z.array(offlineOrderSchema).min(1).max(50),
 });
 
+function scopedConditions<T extends { tenantId: any; outletId?: any }>(table: T, tenantId: string, outletId?: string) {
+  const conditions = [eq(table.tenantId, tenantId)];
+  if (outletId && table.outletId) {
+    conditions.push(eq(table.outletId, outletId));
+  }
+  return conditions;
+}
+
 /**
  * POST /api/sync/offline-orders
  * Accept a batch of up to 50 offline orders from a terminal.
@@ -105,7 +113,7 @@ export const listSyncBatches = asyncHandler(async (req: Request, res: Response) 
   const rows = await container.db
     .select()
     .from(syncBatches)
-    .where(eq(syncBatches.tenantId, tenantId))
+    .where(and(...scopedConditions(syncBatches, tenantId, req.outletId)))
     .orderBy(desc(syncBatches.createdAt))
     .limit(limitRaw);
 
@@ -123,7 +131,7 @@ export const listSyncConflicts = asyncHandler(async (req: Request, res: Response
   const rows = await container.db
     .select()
     .from(serverSyncConflicts)
-    .where(eq(serverSyncConflicts.tenantId, tenantId))
+    .where(and(...scopedConditions(serverSyncConflicts, tenantId, req.outletId)))
     .orderBy(desc(serverSyncConflicts.createdAt))
     .limit(limitRaw);
 
@@ -141,7 +149,7 @@ export const listSyncEvents = asyncHandler(async (req: Request, res: Response) =
   const rows = await container.db
     .select()
     .from(syncEvents)
-    .where(eq(syncEvents.tenantId, tenantId))
+    .where(and(...scopedConditions(syncEvents, tenantId, req.outletId)))
     .orderBy(desc(syncEvents.createdAt))
     .limit(limitRaw);
 
@@ -169,7 +177,7 @@ export const resolveConflict = asyncHandler(async (req: Request, res: Response) 
   const existing = await container.db
     .select({ id: serverSyncConflicts.id })
     .from(serverSyncConflicts)
-    .where(and(eq(serverSyncConflicts.id, conflictId), eq(serverSyncConflicts.tenantId, tenantId)))
+    .where(and(eq(serverSyncConflicts.id, conflictId), ...scopedConditions(serverSyncConflicts, tenantId, req.outletId)))
     .limit(1);
 
   if (!existing.length) {
@@ -183,7 +191,7 @@ export const resolveConflict = asyncHandler(async (req: Request, res: Response) 
       resolvedAt: parsed.data.resolution !== 'pending' ? new Date() : null,
       resolvedBy: parsed.data.resolved_by ?? null,
     })
-    .where(and(eq(serverSyncConflicts.id, conflictId), eq(serverSyncConflicts.tenantId, tenantId)))
+    .where(and(eq(serverSyncConflicts.id, conflictId), ...scopedConditions(serverSyncConflicts, tenantId, req.outletId)))
     .returning();
 
   res.json({ success: true, data: { conflict: updated } });

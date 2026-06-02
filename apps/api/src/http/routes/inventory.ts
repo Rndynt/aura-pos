@@ -166,6 +166,7 @@ router.put('/products/:id/adjust', requireManager, asyncHandler(async (req, res)
     const movementType: MovementType = delta >= 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT';
     await db.insert(inventoryMovements).values({
       tenantId,
+      outletId: req.outletId ?? null,
       productId,
       movementType,
       quantityDelta: delta,
@@ -219,6 +220,7 @@ router.post('/movements', requireManager, asyncHandler(async (req, res) => {
 
   const [movement] = await db.insert(inventoryMovements).values({
     tenantId,
+    outletId: req.outletId ?? null,
     productId: body.productId,
     movementType: body.movementType,
     quantityDelta: body.quantityDelta,
@@ -261,6 +263,9 @@ router.get('/movements', asyncHandler(async (req, res) => {
   }).parse(req.query);
 
   const conditions = [eq(inventoryMovements.tenantId, tenantId)];
+  if (req.outletId) {
+    conditions.push(eq(inventoryMovements.outletId, req.outletId));
+  }
 
   if (query.type && MOVEMENT_TYPES.includes(query.type as MovementType)) {
     conditions.push(eq(inventoryMovements.movementType, query.type));
@@ -330,6 +335,7 @@ router.get('/movements/:productId', asyncHandler(async (req, res) => {
       and(
         eq(inventoryMovements.tenantId, tenantId),
         eq(inventoryMovements.productId, productId),
+        ...(req.outletId ? [eq(inventoryMovements.outletId, req.outletId)] : []),
       ),
     )
     .orderBy(desc(inventoryMovements.createdAt))
@@ -381,6 +387,7 @@ router.get('/report', asyncHandler(async (req, res) => {
   // pass ISO strings so the driver receives plain strings.
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
+  const outletId = req.outletId ?? null;
 
   // 1. Top 10 produk terlaku (SALE + OFFLINE_SALE dalam periode)
   const topSoldResult = await db.execute(sql`
@@ -393,6 +400,7 @@ router.get('/report', asyncHandler(async (req, res) => {
     JOIN products p ON p.id = im.product_id
     WHERE im.tenant_id = ${tenantId}
       AND UPPER(im.movement_type) IN ('SALE', 'OFFLINE_SALE')
+      AND (${outletId}::uuid IS NULL OR im.outlet_id = ${outletId}::uuid)
       AND im.created_at >= ${fromIso}::timestamptz
       AND im.created_at <= ${toIso}::timestamptz
     GROUP BY im.product_id, p.name, p.category
@@ -409,6 +417,7 @@ router.get('/report', asyncHandler(async (req, res) => {
       COALESCE(SUM(CASE WHEN quantity_delta < 0 THEN ABS(quantity_delta) ELSE 0 END), 0)::int AS "totalOut"
     FROM inventory_movements
     WHERE tenant_id = ${tenantId}
+      AND (${outletId}::uuid IS NULL OR outlet_id = ${outletId}::uuid)
       AND created_at >= ${fromIso}::timestamptz
       AND created_at <= ${toIso}::timestamptz
     GROUP BY movement_type
@@ -435,6 +444,7 @@ router.get('/report', asyncHandler(async (req, res) => {
     FROM inventory_movements
     WHERE tenant_id = ${tenantId}
       AND UPPER(movement_type) IN ('SALE', 'OFFLINE_SALE')
+      AND (${outletId}::uuid IS NULL OR outlet_id = ${outletId}::uuid)
       AND created_at >= ${fromIso}::timestamptz
       AND created_at <= ${toIso}::timestamptz
   `);
@@ -461,6 +471,7 @@ router.get('/report', asyncHandler(async (req, res) => {
     success: true,
     data: {
       period: { from: from.toISOString(), to: to.toISOString(), days: query.period },
+      outletId,
       topSold: topSoldPlain.map((r) => ({
         productId: String(r.productId ?? ''),
         productName: String(r.productName ?? ''),

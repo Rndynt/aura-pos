@@ -13,6 +13,7 @@ export interface IOrderRepository {
     dateTo?: Date;
     limit?: number;
     offset?: number;
+    outletId?: string;
   }): Promise<Order[]>;
   countByTenant(
     tenantId: string,
@@ -21,6 +22,7 @@ export interface IOrderRepository {
       paymentStatus?: string;
       dateFrom?: Date;
       dateTo?: Date;
+      outletId?: string;
     }
   ): Promise<number>;
 }
@@ -35,6 +37,7 @@ export interface ListOrderHistoryInput {
   offset?: number;
   from_date?: Date;
   to_date?: Date;
+  outlet_id?: string;
 }
 
 export interface PaginationMetadata {
@@ -83,6 +86,7 @@ export class ListOrderHistory {
       dateTo: input.to_date,
       limit,
       offset,
+      outletId: input.outlet_id,
     };
 
     // Fetch orders with pagination
@@ -93,6 +97,7 @@ export class ListOrderHistory {
       status: filters.status,
       dateFrom: filters.dateFrom,
       dateTo: filters.dateTo,
+      outletId: filters.outletId,
     });
 
     // Calculate hasMore based on total and current pagination

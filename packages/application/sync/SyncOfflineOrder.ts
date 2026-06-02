@@ -115,7 +115,7 @@ export class SyncOfflineOrder {
     // ── Create audit batch record ─────────────────────────────────────────────
     const [batch] = await this.db
       .insert(syncBatches)
-      .values({ tenantId: tenant_id, terminalId: terminal_id, batchSize: orderInputs.length, appVersion: app_version })
+      .values({ tenantId: tenant_id, outletId: outlet_id ?? null, terminalId: terminal_id, batchSize: orderInputs.length, appVersion: app_version })
       .returning();
     const batchId = batch?.id ?? 'unknown';
 
@@ -142,6 +142,7 @@ export class SyncOfflineOrder {
           eq(tables.tenantId, tenant_id),
           inArray(tables.tableNumber, allTableNumbers),
           ne(tables.status, 'available'),
+          ...(outlet_id ? [eq(tables.outletId, outlet_id)] : []),
         ));
       for (const t of occupiedTables) occupiedTableNumbers.add(t.tableNumber);
     }
@@ -186,6 +187,7 @@ export class SyncOfflineOrder {
             .insert(serverSyncConflicts)
             .values({
               tenantId: tenant_id,
+              outletId: outlet_id ?? null,
               terminalId: terminal_id,
               localOrderId: item.local_order_id,
               conflictType: ConflictType.PRICE_CHANGED,
@@ -222,6 +224,7 @@ export class SyncOfflineOrder {
             .insert(serverSyncConflicts)
             .values({
               tenantId: tenant_id,
+              outletId: outlet_id ?? null,
               terminalId: terminal_id,
               localOrderId: item.local_order_id,
               conflictType: ConflictType.STOCK_INSUFFICIENT,
@@ -241,6 +244,7 @@ export class SyncOfflineOrder {
             .insert(serverSyncConflicts)
             .values({
               tenantId: tenant_id,
+              outletId: outlet_id ?? null,
               terminalId: terminal_id,
               localOrderId: item.local_order_id,
               conflictType: ConflictType.TABLE_UNAVAILABLE,
@@ -299,6 +303,7 @@ export class SyncOfflineOrder {
         if (output.order?.id && !output.idempotent_replay) {
           await this.writeInventoryMovements(
             tenant_id,
+            outlet_id ?? null,
             terminal_id,
             output.order.id,
             item.items,
@@ -319,6 +324,7 @@ export class SyncOfflineOrder {
             .insert(serverSyncConflicts)
             .values({
               tenantId: tenant_id,
+              outletId: outlet_id ?? null,
               terminalId: terminal_id,
               localOrderId: item.local_order_id,
               conflictType: ConflictType.SYNC_CONFLICT,
@@ -338,6 +344,7 @@ export class SyncOfflineOrder {
         .insert(syncEvents)
         .values({
           tenantId: tenant_id,
+          outletId: outlet_id ?? null,
           terminalId: terminal_id,
           batchId,
           entityType: 'order',
@@ -368,6 +375,7 @@ export class SyncOfflineOrder {
    */
   private async writeInventoryMovements(
     tenantId: string,
+    outletId: string | null,
     terminalId: string,
     orderId: string,
     items: CreateAndPayOrderItemInput[],
@@ -386,6 +394,7 @@ export class SyncOfflineOrder {
         .insert(inventoryMovements)
         .values({
           tenantId,
+          outletId,
           productId: item.product_id,
           orderId,
           terminalId,

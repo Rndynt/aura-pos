@@ -121,12 +121,20 @@ export function createTablesRouter(db: Database): Router {
 
       const { status, currentOrderId } = parsedBody.data;
 
+      const existingTable = await tableRepository.findById(id, tenantId);
+      if (!existingTable || (req.outletId && existingTable.outletId !== req.outletId)) {
+        return res.status(404).json({
+          success: false,
+          error: { message: 'Table not found for this outlet' },
+        });
+      }
+
       if (currentOrderId) {
         const order = await orderRepository.findById(currentOrderId, tenantId);
-        if (!order) {
+        if (!order || (req.outletId && order.outletId !== req.outletId)) {
           return res.status(400).json({
             success: false,
-            error: { message: "Current order does not belong to this tenant" },
+            error: { message: "Current order does not belong to this tenant and outlet" },
           });
         }
       }
@@ -137,6 +145,7 @@ export function createTablesRouter(db: Database): Router {
         tableId: id,
         status,
         currentOrderId,
+        outletId: req.outletId,
       });
 
       res.json({ success: true, data: updated });

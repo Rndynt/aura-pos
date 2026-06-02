@@ -264,18 +264,18 @@ Every batch sync creates records in three tables:
 
 ### `sync_batches` — one row per batch call
 ```sql
-id, tenant_id, terminal_id, batch_size, synced, replayed, failed, conflicts, app_version, created_at
+id, tenant_id, outlet_id, terminal_id, batch_size, synced, replayed, failed, conflicts, app_version, created_at
 ```
 
 ### `sync_events` — one row per order item in batch
 ```sql
-id, tenant_id, batch_id, terminal_id, local_order_id, local_order_number,
+id, tenant_id, outlet_id, batch_id, terminal_id, local_order_id, local_order_number,
 server_order_id, server_order_number, status, conflict_type, error_message, created_at
 ```
 
 ### `server_sync_conflicts` — full detail per conflict
 ```sql
-id, tenant_id, terminal_id, local_order_id, server_order_id,
+id, tenant_id, outlet_id, terminal_id, local_order_id, server_order_id,
 conflict_type, message, conflict_data (jsonb),
 resolution (pending|resolved|ignored|auto_resolved),
 resolved_at, resolved_by, created_at
@@ -288,6 +288,8 @@ GET  /api/sync/events               — per-item audit log (default limit 50, ma
 GET  /api/sync/conflicts            — conflict list with resolution (default limit 20, max 100)
 PATCH /api/sync/conflicts/:id/resolve — mark resolved or ignored
 ```
+
+For authenticated POS users, sync audit lists and conflict resolution are scoped to the active outlet resolved by `req.outletId`. Non-owner users must have an active `user_outlet_assignments` row for that outlet; otherwise the API returns `OUTLET_ACCESS_DENIED`. Offline sync batches also stamp `outlet_id` on batches, per-item events, server-side conflicts, orders, and inventory movement ledger entries when an outlet context is present.
 
 ---
 

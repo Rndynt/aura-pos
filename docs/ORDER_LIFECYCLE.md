@@ -1,5 +1,9 @@
 # AuraPoS Order Lifecycle Documentation
 
+## Outlet-Scoped Access
+
+Order reads and mutations are tenant-scoped and, when `req.outletId` is resolved, also outlet-scoped. Non-owner POS roles (`manager`, `cashier`, `kitchen`, `viewer`, and staff-style roles) must have an active `user_outlet_assignments` row for the requested outlet before the API exposes outlet data. Mutations that target existing orders verify the order belongs to both the current tenant and active outlet before status, payment, cancellation, completion, or kitchen-ticket changes are delegated to the order use cases.
+
 ## Overview
 
 Orders in AuraPoS follow a well-defined lifecycle with clear state transitions. This document explains each stage and what operations are possible at each point.

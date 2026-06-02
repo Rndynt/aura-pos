@@ -288,7 +288,7 @@ Opsional next: tambah modal konfirmasi hapus kategori dengan dropdown fallback (
 ### Source
 - User request: Implement order queue sebagai feature flag independen, usable untuk draft/unpaid/paid, tetap kompatibel POS & kitchen
 - Date started: 2026-05-21
-- Current status: In progress
+- Current status: Implemented and validated with API test suite; API type-check still has pre-existing dependency/type issues.
 
 ### Context Read
 - [x] AGENTS.md
@@ -2668,3 +2668,143 @@ Prevent duplicate tenant feature rows per tenant/feature, safely clean existing 
 ### Continuation Notes
 
 Recommended next batch: fix the existing API type-check blockers (`express-rate-limit` Express 5 type leakage vs Express 4 app types, and missing `compression` declaration) so `pnpm --filter @pos/api type-check` can pass cleanly.
+
+## Plan: Cross-Outlet Isolation for Orders, Tables, Inventory, Sync, KDS, Terminals, and Reports
+
+### Source
+- Tasklist: User request in chat, 2026-06-02
+- User request: Audit routes reading/writing orders, tables, inventory, sync events/conflicts, KDS, terminals, and reports; add `req.outletId` filtering; validate `user_outlet_assignments`; verify outlet-scoped mutations; add cross-outlet manager/cashier tests.
+- Date started: 2026-06-02
+- Current status: Implemented and validated with full API tests; API type-check still has unrelated pre-existing dependency/type declaration failures.
+
+### Goal
+Close cross-outlet data access gaps for authenticated non-owner POS roles and outlet-scoped API reads/mutations while preserving tenant isolation and existing owner access.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (user chat tasklist)
+- [x] Relevant docs (`docs/dev/SYNC_PROTOCOL.md`, `docs/dev/CONFLICT_RESOLUTION.md`, `docs/ORDER_LIFECYCLE.md` by route audit references)
+- [x] Relevant source files (orders, sync, KDS, inventory, terminals, tables, outlet middleware, repositories, tests)
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: Orders, tables, inventory, sync, KDS, terminals routes/controllers.
+- Files inspected: `apps/api/src/http/controllers/OrdersController.ts`, `SyncController.ts`, `TerminalsController.ts`, `routes/inventory.ts`, `routes/kds.ts`, `routes/tables.ts`, `routes/index.ts`.
+- Findings: History, sync audit lists, inventory report/movement lists, terminals, and some mutations need explicit outlet scoping.
+- Tasks: Add `req.outletId` filters and mutation ownership checks.
+- Risks: Existing legacy rows with null outlet IDs may become hidden from outlet-scoped non-owner requests.
+- Validation: API tests and type-check.
+
+#### Database/Schema Workstream
+- Scope: Existing outlet columns/indexes.
+- Files inspected: `shared/schema.ts`.
+- Findings: Required `outlet_id` columns/indexes already exist for orders, tables, terminals, sync_batches, sync_events, server_sync_conflicts, inventory_movements.
+- Tasks: No schema migration planned.
+- Risks: None for schema.
+- Validation: Type-check.
+
+#### Frontend/UI Workstream
+- Scope: No UI changes requested.
+- Files inspected: Not applicable beyond API route contract.
+- Findings: No perceptible UI change.
+- Tasks: None.
+- Risks: None.
+- Validation: Not applicable.
+
+#### Tests/Validation Workstream
+- Scope: Cross-outlet manager/cashier tests.
+- Files inspected: `apps/api/src/__tests__/tenant-auth-guard.test.ts`, `apps/api/src/__tests__/kds.test.ts`.
+- Findings: Existing tests use dependency injection style for middleware/router tests.
+- Tasks: Add outlet middleware and/or route-level tests for non-owner outlet assignment enforcement and cross-outlet mutation denial.
+- Risks: Full suite may require DB env; targeted tests preferred.
+- Validation: `pnpm --filter @pos/api test` or targeted `tsx --test`.
+
+#### Documentation Workstream
+- Scope: Sync protocol docs and plan.
+- Files inspected: `docs/dev/SYNC_PROTOCOL.md`, `docs/dev/CONFLICT_RESOLUTION.md`, `docs/ORDER_LIFECYCLE.md`.
+- Findings: Sync docs list audit endpoints but do not mention outlet scoping.
+- Tasks: Update docs when behavior changes.
+- Risks: Documentation must not overclaim production readiness.
+- Validation: Review.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Outlet assignment and row ownership checks.
+- Files inspected: `apps/api/src/http/middleware/outlet.ts`, `apps/api/src/http/middleware/tenant.ts`, `apps/api/src/http/middleware/rbac.ts`.
+- Findings: Tenant guard sets authenticated user; outlet middleware resolves outlet but does not enforce `user_outlet_assignments` for non-owner roles.
+- Tasks: Validate assignment for manager/cashier/staff/kitchen/viewer and reject unassigned active outlet.
+- Risks: Device/public routes that bypass tenant middleware need independent context; avoid breaking KDS key flow.
+- Validation: Cross-outlet tests.
+
+### Execution Order
+1. Implement outlet assignment validation in outlet middleware.
+2. Add outlet filters to reads: ListOrderHistory, sync audit lists, inventory report/movements, terminals, tables/KDS delegated list.
+3. Add outlet ownership checks to mutations: orders, tables, sync conflict resolution, terminals, inventory movement writes where outlet-scoped.
+4. Add cross-outlet tests for manager/cashier.
+5. Sync docs and update this plan.
+6. Run validation.
+
+### Progress
+
+#### Completed
+- [x] Task: Route audit for orders, tables, inventory, sync events/conflicts, KDS, terminals, and reports.
+  - Files changed: `PLANS.md`.
+  - Validation: Findings implemented and covered by targeted/full API tests.
+  - Docs updated: `docs/ORDER_LIFECYCLE.md`, `docs/dev/SYNC_PROTOCOL.md`.
+- [x] Task: Enforce `user_outlet_assignments` for authenticated non-owner roles.
+  - Files changed: `apps/api/src/http/middleware/outlet.ts`, `apps/api/src/__tests__/outlet-isolation.test.ts`.
+  - Validation: `pnpm --filter @pos/api exec tsx --test src/__tests__/outlet-isolation.test.ts`, `pnpm --filter @pos/api test`.
+  - Docs updated: `docs/ORDER_LIFECYCLE.md`, `docs/dev/SYNC_PROTOCOL.md`.
+- [x] Task: Add outlet filters to order history, sync audit lists/conflict resolution, inventory movements/reporting, terminals, and tables/KDS delegated order access.
+  - Files changed: `apps/api/src/http/controllers/OrdersController.ts`, `packages/application/orders/ListOrderHistory.ts`, `apps/api/src/http/controllers/SyncController.ts`, `packages/application/sync/SyncOfflineOrder.ts`, `apps/api/src/http/routes/inventory.ts`, `apps/api/src/http/controllers/TerminalsController.ts`, `apps/api/src/http/routes/tables.ts`.
+  - Validation: `pnpm --filter @pos/api test`.
+  - Docs updated: `docs/ORDER_LIFECYCLE.md`, `docs/dev/SYNC_PROTOCOL.md`.
+- [x] Task: Verify outlet-scoped mutations target rows that belong to both tenant and outlet.
+  - Files changed: `apps/api/src/http/controllers/OrdersController.ts`, `apps/api/src/http/controllers/SyncController.ts`, `apps/api/src/http/controllers/TerminalsController.ts`, `apps/api/src/http/routes/tables.ts`, `packages/application/seating/UpdateTableStatus.ts`, `packages/infrastructure/repositories/seating/TableRepository.ts`.
+  - Validation: `pnpm --filter @pos/api test`.
+  - Docs updated: `docs/ORDER_LIFECYCLE.md`.
+- [x] Task: Add cross-outlet manager/cashier tests.
+  - Files changed: `apps/api/src/__tests__/outlet-isolation.test.ts`.
+  - Validation: `pnpm --filter @pos/api exec tsx --test src/__tests__/outlet-isolation.test.ts`, `pnpm --filter @pos/api test`.
+  - Docs updated: None required.
+
+#### Partially Completed
+- [ ] Task: API type-check cleanup.
+  - Completed: Ran type-check after implementation.
+  - Remaining: Existing Express 4/5 rate-limit type mismatch and missing `@types/compression` still fail API type-check.
+  - Reason: These failures are unrelated to outlet-isolation changes and pre-existed the batch scope.
+
+#### Blocked
+- [ ] Task: None.
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+- [ ] Task: Full monorepo validation (`pnpm type-check`, `pnpm build`, `pnpm lint`).
+  - Reason: Scope was API outlet-isolation backend changes; API-specific test suite passed, while API type-check remains blocked by unrelated pre-existing Express/compression typing issues.
+
+### Validation Log
+- Command: `pnpm --filter @pos/api exec tsx --test src/__tests__/outlet-isolation.test.ts`
+- Result: Pass (4 tests).
+- Notes: Covers manager denial without outlet assignment, cashier allow with assignment, owner allow, and ListOrderHistory outlet filter propagation.
+- Command: `pnpm --filter @pos/api test`
+- Result: Pass (41 tests).
+- Notes: Full API test suite passed after outlet-scoped changes.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Fail (pre-existing environment/type issues).
+- Notes: Fails on Express 4/5 `express-rate-limit` handler type mismatch in `apps/api/src/http/routes/index.ts` and missing `@types/compression` in `apps/api/src/index.ts`; no new outlet-specific type errors were reported.
+
+### Documentation Updates
+- File: `docs/ORDER_LIFECYCLE.md`
+- Change: Documented outlet-scoped order reads/mutations and non-owner assignment requirement.
+- File: `docs/dev/SYNC_PROTOCOL.md`
+- Change: Documented `outlet_id` in sync audit tables and active-outlet scoping for sync audit/conflict APIs.
+
+### Checklist Updates
+- File: `PLANS.md`.
+- Change: Added and completed active plan for cross-outlet isolation execution batch, including validation and remaining type-check limitation.
+
+### Continuation Notes
+Recommended next batch: fix unrelated API type-check blockers (`express-rate-limit` Express type mismatch and missing `@types/compression`) so `pnpm --filter @pos/api type-check` can be used as a clean validation gate.

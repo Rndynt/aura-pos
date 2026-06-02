@@ -37,6 +37,7 @@ export const registerTerminal = asyncHandler(async (req: Request, res: Response)
       terminalCode: parsed.data.terminal_code,
       name: parsed.data.name,
       deviceFingerprint: parsed.data.device_fingerprint,
+      outletId: req.outletId ?? null,
       lastSeenAt: now,
     })
     .onConflictDoUpdate({
@@ -44,6 +45,7 @@ export const registerTerminal = asyncHandler(async (req: Request, res: Response)
       set: {
         name: parsed.data.name,
         deviceFingerprint: parsed.data.device_fingerprint ?? undefined,
+        outletId: req.outletId ?? null,
         lastSeenAt: now,
         updatedAt: now,
       },
@@ -71,7 +73,7 @@ export const heartbeatTerminal = asyncHandler(async (req: Request, res: Response
   const [terminal] = await container.db
     .update(terminals)
     .set({ lastSeenAt: now, updatedAt: now })
-    .where(and(eq(terminals.id, id), eq(terminals.tenantId, tenantId), eq(terminals.isActive, true)))
+    .where(and(eq(terminals.id, id), eq(terminals.tenantId, tenantId), eq(terminals.isActive, true), ...(req.outletId ? [eq(terminals.outletId, req.outletId)] : [])))
     .returning({ id: terminals.id, terminalCode: terminals.terminalCode, name: terminals.name, lastSeenAt: terminals.lastSeenAt });
 
   if (!terminal) {
@@ -91,7 +93,7 @@ export const listTerminals = asyncHandler(async (req: Request, res: Response) =>
   const rows = await container.db
     .select()
     .from(terminals)
-    .where(eq(terminals.tenantId, tenantId));
+    .where(and(eq(terminals.tenantId, tenantId), ...(req.outletId ? [eq(terminals.outletId, req.outletId)] : [])));
 
   res.json({ success: true, data: { terminals: rows } });
 });
@@ -110,7 +112,7 @@ export const deactivateTerminal = asyncHandler(async (req: Request, res: Respons
   const [terminal] = await container.db
     .update(terminals)
     .set({ isActive: false, updatedAt: now })
-    .where(and(eq(terminals.id, id), eq(terminals.tenantId, tenantId)))
+    .where(and(eq(terminals.id, id), eq(terminals.tenantId, tenantId), ...(req.outletId ? [eq(terminals.outletId, req.outletId)] : [])))
     .returning({ id: terminals.id, terminalCode: terminals.terminalCode, name: terminals.name, isActive: terminals.isActive });
 
   if (!terminal) {

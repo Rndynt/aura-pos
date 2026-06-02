@@ -48,7 +48,7 @@ export class TableRepository {
     return result[0];
   }
 
-  async updateStatus(tenantId: string, id: string, status: string, orderId?: string): Promise<Table> {
+  async updateStatus(tenantId: string, id: string, status: string, orderId?: string, outletId?: string): Promise<Table> {
     const result = await this.db
       .update(tables)
       .set({
@@ -56,7 +56,7 @@ export class TableRepository {
         currentOrderId: orderId || null,
         updatedAt: new Date(),
       })
-      .where(and(eq(tables.id, id), eq(tables.tenantId, tenantId)))
+      .where(and(eq(tables.id, id), eq(tables.tenantId, tenantId), ...(outletId ? [eq(tables.outletId, outletId)] : [])))
       .returning()
       .execute();
 

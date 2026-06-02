@@ -12,6 +12,21 @@ import { deductStockForItems, reverseStockForItems, STOCK_DEDUCTED_STATES, type 
 import { resolveInventoryPolicy, recordInventorySyncError, errorMessage, type InventorySyncOperation } from '@pos/application/inventory';
 
 
+async function assertOrderBelongsToOutlet(orderId: string, tenantId: string, outletId?: string | null): Promise<any | null> {
+  if (!outletId) {
+    return null;
+  }
+
+  const order = await container.orderRepository.findById(orderId, tenantId);
+  if (!order) {
+    throw createError('Order not found', 404, 'ORDER_NOT_FOUND');
+  }
+  if (outletId && order.outletId !== outletId) {
+    throw createError('Order not found for this outlet', 404, 'ORDER_NOT_FOUND');
+  }
+  return order;
+}
+
 async function applyOrderInventoryMovement(
   tenantId: string,
   items: StockItem[],
@@ -168,6 +183,8 @@ export const recordPayment = asyncHandler(async (req: Request, res: Response) =>
   const idempotencyKey = parsed.data.idempotency_key?.trim();
   const transactionRef = parsed.data.transaction_ref?.trim();
 
+  await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
+
   // Execute use case (P1.2: transaction-safe with row lock inside use case)
   const result = await container.recordPayment.execute({
     order_id: id,
@@ -217,6 +234,8 @@ export const createKitchenTicket = asyncHandler(async (req: Request, res: Respon
   if (!parsed.success) {
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
+
+  await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
 
   // Auto-confirm draft orders before creating a kitchen ticket.
   // Silently skip if the order is already confirmed / in a later state.
@@ -405,6 +424,8 @@ export const updateOrder = asyncHandler(async (req: Request, res: Response) => {
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
+  await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
+
   // Execute use case - update existing order
   const result = await container.updateOrder.execute({
     order_id: id,
@@ -434,6 +455,8 @@ export const confirmOrder = asyncHandler(async (req: Request, res: Response) => 
   if (!id) {
     throw createError('Order ID is required', 400, 'MISSING_PARAMETER');
   }
+
+  await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
 
   // Execute use case
   const result = await container.confirmOrder.execute({
@@ -479,6 +502,8 @@ export const completeOrder = asyncHandler(async (req: Request, res: Response) =>
   if (!id) {
     throw createError('Order ID is required', 400, 'MISSING_PARAMETER');
   }
+
+  await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
 
   // Execute use case
   const result = await container.completeOrder.execute({
@@ -534,6 +559,8 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
       );
     }
 
+    await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
+
     const result = await container.transitionOrderFulfillmentStatus.execute({
       order_id: id,
       tenant_id: tenantId,
@@ -562,6 +589,8 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
   if (!parsed.success) {
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
+
+  await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
 
   const result = await container.transitionOrderStatus.execute({
     order_id: id,
@@ -602,8 +631,10 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
-  // Fetch order BEFORE cancellation to know its current status and items
-  const orderBeforeCancel = await container.orderRepository.findById(id, tenantId);
+  // Fetch order BEFORE cancellation to know its current status and items, and enforce outlet ownership.
+  const orderBeforeCancel =
+    (await assertOrderBelongsToOutlet(id, tenantId, req.outletId)) ??
+    (await container.orderRepository.findById(id, tenantId));
 
   // Execute use case
   const result = await container.cancelOrder.execute({
@@ -732,6 +763,7 @@ export const listOrderHistory = asyncHandler(async (req: Request, res: Response)
     offset: parsed.data.offset,
     from_date: parsed.data.from_date,
     to_date: parsed.data.to_date,
+    outlet_id: req.outletId,
   });
 
   res.status(200).json({
