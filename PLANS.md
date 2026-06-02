@@ -926,7 +926,7 @@ Next recommended batch is to fix the pre-existing API type-check errors in `feat
 - Tasklist: User request direct inventory/order hardening items 1-5.
 - User request: Tentukan policy per tenant/module, enforce strict inventory before confirm/complete response, durable errors for allow-negative, remove silent catches, add alert/retry job.
 - Date started: 2026-06-02
-- Current status: In progress
+- Current status: Implemented; validation attempted with unrelated pre-existing API type-check errors noted.
 
 ### Goal
 
@@ -3349,3 +3349,145 @@ Prevent duplicate offline local order numbers when browser clients create local 
 
 ### Continuation Notes
 Recommended next batch: consider adding a real Playwright browser test harness if the project wants end-to-end multi-tab browser concurrency coverage beyond fake IndexedDB simulation.
+
+## Plan: Order list index and query plan hardening
+
+### Source
+
+- Tasklist: User-provided 4-item list for order indexes, repository filter review, migration drift confirmation, and query plan checks.
+- User request: Add order composite indexes; review `OrderRepository.buildFilterConditions` and open/history queries; confirm `order_items(order_id)` after drift cleanup; add query plan checks for queue/history/report endpoints.
+- Date started: 2026-06-02
+- Current status: Implemented; validation attempted with one pre-existing API type-check blocker and one environment-limited DB plan check.
+
+### Goal
+
+Make tenant/outlet-scoped order queue, order history, and report/list queries use matching composite indexes while providing a repeatable PostgreSQL query-plan check that validates realistic row-count behavior and confirms the existing `order_items(order_id)` index is present after migrations are applied.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist from user prompt
+- [x] Relevant docs (`docs/ORDER_LIFECYCLE.md`, migration docs)
+- [x] Relevant source files (`shared/schema.ts`, `OrderRepository`, open/history use cases, order routes/controllers, migrations)
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: Order repository filters and endpoint query shapes.
+- Files inspected: `packages/infrastructure/repositories/orders/OrderRepository.ts`, `packages/application/orders/ListOpenOrders.ts`, `packages/application/orders/ListOrderHistory.ts`, `apps/api/src/http/controllers/OrdersController.ts`, `apps/api/src/http/routes/orders.ts`.
+- Findings: List/open/history/report-like order endpoints all use tenant filters and outlet filters when `req.outletId` is present, then sort by `order_date DESC`.
+- Tasks: Reorder repository predicate construction to match tenant/outlet/status/date index prefix and document why.
+- Risks: Predicate order is not a PostgreSQL semantic requirement, so validation must focus on actual query plans.
+- Validation: Type-check API and add query-plan check script.
+
+#### Database/Schema Workstream
+
+- Scope: Drizzle schema indexes and SQL migrations.
+- Files inspected: `shared/schema.ts`, `migrations/0000_conscious_invisible_woman.sql`, `migrations/0015_native_uuid_alignment.sql`, `migrations/0016_tenant_features_unique_upsert.sql`, `migrations/0017_inventory_movements_order_product_movement_unique.sql`, `migrations/meta/_journal.json`.
+- Findings: `order_items_order_idx` already exists in base migration and schema. Requested `orders(tenant_id, outlet_id, status, order_date DESC)` and `orders(tenant_id, outlet_id, order_date DESC)` are absent.
+- Tasks: Add schema indexes and idempotent SQL migration.
+- Risks: Existing migration journal drift predates this task; avoid unsafe broad migration rewrite.
+- Validation: Drizzle/type validation and query-plan script index-presence checks.
+
+#### Tests/Validation Workstream
+
+- Scope: Repeatable checks for queue/history/report queries.
+- Files inspected: API package scripts and existing Node test style.
+- Findings: Existing tests use Node test runner; query plans need a real PostgreSQL connection and realistic seeded rows.
+- Tasks: Add opt-in DB script that seeds temporary tenant/outlet/order rows inside a rollback transaction, runs EXPLAIN plans, and asserts required index usage.
+- Risks: Cannot run without `DATABASE_URL` pointing to PostgreSQL.
+- Validation: Run type-check; run script if DB is available, otherwise document environment limitation.
+
+#### Documentation Workstream
+
+- Scope: Document index/query-plan check behavior and migration confirmation.
+- Files inspected: README and docs/dev.
+- Findings: No current query-plan check documentation.
+- Tasks: Add docs/dev guide and update PLANS.md progress.
+- Risks: Keep documentation honest about DB requirement.
+- Validation: N/A beyond type-check.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Tenant/outlet filters in order reads.
+- Files inspected: Order repository and controllers/use cases.
+- Findings: Existing query paths include tenant filtering; outlet scoping is passed by controllers/use cases when outlet middleware supplies `req.outletId`.
+- Tasks: Preserve tenant/outlet filtering while adding indexes.
+- Risks: None if query shapes remain unchanged.
+- Validation: Type-check and query-plan script.
+
+### Execution Order
+
+1. Add schema and SQL migration indexes.
+2. Align repository condition construction/commentary with index order.
+3. Add DB query-plan check script and package command.
+4. Document query-plan checks and order item index confirmation.
+5. Run validation and update progress.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Add order composite indexes
+  - Files changed: `shared/schema.ts`, `migrations/0018_order_query_indexes.sql`, `migrations/meta/_journal.json`
+  - Validation: `pnpm --filter @pos/api type-check` attempted; failed on pre-existing Express/rate-limit/compression type issues unrelated to these files.
+  - Docs updated: `docs/dev/ORDER_QUERY_PLAN_CHECKS.md`
+- [x] Task: Review and align repository/open/history query shape
+  - Files changed: `packages/infrastructure/repositories/orders/OrderRepository.ts`
+  - Validation: Repository query shape reviewed against `ListOpenOrders`, `ListOrderHistory`, and `OrdersController` list/report path.
+  - Docs updated: `docs/dev/ORDER_QUERY_PLAN_CHECKS.md`
+- [x] Task: Confirm `order_items(order_id)` after drift cleanup
+  - Files changed: `migrations/0018_order_query_indexes.sql`, `apps/api/src/scripts/checkOrderQueryPlans.ts`
+  - Validation: Query-plan script confirms `order_items_order_idx` exists before running plans; local run was blocked because `DATABASE_URL` is not set.
+  - Docs updated: `docs/dev/ORDER_QUERY_PLAN_CHECKS.md`
+- [x] Task: Add query-plan checks for queue/history/report endpoints
+  - Files changed: `apps/api/src/scripts/checkOrderQueryPlans.ts`, `apps/api/package.json`
+  - Validation: `pnpm --filter @pos/api check:order-query-plans` attempted; failed locally because `DATABASE_URL` is required for real PostgreSQL EXPLAIN checks.
+  - Docs updated: `docs/dev/ORDER_QUERY_PLAN_CHECKS.md`
+
+#### Partially Completed
+
+- [ ] Task:
+  - Completed:
+  - Remaining:
+  - Reason:
+
+#### Blocked
+
+- [ ] Task:
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+
+- [ ] Task:
+  - Reason:
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/api exec tsc --noEmit --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 src/scripts/checkOrderQueryPlans.ts`
+- Result: Pass
+- Notes: Validates the new query-plan script TypeScript in isolation.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Failed
+- Notes: Failure is in existing route typings (`src/http/routes/index.ts`) and missing `@types/compression`, not in the changed order index/query-plan files.
+- Command: `pnpm --filter @pos/api check:order-query-plans`
+- Result: Failed in local environment
+- Notes: Script correctly requires `DATABASE_URL`; run it against a migrated PostgreSQL database to execute EXPLAIN checks with temporary realistic rows.
+
+### Documentation Updates
+
+- File: `docs/dev/ORDER_QUERY_PLAN_CHECKS.md`
+- Change: Documented new indexes, repository query shape, `order_items_order_idx` confirmation, and query-plan check command.
+
+### Checklist Updates
+
+- File: PLANS.md
+- Change: Active plan completed with validation caveats.
+
+### Continuation Notes
+
+Run `DATABASE_URL=<postgres> pnpm --filter @pos/api check:order-query-plans` after applying migrations in a staging/production-like database, then investigate any PostgreSQL-specific planner differences if the script reports sequential scans.

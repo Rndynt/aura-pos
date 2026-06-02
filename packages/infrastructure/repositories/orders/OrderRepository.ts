@@ -91,14 +91,19 @@ export class OrderRepository
     tenantId: string,
     filters?: Omit<OrderFilters, 'limit' | 'offset'>
   ) {
+    // Keep predicate construction aligned with the composite order indexes:
+    // (tenant_id, outlet_id, status, order_date DESC) for queue/history filters
+    // and (tenant_id, outlet_id, order_date DESC) for report/list ranges.
+    // PostgreSQL can reorder predicates, but this makes endpoint query shape review
+    // explicit and keeps generated SQL easy to compare with EXPLAIN checks.
     const conditions = [eq(orders.tenantId, tenantId)];
+
+    if (filters?.outletId) {
+      conditions.push(eq(orders.outletId, filters.outletId));
+    }
 
     if (filters?.status && filters.status.length > 0) {
       conditions.push(inArray(orders.status, filters.status as any[]));
-    }
-
-    if (filters?.paymentStatus) {
-      conditions.push(eq(orders.paymentStatus, filters.paymentStatus as any));
     }
 
     if (filters?.dateFrom) {
@@ -109,8 +114,8 @@ export class OrderRepository
       conditions.push(lte(orders.orderDate, filters.dateTo));
     }
 
-    if (filters?.outletId) {
-      conditions.push(eq(orders.outletId, filters.outletId));
+    if (filters?.paymentStatus) {
+      conditions.push(eq(orders.paymentStatus, filters.paymentStatus as any));
     }
 
     return conditions;

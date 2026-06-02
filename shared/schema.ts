@@ -410,6 +410,10 @@ export const orders = pgTable("orders", {
   sourceTerminalLocalOrderIdx: index("orders_source_terminal_local_order_idx").on(table.sourceTerminalId, table.localOrderId),
   // Composite indexes for common query patterns
   tenantStatusDateIdx: index("orders_tenant_status_date_idx").on(table.tenantId, table.status, table.orderDate),
+  tenantOutletStatusDateDescIdx: index("orders_tenant_outlet_status_order_date_desc_idx")
+    .on(table.tenantId, table.outletId, table.status, table.orderDate.desc()),
+  tenantOutletOrderDateDescIdx: index("orders_tenant_outlet_order_date_desc_idx")
+    .on(table.tenantId, table.outletId, table.orderDate.desc()),
   tenantPaymentStatusIdx: index("orders_tenant_payment_status_idx").on(table.tenantId, table.paymentStatus),
 }));
 

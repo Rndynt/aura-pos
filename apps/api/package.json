@@ -9,7 +9,8 @@
     "start": "NODE_ENV=production node dist/index.js",
     "type-check": "tsc --noEmit",
     "seed": "tsx src/seed.ts",
-    "test": "tsx --test src/__tests__/**/*.test.ts"
+    "test": "tsx --test src/__tests__/**/*.test.ts",
+    "check:order-query-plans": "tsx src/scripts/checkOrderQueryPlans.ts"
   },
   "dependencies": {
     "@jridgewell/trace-mapping": "^0.3.25",
