@@ -1,6 +1,6 @@
 /**
  * Kitchen Display — Admin Launcher
- * Manage KDS devices: generate 4-digit activation codes, view connected devices.
+ * Manage KDS devices: generate 6-digit activation codes, view connected devices.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -220,7 +220,7 @@ export default function KitchenDisplayPage() {
 
           <p className="text-xs text-slate-500">
             Buka <strong className="text-slate-700">{kdsUrl}</strong> di perangkat dapur,
-            lalu masukkan kode aktivasi 4 digit ini. Kode berlaku <strong>15 menit</strong>.
+            lalu masukkan kode aktivasi 6 digit ini. Kode berlaku <strong>15 menit</strong>.
           </p>
 
           {activeCode && (
@@ -393,7 +393,7 @@ export default function KitchenDisplayPage() {
         <div className="bg-slate-100 rounded-2xl p-4 space-y-2">
           <h3 className="text-xs font-extrabold text-slate-600 uppercase tracking-wide">Cara pakai</h3>
           <ol className="text-xs text-slate-500 space-y-1.5 list-decimal list-inside">
-            <li>Klik <strong className="text-slate-700">Generate Kode</strong> untuk membuat kode aktivasi 4 digit (berlaku 15 menit)</li>
+            <li>Klik <strong className="text-slate-700">Generate Kode</strong> untuk membuat kode aktivasi 6 digit (berlaku 15 menit)</li>
             <li>Di tablet dapur, buka <code className="bg-white px-1 rounded text-slate-700">{kdsUrl}</code> atau scan QR code</li>
             <li>Masukkan kode aktivasi → beri nama stasiun (mis. <em>Dapur Utama</em>)</li>
             <li>Perangkat terhubung dan menerima pesanan secara otomatis</li>

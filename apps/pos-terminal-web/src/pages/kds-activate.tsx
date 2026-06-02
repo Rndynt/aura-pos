@@ -1,10 +1,10 @@
 /**
  * KDS Activation Page — AuraPOS
- * Public page: devices pair to a tenant using a 4-digit activation code
+ * Public page: devices pair to a tenant using a 6-digit activation code
  * generated from the Kitchen Display launcher (/kitchen).
  *
  * Flow:
- *   Step 1 — Enter 4-digit code (generated in /kitchen)
+ *   Step 1 — Enter 6-digit code (generated in /kitchen)
  *   Step 2 — Enter station name (e.g. "Dapur Utama")
  *   Done   — API key stored in localStorage, redirect to /kds
  */
@@ -43,11 +43,11 @@ export default function KdsActivatePage() {
   };
 
   const handleDigit = (k: string) => {
-    if (code.length >= 4 || loading) return;
+    if (code.length >= 6 || loading) return;
     const next = code + k;
     setCode(next);
     setError("");
-    if (next.length === 4) {
+    if (next.length === 6) {
       // Auto-submit after short delay
       setTimeout(() => validateCode(next), 150);
     }
@@ -129,7 +129,7 @@ export default function KdsActivatePage() {
           <h1 className="text-2xl font-black text-white">Kitchen Display</h1>
           <p className="text-slate-400 text-sm mt-1">
             {step === 1
-              ? "Masukkan kode aktivasi 4 digit dari halaman Kitchen Display"
+              ? "Masukkan kode aktivasi 6 digit dari halaman Kitchen Display"
               : "Beri nama untuk stasiun dapur ini"}
           </p>
         </div>
@@ -150,7 +150,7 @@ export default function KdsActivatePage() {
         </div>
       </div>
 
-      {/* Step 1: 4-digit code numpad */}
+      {/* Step 1: 6-digit code numpad */}
       {step === 1 && (
         <>
           {/* Dots */}
@@ -158,7 +158,7 @@ export default function KdsActivatePage() {
             className={`flex gap-4 transition-transform ${shake ? "animate-[wiggle_0.5s_ease-in-out]" : ""}`}
             style={shake ? { animation: "wiggle 0.5s ease-in-out" } : {}}
           >
-            {Array.from({ length: 4 }).map((_, i) => (
+            {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
                 className={`w-5 h-5 rounded-full border-2 transition-all duration-150 ${
@@ -191,7 +191,7 @@ export default function KdsActivatePage() {
                 <button
                   key={i}
                   onClick={() => handleDigit(k)}
-                  disabled={loading || code.length >= 4}
+                  disabled={loading || code.length >= 6}
                   className="w-20 h-20 rounded-2xl bg-slate-700 hover:bg-slate-600 active:scale-95 transition-all text-2xl font-bold text-white disabled:opacity-40"
                   data-testid={`kds-activate-digit-${k}`}
                 >
