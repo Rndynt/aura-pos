@@ -14,6 +14,16 @@ AuraPOS supports 5 main business types:
 
 ---
 
+## Registration Defaults
+
+Public owner registration (`POST /api/register`) now creates the tenant together with the multi-outlet baseline data for the selected business type:
+
+- one active default outlet named `Cabang Utama` with slug `main`;
+- one `tenant_module_configs` row using the module flags from the business type template;
+- an owner user link (`tenant_id`, role `owner`) and an owner assignment to the default outlet.
+
+Because Better Auth owns its user/account/session writes outside the tenant transaction boundary, registration uses compensating cleanup if a failure happens after the Better Auth user is created. Cleanup removes Better Auth session, account, and user rows plus tenant-owned registration data so duplicate email, duplicate slug, and post-auth failures do not leave partially usable tenants.
+
 ## 1. CAFE_RESTAURANT
 
 ### Description

@@ -7,9 +7,8 @@ import { Router } from 'express';
 import { db } from '@pos/infrastructure/database';
 import { tenants } from '@shared/schema';
 import { eq } from 'drizzle-orm';
-import { auth } from '../../lib/auth';
-import { sql } from 'drizzle-orm';
-import { authDb } from '../../lib/auth';
+import { registerTenantOwner, RegistrationError } from '../../services/registrationService';
+import type { BusinessType } from '@pos/core';
 
 const router = Router();
 
@@ -80,57 +79,29 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    // 1. Buat tenant
-    const [tenant] = await db.insert(tenants).values({
-      id: crypto.randomUUID(),
-      name: businessName,
+    const result = await registerTenantOwner({
       slug: normalSlug,
       businessName,
-      businessType,
-      planTier: 'free',
-      subscriptionStatus: 'active',
+      businessType: businessType as BusinessType,
+      ownerName,
+      ownerEmail,
+      ownerPassword,
+      ownerUsername,
       timezone,
       currency,
       locale,
-      isActive: true,
-    }).returning();
-
-    // 2. Buat akun owner via Better Auth
-    const signUpRes = await auth.api.signUpEmail({
-      body: {
-        name: ownerName,
-        email: ownerEmail,
-        username: ownerUsername,
-        password: ownerPassword,
-      },
     });
-
-    if (!signUpRes?.user?.id) {
-      // Rollback tenant jika sign-up gagal
-      await db.delete(tenants).where(eq(tenants.id, tenant.id));
-      return res.status(400).json({ error: 'Failed to create owner account', detail: signUpRes });
-    }
-
-    // 3. Link owner ke tenant
-    await authDb.execute(
-      sql`UPDATE "user" SET tenant_id = ${tenant.id}, role = 'owner' WHERE id = ${signUpRes.user.id}`
-    );
 
     return res.status(201).json({
       success: true,
-      tenant: {
-        id: tenant.id,
-        slug: tenant.slug,
-        name: tenant.name,
-        url: `https://${tenant.slug}.${BASE_DOMAIN}`,
-      },
-      message: `Tenant berhasil dibuat. Akses di: https://${tenant.slug}.${BASE_DOMAIN}`,
+      tenant: result.tenant,
+      defaultOutletId: result.defaultOutletId,
+      message: `Tenant berhasil dibuat. Akses di: https://${result.tenant.slug}.${BASE_DOMAIN}`,
     });
   } catch (err: any) {
     console.error('[register]', err);
-    // Handle duplicate email dari Better Auth
-    if (err?.message?.includes('email') || err?.message?.includes('unique')) {
-      return res.status(409).json({ error: 'Email sudah terdaftar' });
+    if (err instanceof RegistrationError) {
+      return res.status(err.status).json({ error: err.message, code: err.code });
     }
     return res.status(500).json({ error: 'Internal server error' });
   }

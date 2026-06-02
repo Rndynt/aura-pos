@@ -1536,3 +1536,152 @@ Make order number generation concurrency-safe per tenant and per tenant-local bu
 
 ### Continuation Notes
 Recommended next batch: fix existing API type-check blockers or add a real PostgreSQL integration test harness for transaction-level sequence allocation under true database concurrency.
+
+## Plan: Transaction-Safe Owner Registration Flow
+
+### Source
+
+- Tasklist: User request with five registration integrity items
+- User request: Bungkus tenant insert, owner sign-up/linking, default outlet/module seed, role assignment in transaction-safe flow; add Better Auth compensating cleanup; catch duplicate slug unique constraint; create default outlet/module config; add duplicate/failure tests.
+- Date started: 2026-06-02
+- Current status: Implemented; API type-check still blocked by pre-existing unrelated errors.
+
+### Goal
+
+Make public owner registration safe against partial tenant/auth state, seed multi-outlet defaults, and cover duplicate slug/email plus post-auth failure cleanup with automated tests.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs (`docs/BUSINESS_TYPE_TEMPLATES.md`)
+- [x] Relevant source files (`apps/api/src/http/routes/registration.ts`, auth schema/lib, shared schema, tenant templates)
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: Public `/api/register` route and registration orchestration.
+- Files inspected: `apps/api/src/http/routes/registration.ts`, `apps/api/src/lib/auth.ts`, `apps/api/src/lib/auth-schema.ts`.
+- Findings: Existing flow created tenant first, called Better Auth outside a transaction, only deleted tenant on sign-up failure, and did not seed outlet/module config or outlet assignment.
+- Tasks: Completed: extracted registration service, wrapped tenant/default data/auth linking/assignment in transaction-safe flow, and mapped expected error statuses.
+- Risks: Better Auth sign-up still cannot be guaranteed to share the exact Drizzle transaction; implemented compensating cleanup for Better Auth rows and tenant-owned registration data.
+- Validation: Node API tests passed; API type-check attempted and failed on unrelated pre-existing errors.
+
+#### Database/Schema Workstream
+
+- Scope: `tenants`, `outlets`, `tenant_module_configs`, `user_outlet_assignments`, Better Auth `user/account/session` cleanup.
+- Files inspected: `shared/schema.ts`, `apps/api/src/lib/auth-schema.ts`.
+- Findings: Tenant has unique slug; outlet default and user assignment schema already exist; tenant cascades cover many tenant-owned rows but auth rows are separate.
+- Tasks: Completed: catch tenant slug unique constraint at insert and added explicit cleanup for auth and tenant-owned defaults.
+- Risks: Cleanup is best-effort and logs cleanup failures without hiding the original registration error.
+- Validation: Unit tests simulate unique/failure paths.
+
+#### Frontend/UI Workstream
+
+- Scope: None.
+- Files inspected: None beyond README; request is backend registration only.
+- Findings: No UI change needed.
+- Tasks: None.
+- Risks: None.
+- Validation: Not applicable.
+
+#### Tests/Validation Workstream
+
+- Scope: Registration behavior tests.
+- Files inspected: existing `apps/api/src/__tests__/*.test.ts` patterns and `apps/api/package.json`.
+- Findings: API tests use Node's built-in test runner through `tsx --test`.
+- Tasks: Completed: added focused service tests for duplicate slug, duplicate email, success defaults, and simulated failure after user creation.
+- Risks: Tests use injected fakes rather than a live PostgreSQL transaction harness.
+- Validation: API test suite passed.
+
+#### Documentation Workstream
+
+- Scope: `PLANS.md`, registration behavior documentation.
+- Files inspected: `README.md`, `docs/BUSINESS_TYPE_TEMPLATES.md`.
+- Findings: Existing template doc described module defaults but not registration atomicity.
+- Tasks: Completed: updated `PLANS.md` and documented public registration defaults/cleanup behavior in `docs/BUSINESS_TYPE_TEMPLATES.md`.
+- Risks: Documentation explicitly says Better Auth uses compensating cleanup rather than claiming a single DB transaction.
+- Validation: Diff reviewed.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Owner tenant link and outlet role assignment.
+- Files inspected: `shared/schema.ts`, auth schema.
+- Findings: User tenant_id/role and outlet assignment are required to prevent orphan owner/no-outlet state.
+- Tasks: Completed: set owner user tenant/role and assign owner to default outlet; cleanup all auth rows if later steps fail.
+- Risks: Partial auth rows after Better Auth sign-up are addressed through best-effort cleanup.
+- Validation: Failure-path tests assert cleanup hooks are called.
+
+### Execution Order
+
+1. [x] Implement injectable registration service with transaction-safe orchestration and cleanup.
+2. [x] Update route to use the service and map duplicate slug/email responses.
+3. [x] Add Node tests for success defaults, duplicate slug, duplicate email, and post-user failure cleanup.
+4. [x] Run validation and update this plan.
+5. [x] Prepare commit and PR metadata.
+
+### Progress
+
+#### Completed
+
+- [x] Transaction-safe registration service
+  - Files changed: `apps/api/src/services/registrationService.ts`
+  - Validation: API tests passed; API type-check attempted.
+  - Docs updated: `PLANS.md`, `docs/BUSINESS_TYPE_TEMPLATES.md`
+- [x] Public registration route integration
+  - Files changed: `apps/api/src/http/routes/registration.ts`
+  - Validation: API tests passed; API type-check attempted.
+  - Docs updated: `docs/BUSINESS_TYPE_TEMPLATES.md`
+- [x] Duplicate slug/email and post-user failure tests
+  - Files changed: `apps/api/src/__tests__/registration-service.test.ts`
+  - Validation: API tests passed.
+  - Docs updated: `PLANS.md`
+
+#### Partially Completed
+
+- [ ] API type-check cleanup
+  - Completed: Ran type-check and confirmed failures are outside this registration change.
+  - Remaining: Fix existing Express/rate-limit/compression/featureGuard type issues in a separate batch.
+  - Reason: Existing unrelated blockers are outside this requested registration flow.
+
+#### Blocked
+
+- [ ] Full green `pnpm --filter @pos/api type-check`
+  - Blocker: Existing unrelated TypeScript errors in `src/http/middleware/featureGuard.ts`, `src/http/routes/index.ts`, and missing `@types/compression` declaration.
+  - Required next step: Separate type hygiene batch.
+
+#### Not Attempted
+
+- [ ] Live PostgreSQL integration test for real transaction rollback
+  - Reason: Current batch added deterministic injected-fake tests; live DB harness is not configured for this repo's API tests.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/api exec tsx --test src/__tests__/registration-service.test.ts`
+- Result: Passed (4 tests passed)
+- Notes: Covers registration success, duplicate slug, duplicate email, and post-user failure cleanup.
+- Command: `pnpm --filter @pos/api test -- src/__tests__/registration-service.test.ts`
+- Result: Passed (package script ran the API test suite; 28 tests passed)
+- Notes: Confirms no existing API test regressed.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Failed due to pre-existing unrelated type errors.
+- Notes: Failures are in `featureGuard.ts`, `routes/index.ts`, and missing `compression` types; no registration service errors were reported.
+
+### Documentation Updates
+
+- File: `PLANS.md`
+- Change: Added and completed active execution plan for transaction-safe owner registration.
+- File: `docs/BUSINESS_TYPE_TEMPLATES.md`
+- Change: Documented registration default outlet/module/owner assignment behavior and Better Auth compensating cleanup.
+
+### Checklist Updates
+
+- File: User-provided tasklist
+- Change: All five requested items implemented and validated with API tests; source checklist was not a repository file.
+
+### Continuation Notes
+
+Recommended next batch: fix existing API type-check blockers in `featureGuard.ts`, `routes/index.ts`, and compression declarations, then optionally add a real PostgreSQL integration test harness for transaction rollback.
