@@ -3,9 +3,13 @@ import type { BusinessType } from '@pos/core';
 import { getBusinessTypeTemplate } from '@pos/application/tenants';
 import { db } from '@pos/infrastructure/database';
 import {
+  orderTypes,
   outlets,
+  productCategories,
+  products,
   tenantFeatures,
   tenantModuleConfigs,
+  tenantOrderTypes,
   tenants,
   userOutletAssignments,
 } from '@shared/schema';
@@ -34,6 +38,12 @@ export type RegisteredTenantOwner = {
   };
   ownerUserId: string;
   defaultOutletId: string;
+  featureCodes: string[];
+  orderTypeCodes: string[];
+  catalogSeed: {
+    categories: number;
+    products: number;
+  };
 };
 
 type BetterAuthSignUpResult = {
@@ -64,6 +74,108 @@ type RegistrationDeps = {
 };
 
 const DEFAULT_BUSINESS_TYPE: BusinessType = 'CAFE_RESTAURANT';
+
+type CatalogSeedProduct = {
+  name: string;
+  basePrice: string;
+  description?: string;
+};
+
+type CatalogSeedCategory = {
+  name: string;
+  displayOrder: number;
+  products: CatalogSeedProduct[];
+};
+
+const DEFAULT_CATALOG_SEEDS: Record<BusinessType, CatalogSeedCategory[]> = {
+  CAFE_RESTAURANT: [
+    {
+      name: 'Makanan',
+      displayOrder: 1,
+      products: [
+        { name: 'Nasi Goreng', basePrice: '15000' },
+        { name: 'Mie Goreng', basePrice: '13000' },
+        { name: 'Gado-Gado', basePrice: '14000' },
+      ],
+    },
+    {
+      name: 'Minuman',
+      displayOrder: 2,
+      products: [
+        { name: 'Es Teh Manis', basePrice: '5000' },
+        { name: 'Es Jeruk', basePrice: '7000' },
+        { name: 'Kopi Tubruk', basePrice: '8000' },
+      ],
+    },
+  ],
+  RETAIL_MINIMARKET: [
+    {
+      name: 'Sembako',
+      displayOrder: 1,
+      products: [
+        { name: 'Beras 5kg', basePrice: '68000' },
+        { name: 'Gula Pasir 1kg', basePrice: '17000' },
+        { name: 'Minyak Goreng 1L', basePrice: '19000' },
+      ],
+    },
+    {
+      name: 'Minuman',
+      displayOrder: 2,
+      products: [
+        { name: 'Air Mineral 600ml', basePrice: '4000' },
+        { name: 'Teh Botol', basePrice: '6000' },
+      ],
+    },
+  ],
+  LAUNDRY: [
+    {
+      name: 'Laundry Kiloan',
+      displayOrder: 1,
+      products: [
+        { name: 'Cuci Kering per Kg', basePrice: '7000' },
+        { name: 'Cuci Setrika per Kg', basePrice: '10000' },
+        { name: 'Setrika Saja per Kg', basePrice: '6000' },
+      ],
+    },
+    {
+      name: 'Laundry Satuan',
+      displayOrder: 2,
+      products: [
+        { name: 'Cuci Sepatu', basePrice: '25000' },
+        { name: 'Bed Cover', basePrice: '35000' },
+      ],
+    },
+  ],
+  SERVICE_APPOINTMENT: [
+    {
+      name: 'Layanan',
+      displayOrder: 1,
+      products: [
+        { name: 'Konsultasi', basePrice: '50000' },
+        { name: 'Perawatan Standar', basePrice: '75000' },
+        { name: 'Paket Premium', basePrice: '150000' },
+      ],
+    },
+  ],
+  DIGITAL_PPOB: [
+    {
+      name: 'Pulsa & Data',
+      displayOrder: 1,
+      products: [
+        { name: 'Pulsa 25.000', basePrice: '27000' },
+        { name: 'Paket Data 5GB', basePrice: '45000' },
+      ],
+    },
+    {
+      name: 'Tagihan',
+      displayOrder: 2,
+      products: [
+        { name: 'Token PLN 50.000', basePrice: '52000' },
+        { name: 'Admin BPJS', basePrice: '2500' },
+      ],
+    },
+  ],
+};
 
 export const isUniqueViolation = (error: unknown): boolean => {
   const err = error as { code?: unknown; cause?: { code?: unknown }; message?: unknown } | null;
@@ -195,6 +307,80 @@ export async function registerTenantOwner(
 
       await tx.insert(tenantModuleConfigs).values(toDbModuleConfig(tenant.id, businessType));
 
+      const now = new Date();
+      const featureCodes = template.features.map((feature) => feature.feature_code);
+      if (template.features.length > 0) {
+        await tx.insert(tenantFeatures).values(
+          template.features.map((feature) => ({
+            tenantId: tenant.id,
+            featureCode: feature.feature_code,
+            activatedAt: now,
+            expiresAt: null,
+            source: feature.source,
+            isActive: feature.is_active,
+          })),
+        );
+      }
+
+      const orderTypeRows = template.orderTypes.length > 0
+        ? await tx
+            .select({ id: orderTypes.id, code: orderTypes.code })
+            .from(orderTypes)
+            .where(inArray(orderTypes.code, template.orderTypes))
+        : [];
+      const foundOrderTypeCodes = new Set(orderTypeRows.map((orderType: { code: string }) => orderType.code));
+      const missingOrderTypes = template.orderTypes.filter((code) => !foundOrderTypeCodes.has(code));
+      if (missingOrderTypes.length > 0) {
+        throw new RegistrationError(
+          `Required order types are not seeded: ${missingOrderTypes.join(', ')}`,
+          'REGISTRATION_FAILED',
+          500,
+          { missingOrderTypes },
+        );
+      }
+
+      if (orderTypeRows.length > 0) {
+        await tx.insert(tenantOrderTypes).values(
+          orderTypeRows.map((orderType: { id: string }) => ({
+            tenantId: tenant.id,
+            orderTypeId: orderType.id,
+            outletId: null,
+            isEnabled: true,
+          })),
+        );
+      }
+
+      let seededCategoryCount = 0;
+      let seededProductCount = 0;
+      for (const categorySeed of DEFAULT_CATALOG_SEEDS[businessType]) {
+        const [category] = await tx
+          .insert(productCategories)
+          .values({
+            tenantId: tenant.id,
+            name: categorySeed.name,
+            displayOrder: categorySeed.displayOrder,
+            isActive: true,
+          })
+          .returning();
+        seededCategoryCount += 1;
+
+        await tx.insert(products).values(
+          categorySeed.products.map((productSeed, index) => ({
+            tenantId: tenant.id,
+            categoryId: category.id,
+            category: category.name,
+            name: productSeed.name,
+            description: productSeed.description,
+            basePrice: productSeed.basePrice,
+            hasVariants: false,
+            stockTrackingEnabled: false,
+            isActive: true,
+            metadata: { seededBy: 'registration', displayOrder: index },
+          })),
+        );
+        seededProductCount += categorySeed.products.length;
+      }
+
       const signUpResult = await deps.signUpOwner(input);
       const ownerUserId = signUpResult?.user?.id;
       if (!ownerUserId) {
@@ -230,6 +416,12 @@ export async function registerTenantOwner(
         },
         ownerUserId,
         defaultOutletId: defaultOutlet.id,
+        featureCodes,
+        orderTypeCodes: template.orderTypes,
+        catalogSeed: {
+          categories: seededCategoryCount,
+          products: seededProductCount,
+        },
       };
     });
   } catch (error) {

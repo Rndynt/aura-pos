@@ -87,7 +87,7 @@
 
 ### 1.5 API / backend wiring
 
-- [x] Tambahkan `/api/tenants/register` (diimplementasikan di `apps/api/src/http/controllers/TenantsController.ts`):
+- [x] Tambahkan `/api/tenants/register` (sekarang deprecated untuk onboarding produksi; gunakan `POST /api/register`):
   - [x] Menerima `business_type`, info tenant dasar.
   - [x] Memanggil `CreateTenant`.
   - [x] Mengembalikan tenant dan modul/fitur yang diaktifkan.

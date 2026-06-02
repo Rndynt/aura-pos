@@ -8,10 +8,6 @@ import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
-import type { BusinessType } from '@pos/core';
-import { auth, authDb } from '../../lib/auth';
-import { user as authUser } from '../../lib/auth-schema';
-import { fromNodeHeaders } from 'better-auth/node';
 import { db } from '@pos/infrastructure/database';
 import { tenants, tenantFeatures } from '@shared/schema';
 
@@ -92,81 +88,20 @@ export const checkFeatureAccess = asyncHandler(async (req: Request, res: Respons
 
 /**
  * POST /api/tenants/register
- * Create new tenant with business type
+ * Deprecated tenant-only registration endpoint. Production onboarding must use
+ * POST /api/register so tenant, owner, outlet, modules, features, order types,
+ * and starter catalog are created by one canonical flow.
  */
-export const registerTenant = asyncHandler(async (req: Request, res: Response) => {
-  // Validate request body
-  const bodySchema = z.object({
-    name: z.string().min(1, 'Name is required'),
-    slug: z
-      .string()
-      .min(1, 'Slug is required')
-      .regex(/^[a-z0-9-]+$/, 'Slug must contain only lowercase letters, numbers, and hyphens'),
-    business_type: z.enum([
-      'CAFE_RESTAURANT',
-      'RETAIL_MINIMARKET',
-      'LAUNDRY',
-      'SERVICE_APPOINTMENT',
-      'DIGITAL_PPOB',
-    ] as const, {
-      errorMap: () => ({ message: 'Invalid business type' }),
-    }),
-    business_name: z.string().optional(),
-    business_address: z.string().optional(),
-    business_phone: z.string().optional(),
-    business_email: z.preprocess(
-      (val) => (val === '' || val === null ? undefined : val),
-      z.string().email('Invalid email format').optional()
-    ),
-    timezone: z.string().optional(),
-    currency: z.string().optional(),
-    locale: z.string().optional(),
-  });
-
-  const parsed = bodySchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
-  }
-
-  const data = parsed.data;
-
-  // Execute use case
-  const result = await container.createTenant.execute({
-    name: data.name,
-    slug: data.slug,
-    business_type: data.business_type as BusinessType,
-    business_name: data.business_name,
-    business_address: data.business_address,
-    business_phone: data.business_phone,
-    business_email: data.business_email || undefined,
-    timezone: data.timezone,
-    currency: data.currency,
-    locale: data.locale,
-  });
-
-  const tenantId = result.profile.tenant.id;
-
-  // Link the new tenant to the authenticated user so /api/auth/me returns tenantId
-  try {
-    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-    if (session?.user?.id) {
-      await authDb
-        .update(authUser)
-        .set({ tenantId })
-        .where(eq(authUser.id, session.user.id));
-    }
-  } catch (linkErr) {
-    console.error('[registerTenant] Failed to link tenantId to user:', linkErr);
-    // Non-fatal: tenant was created, user can still log in
-  }
-
-  res.status(201).json({
-    success: true,
-    data: {
-      tenant: result.profile.tenant,
-      features: result.profile.features,
-      moduleConfig: result.profile.moduleConfig,
-    },
+export const registerTenant = asyncHandler(async (_req: Request, res: Response) => {
+  res.setHeader('Deprecation', 'true');
+  res.setHeader('Sunset', '2026-09-01');
+  res.setHeader('Link', '</api/register>; rel="successor-version"');
+  res.setHeader('Location', '/api/register');
+  res.status(308).json({
+    success: false,
+    error: 'POST /api/tenants/register is deprecated. Use POST /api/register for tenant onboarding.',
+    code: 'ENDPOINT_DEPRECATED',
+    location: '/api/register',
   });
 });
 

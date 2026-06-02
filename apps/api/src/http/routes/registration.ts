@@ -4,13 +4,12 @@
  */
 
 import { Router } from 'express';
+import type { Request, Response } from 'express';
 import { db } from '@pos/infrastructure/database';
 import { tenants } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { registerTenantOwner, RegistrationError } from '../../services/registrationService';
 import type { BusinessType } from '@pos/core';
-
-const router = Router();
 
 const BASE_DOMAIN = process.env.BASE_DOMAIN || 'aurapos.my.id';
 
@@ -22,67 +21,76 @@ const RESERVED_SLUGS = new Set([
 
 const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
 
-// ── GET /api/register/check-slug/:slug ────────────────────────────────────────
-// Cek ketersediaan slug secara real-time (dipanggil dari form registrasi)
-router.get('/check-slug/:slug', async (req, res) => {
-  const slug = req.params.slug.toLowerCase();
+type RegistrationRouteDeps = {
+  baseDomain?: string;
+  checkSlugExists?: (slug: string) => Promise<boolean>;
+  registerTenantOwner?: typeof registerTenantOwner;
+};
 
-  if (!SLUG_REGEX.test(slug)) {
-    return res.json({ available: false, reason: 'Format tidak valid. Gunakan huruf kecil, angka, dan tanda hubung.' });
-  }
-  if (RESERVED_SLUGS.has(slug)) {
-    return res.json({ available: false, reason: 'Slug ini tidak tersedia.' });
-  }
+function getRequestBody(req: Request) {
+  const body = req.body ?? {};
+  return {
+    slug: body.slug,
+    businessName: body.businessName ?? body.business_name ?? body.name,
+    businessType: body.businessType ?? body.business_type ?? 'CAFE_RESTAURANT',
+    ownerName: body.ownerName ?? body.owner_name,
+    ownerEmail: body.ownerEmail ?? body.owner_email,
+    ownerPassword: body.ownerPassword ?? body.owner_password,
+    ownerUsername: body.ownerUsername ?? body.owner_username,
+    timezone: body.timezone ?? 'Asia/Jakarta',
+    currency: body.currency ?? 'IDR',
+    locale: body.locale ?? 'id-ID',
+  };
+}
 
-  const existing = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
-  if (existing.length) {
-    return res.json({ available: false, reason: 'Slug sudah digunakan tenant lain.' });
-  }
+function sendRegistrationResult(res: Response, result: Awaited<ReturnType<typeof registerTenantOwner>>, baseDomain: string) {
+  return res.status(201).json({
+    success: true,
+    tenant: result.tenant,
+    defaultOutletId: result.defaultOutletId,
+    featureCodes: result.featureCodes,
+    orderTypeCodes: result.orderTypeCodes,
+    catalogSeed: result.catalogSeed,
+    message: `Tenant berhasil dibuat. Akses di: https://${result.tenant.slug}.${baseDomain}`,
+  });
+}
 
-  return res.json({ available: true, url: `https://${slug}.${BASE_DOMAIN}` });
-});
+export function createRegistrationRouter(deps: RegistrationRouteDeps = {}) {
+  const router = Router();
+  const baseDomain = deps.baseDomain ?? BASE_DOMAIN;
+  const checkSlugExists = deps.checkSlugExists ?? (async (slug: string) => {
+    const existing = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
+    return existing.length > 0;
+  });
+  const register = deps.registerTenantOwner ?? registerTenantOwner;
 
-// ── POST /api/register ────────────────────────────────────────────────────────
-// Daftarkan tenant baru + akun owner sekaligus
-router.post('/', async (req, res) => {
-  const {
-    slug,
-    businessName,
-    businessType = 'CAFE_RESTAURANT',
-    ownerName,
-    ownerEmail,
-    ownerPassword,
-    ownerUsername,
-    timezone = 'Asia/Jakarta',
-    currency = 'IDR',
-    locale = 'id-ID',
-  } = req.body;
+  // ── GET /api/register/check-slug/:slug ────────────────────────────────────────
+  // Cek ketersediaan slug secara real-time (dipanggil dari form registrasi)
+  router.get('/check-slug/:slug', async (req, res) => {
+    const slug = req.params.slug.toLowerCase();
 
-  // ── Validasi ──────────────────────────────────────────────────────────────
-  const missing = ['slug','businessName','ownerName','ownerEmail','ownerPassword','ownerUsername']
-    .filter(k => !req.body[k]);
-  if (missing.length) {
-    return res.status(400).json({ error: 'Missing fields', fields: missing });
-  }
+    if (!SLUG_REGEX.test(slug)) {
+      return res.json({ available: false, reason: 'Format tidak valid. Gunakan huruf kecil, angka, dan tanda hubung.' });
+    }
+    if (RESERVED_SLUGS.has(slug)) {
+      return res.json({ available: false, reason: 'Slug ini tidak tersedia.' });
+    }
 
-  const normalSlug = slug.toLowerCase();
-  if (!SLUG_REGEX.test(normalSlug)) {
-    return res.status(400).json({ error: 'Invalid slug format' });
-  }
-  if (RESERVED_SLUGS.has(normalSlug)) {
-    return res.status(400).json({ error: 'Slug is reserved' });
-  }
+    if (await checkSlugExists(slug)) {
+      return res.json({ available: false, reason: 'Slug sudah digunakan tenant lain.' });
+    }
 
-  const existing = await db.select().from(tenants).where(eq(tenants.slug, normalSlug)).limit(1);
-  if (existing.length) {
-    return res.status(409).json({ error: 'Slug already taken' });
-  }
+    return res.json({ available: true, url: `https://${slug}.${baseDomain}` });
+  });
 
-  try {
-    const result = await registerTenantOwner({
-      slug: normalSlug,
+  // ── POST /api/register ────────────────────────────────────────────────────────
+  // Daftarkan tenant baru + akun owner sekaligus. This is the canonical production
+  // onboarding endpoint; /api/tenants/register is deprecated.
+  router.post('/', async (req, res) => {
+    const {
+      slug,
       businessName,
-      businessType: businessType as BusinessType,
+      businessType,
       ownerName,
       ownerEmail,
       ownerPassword,
@@ -90,21 +98,54 @@ router.post('/', async (req, res) => {
       timezone,
       currency,
       locale,
-    });
+    } = getRequestBody(req);
 
-    return res.status(201).json({
-      success: true,
-      tenant: result.tenant,
-      defaultOutletId: result.defaultOutletId,
-      message: `Tenant berhasil dibuat. Akses di: https://${result.tenant.slug}.${BASE_DOMAIN}`,
-    });
-  } catch (err: any) {
-    console.error('[register]', err);
-    if (err instanceof RegistrationError) {
-      return res.status(err.status).json({ error: err.message, code: err.code });
+    // ── Validasi ──────────────────────────────────────────────────────────────
+    const requiredFields = { slug, businessName, ownerName, ownerEmail, ownerPassword, ownerUsername };
+    const missing = Object.entries(requiredFields)
+      .filter(([, value]) => !value)
+      .map(([key]) => key);
+    if (missing.length) {
+      return res.status(400).json({ error: 'Missing fields', fields: missing });
     }
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
-export default router;
+    const normalSlug = String(slug).toLowerCase();
+    if (!SLUG_REGEX.test(normalSlug)) {
+      return res.status(400).json({ error: 'Invalid slug format' });
+    }
+    if (RESERVED_SLUGS.has(normalSlug)) {
+      return res.status(400).json({ error: 'Slug is reserved' });
+    }
+
+    if (await checkSlugExists(normalSlug)) {
+      return res.status(409).json({ error: 'Slug already taken' });
+    }
+
+    try {
+      const result = await register({
+        slug: normalSlug,
+        businessName,
+        businessType: businessType as BusinessType,
+        ownerName,
+        ownerEmail,
+        ownerPassword,
+        ownerUsername,
+        timezone,
+        currency,
+        locale,
+      });
+
+      return sendRegistrationResult(res, result, baseDomain);
+    } catch (err: any) {
+      console.error('[register]', err);
+      if (err instanceof RegistrationError) {
+        return res.status(err.status).json({ error: err.message, code: err.code });
+      }
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  return router;
+}
+
+export default createRegistrationRouter();

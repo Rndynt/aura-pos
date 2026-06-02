@@ -16,13 +16,18 @@ AuraPOS supports 5 main business types:
 
 ## Registration Defaults
 
-Public owner registration (`POST /api/register`) now creates the tenant together with the multi-outlet baseline data for the selected business type:
+Public owner registration (`POST /api/register`) is the canonical production tenant onboarding endpoint. It creates the tenant together with baseline data for the selected business type:
 
 - one active default outlet named `Cabang Utama` with slug `main`;
 - one `tenant_module_configs` row using the module flags from the business type template;
+- plan-default/free `tenant_features` rows from the selected business type template;
+- enabled `tenant_order_types` rows for the selected business type template, after validating the referenced order types are already seeded;
+- starter `product_categories` and `products` rows so the new tenant has an initial editable catalog;
 - an owner user link (`tenant_id`, role `owner`) and an owner assignment to the default outlet.
 
-Because Better Auth owns its user/account/session writes outside the tenant transaction boundary, registration uses compensating cleanup if a failure happens after the Better Auth user is created. Cleanup removes Better Auth session, account, and user rows plus tenant-owned registration data so duplicate email, duplicate slug, and post-auth failures do not leave partially usable tenants.
+`POST /api/tenants/register` is deprecated for tenant onboarding because it does not create the owner-backed onboarding baseline. New clients should use `POST /api/register`; legacy clients receive a deprecation response with `location: /api/register`.
+
+Because Better Auth owns its user/account/session writes outside the tenant transaction boundary, registration uses compensating cleanup if a failure happens after the Better Auth user is created. Cleanup removes Better Auth session, account, and user rows plus tenant-owned registration data so duplicate email, duplicate slug, missing order-type seed, and post-auth failures do not leave partially usable tenants.
 
 ## 1. CAFE_RESTAURANT
 

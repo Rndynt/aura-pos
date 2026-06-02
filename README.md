@@ -31,6 +31,13 @@ AuraPoS adalah monorepo aplikasi Point of Sale (POS) untuk UMKM yang mencakup fr
 
 > Catatan: ikuti aturan pada `agents.md` serta pedoman desain di `design_guidelines.md` ketika menambah fitur baru.
 
+
+## Tenant Onboarding
+- Production tenant onboarding is canonical at `POST /api/register` and the POS public registration page `/register`.
+- The canonical flow creates the owner account, tenant, default outlet, module configuration, plan-default/free feature flags, enabled order types, and a starter catalog seed in one registration flow.
+- `POST /api/tenants/register` is deprecated for onboarding and returns a deprecation response pointing clients to `POST /api/register`; do not build new clients against it.
+- Slug availability can be checked with `GET /api/register/check-slug/:slug`.
+
 ## Catatan Arsitektur
 - Router pada POS menggunakan wouter dengan layout utama (`MainLayout`) untuk konsistensi navigasi dan `UnifiedBottomNav` untuk pengalaman mobile.
 - State keranjang dikelola via hook khusus (`useCart`) yang mengkalkulasi subtotal, pajak, dan service charge secara otomatis serta menyiapkan payload API.

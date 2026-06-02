@@ -19,7 +19,6 @@ import CustomerDisplayPage from "@/pages/customer-display";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
-import RegisterTenantPage from "@/pages/register-tenant";
 import { TenantProvider, useTenant } from "@/context/TenantContext";
 import { OutletProvider } from "@/context/OutletContext";
 import { clearActiveTenantCache } from "@/lib/tenant";
@@ -38,6 +37,16 @@ const SyncConflictsPage = lazy(() => import("@/pages/sync-conflicts"));
 const OutletsPage = lazy(() => import("@/pages/outlets"));
 const MarketplacePage = lazy(() => import("@/pages/marketplace"));
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
+
+function RedirectToRegister() {
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    setLocation('/register', { replace: true });
+  }, [setLocation]);
+
+  return <PageLoading />;
+}
 
 // ── Suspense fallback ────────────────────────────────────────────────────────
 function PageLoading() {
@@ -354,8 +363,8 @@ function Router() {
       {/* Kitchen Display Standalone — publik, API key auth, tanpa layout app */}
       <Route path="/kds/activate" component={KdsActivatePage} />
       <Route path="/kds" component={KDSPage} />
-      {/* Pendaftaran tenant baru — public, no auth */}
-      <Route path="/register-tenant" component={RegisterTenantPage} />
+      {/* Legacy registration URL redirects to the canonical public onboarding page. */}
+      <Route path="/register-tenant" component={RedirectToRegister} />
       <Route component={NotFoundWithLayout} />
     </Switch>
   );

@@ -74,37 +74,18 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      // Step 1: Register owner account
-      const signUpRes = await fetch('/api/auth/sign-up/email', {
+      const tenantRes = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          name: form.ownerName,
-          email: form.ownerEmail,
-          username: form.ownerUsername,
-          password: form.ownerPassword,
-        }),
-      });
-      const signUpBody = await signUpRes.json().catch(() => ({}));
-      if (!signUpRes.ok) {
-        setError(signUpBody?.message || 'Gagal membuat akun. Coba lagi.');
-        setLoading(false);
-        return;
-      }
-
-      // Step 2: Register tenant/business
-      const tenantRes = await fetch('/api/tenants/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          name: form.businessName,
           slug: form.slug,
-          business_type: form.businessType,
-          business_name: form.businessName,
-          business_address: form.businessAddress,
-          business_phone: form.businessPhone,
+          businessName: form.businessName,
+          businessType: form.businessType,
+          ownerName: form.ownerName,
+          ownerEmail: form.ownerEmail,
+          ownerUsername: form.ownerUsername,
+          ownerPassword: form.ownerPassword,
           currency: 'IDR',
           locale: 'id-ID',
           timezone: 'Asia/Jakarta',
@@ -112,7 +93,7 @@ export default function RegisterPage() {
       });
       const tenantBody = await tenantRes.json().catch(() => ({}));
       if (!tenantRes.ok) {
-        setError(tenantBody?.message || 'Gagal mendaftarkan bisnis. Coba lagi.');
+        setError(tenantBody?.message || tenantBody?.error || 'Gagal mendaftarkan bisnis. Coba lagi.');
         setLoading(false);
         return;
       }

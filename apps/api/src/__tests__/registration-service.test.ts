@@ -7,8 +7,13 @@ process.env.BETTER_AUTH_SECRET ||= 'test-secret-with-at-least-32-characters';
 
 const { registerTenantOwner, RegistrationError } = await import('../services/registrationService');
 const {
+  orderTypes,
   outlets,
+  productCategories,
+  products,
+  tenantFeatures,
   tenantModuleConfigs,
+  tenantOrderTypes,
   tenants,
   userOutletAssignments,
 } = await import('@shared/schema');
@@ -28,6 +33,7 @@ type FakeRegistrationOptions = {
   tenantInsertError?: unknown;
   duplicateEmailError?: unknown;
   failAuthLinkAfterUserCreated?: boolean;
+  missingOrderTypes?: boolean;
 };
 
 const baseInput = {
@@ -88,8 +94,19 @@ function createFakeDeps(options: FakeRegistrationOptions = {}) {
             };
           }
 
-          if (table === tenantModuleConfigs) {
-            return Promise.resolve({ rowCount: 1 });
+          if (table === tenantModuleConfigs || table === tenantFeatures || table === tenantOrderTypes || table === products) {
+            return Promise.resolve({ rowCount: Array.isArray(values) ? values.length : 1 });
+          }
+
+          if (table === productCategories) {
+            return {
+              returning: async () => [
+                {
+                  id: `category-${idCounter}-${inserts.filter((op) => op.table === productCategories).length}`,
+                  ...values,
+                },
+              ],
+            };
           }
 
           if (table === userOutletAssignments) {
@@ -100,6 +117,22 @@ function createFakeDeps(options: FakeRegistrationOptions = {}) {
 
           return {
             returning: async () => [{ ...values }],
+          };
+        },
+      };
+    },
+    select() {
+      return {
+        from(table: unknown) {
+          return {
+            where: async () => {
+              if (table !== orderTypes || options.missingOrderTypes) return [];
+              return [
+                { id: 'order-type-dine-in', code: 'DINE_IN' },
+                { id: 'order-type-take-away', code: 'TAKE_AWAY' },
+                { id: 'order-type-delivery', code: 'DELIVERY' },
+              ];
+            },
           };
         },
       };
@@ -184,6 +217,32 @@ describe('registerTenantOwner', () => {
     assert.equal(authUpdate?.set.tenantId, 'tenant-1');
     assert.equal(authUpdate?.set.role, 'owner');
 
+    const featureInsert = fake.inserts.find((op) => op.table === tenantFeatures);
+    assert.equal(featureInsert?.values.length, 10);
+    assert.ok(featureInsert?.values.some((feature: any) => feature.featureCode === 'receipt_printer'));
+    assert.deepEqual(result.featureCodes, [
+      'kitchen_ticket',
+      'kitchen_printer',
+      'kitchen_display',
+      'receipt_printer',
+      'order_notifications',
+      'order_queue',
+      'product_variants',
+      'partial_payment',
+      'discounts',
+      'sales_reports',
+    ]);
+
+    const orderTypeInsert = fake.inserts.find((op) => op.table === tenantOrderTypes);
+    assert.equal(orderTypeInsert?.values.length, 3);
+    assert.deepEqual(result.orderTypeCodes, ['DINE_IN', 'TAKE_AWAY', 'DELIVERY']);
+
+    const categoryInserts = fake.inserts.filter((op) => op.table === productCategories);
+    assert.equal(categoryInserts.length, 2);
+    const productInserts = fake.inserts.filter((op) => op.table === products);
+    assert.equal(productInserts.reduce((count, op) => count + op.values.length, 0), 6);
+    assert.deepEqual(result.catalogSeed, { categories: 2, products: 6 });
+
     const outletAssignment = fake.inserts.find((op) => op.table === userOutletAssignments);
     assert.equal(outletAssignment?.values.userId, 'user-owner-1');
     assert.equal(outletAssignment?.values.outletId, 'outlet-1');
@@ -210,6 +269,24 @@ describe('registerTenantOwner', () => {
     assert.deepEqual(fake.transactionCalls, ['begin', 'rollback']);
     assert.deepEqual(fake.cleanupAuthUsers, []);
     assert.deepEqual(fake.cleanupTenants, []);
+  });
+
+  it('fails and compensates tenant resources when required order types are not seeded', async () => {
+    const fake = createFakeDeps({ missingOrderTypes: true });
+
+    await assert.rejects(
+      () => registerTenantOwner(baseInput, fake.deps),
+      (error: unknown) => {
+        assert.ok(error instanceof RegistrationError);
+        assert.equal(error.code, 'REGISTRATION_FAILED');
+        assert.equal(error.status, 500);
+        return true;
+      },
+    );
+
+    assert.deepEqual(fake.transactionCalls, ['begin', 'rollback']);
+    assert.deepEqual(fake.cleanupAuthUsers, []);
+    assert.deepEqual(fake.cleanupTenants, ['tenant-1']);
   });
 
   it('maps duplicate owner email from Better Auth and compensates tenant/default data', async () => {

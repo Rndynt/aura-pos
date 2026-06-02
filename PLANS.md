@@ -2363,3 +2363,163 @@ Continue by centralizing frontend tenant headers, updating the named helpers/hoo
 
 ### Continuation Notes
 Recommended next batch: implement a first-class POS terminal tenant-context token issuance/verification flow and fix the existing API TypeScript dependency mismatch so `@pos/api` type-check can pass cleanly.
+
+## Plan: Canonical production tenant onboarding endpoint
+
+### Source
+
+- Tasklist: User request covering API registration comparison, canonical endpoint, frontend path consolidation, docs, and end-to-end test.
+- User request: Compare `apps/api/src/http/routes/registration.ts` and `apps/api/src/http/controllers/TenantsController.ts` registration behavior; pick canonical endpoint; ensure production onboarding creates tenant, owner, default outlet, module config, free features, and initial catalog seeds consistently; deprecate/redirect alternate endpoint; update frontend docs; add E2E registration test.
+- Date started: 2026-06-02
+- Current status: Implemented in this batch; API type-check still has unrelated pre-existing dependency/type declaration failures.
+
+### Goal
+
+Make public tenant onboarding use one production-safe flow that creates all baseline records atomically enough for a new tenant to log in and use a seeded catalog immediately.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (user request)
+- [x] Relevant docs (`docs/BUSINESS_TYPE_TEMPLATES.md`, `docs/aura-pos-tasklist-id.md`)
+- [x] Relevant source files (`registration.ts`, `TenantsController.ts`, registration service, frontend register pages/routes, schema/templates/tests)
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: Public registration route, tenant controller alternate endpoint, registration service.
+- Files inspected: `apps/api/src/http/routes/registration.ts`, `apps/api/src/http/controllers/TenantsController.ts`, `apps/api/src/http/routes/tenants.ts`, `apps/api/src/services/registrationService.ts`, `packages/application/tenants/CreateTenant.ts`.
+- Findings: `/api/register` creates owner + tenant + outlet/module/assignment but currently misses tenant features/order types/catalog seeds. `/api/tenants/register` creates tenant features/order types/module via `CreateTenant` but no owner/default outlet/catalog seed and is not a complete production onboarding flow.
+- Tasks: Promote `/api/register` as canonical; expand service baseline creation; deprecate `/api/tenants/register`.
+- Risks: Better Auth user creation remains outside tenant DB transaction; compensating cleanup must include new baseline rows.
+- Validation: API unit/E2E tests and type-check.
+
+#### Database/Schema Workstream
+
+- Scope: Existing schema only; no migrations expected.
+- Files inspected: `shared/schema.ts`, seed scripts.
+- Findings: Tables already exist for tenant features, tenant order types, product categories, products, outlets, and owner outlet assignments.
+- Tasks: Insert existing rows through registration service.
+- Risks: Required order types must already be seeded; registration should fail clearly if missing.
+- Validation: Fake transaction E2E/service tests.
+
+#### Frontend/UI Workstream
+
+- Scope: POS public registration pages/routes.
+- Files inspected: `apps/pos-terminal-web/src/pages/register.tsx`, `apps/pos-terminal-web/src/pages/register-tenant.tsx`, `apps/pos-terminal-web/src/App.tsx`, `login.tsx`.
+- Findings: `/register` still performs two-step owner signup + `/api/tenants/register`; `/register-tenant` already uses `/api/register` but is alternate UI.
+- Tasks: Update `/register` to call `/api/register`; redirect `/register-tenant` to `/register` or otherwise consolidate.
+- Risks: Avoid changing auth/login unrelated behavior.
+- Validation: POS type-check/build if feasible.
+
+#### Tests/Validation Workstream
+
+- Scope: Registration service and HTTP route tests.
+- Files inspected: `apps/api/src/__tests__/registration-service.test.ts` and route test patterns.
+- Findings: Existing service tests use Node test runner and fake deps; no HTTP E2E for registration route yet.
+- Tasks: Extend service tests for features/order types/catalog seeds; add route-level E2E registration test.
+- Risks: Avoid requiring real DB/network.
+- Validation: targeted node test, type-check.
+
+#### Documentation Workstream
+
+- Scope: README and business type/onboarding docs.
+- Files inspected: `README.md`, `docs/BUSINESS_TYPE_TEMPLATES.md`, `docs/aura-pos-tasklist-id.md`.
+- Findings: Docs already mention `/api/register` partially but do not cover canonical/deprecated endpoint and seeded catalog.
+- Tasks: Update docs honestly.
+- Risks: Avoid claiming production-ready beyond test coverage.
+- Validation: Review docs diff.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Registration public endpoint and tenant-owned records.
+- Files inspected: registration service and route validators.
+- Findings: Registration creates new isolated tenant-owned rows; no cross-tenant reads besides slug uniqueness. Slug validation/reserved list must remain.
+- Tasks: Preserve slug checks and owner link/assignment.
+- Risks: Partial resources after auth failure; cleanup must remove tenant cascade and auth rows.
+- Validation: tests for cleanup paths where practical.
+
+### Execution Order
+
+1. Backend registration baseline consistency.
+2. Alternate endpoint deprecation.
+3. Frontend route/path consolidation.
+4. Documentation sync.
+5. Registration E2E and service test updates.
+6. Validation and final checklist/plan update.
+
+### Progress
+
+#### Completed
+
+- [x] Compared registration behaviors and selected `POST /api/register` as canonical production tenant onboarding.
+  - Files changed: `apps/api/src/http/routes/registration.ts`, `apps/api/src/http/controllers/TenantsController.ts`, `README.md`, `docs/BUSINESS_TYPE_TEMPLATES.md`, `docs/aura-pos-tasklist-id.md`.
+  - Validation: Targeted API registration tests passed.
+  - Docs updated: README onboarding section and business type template registration defaults.
+- [x] Expanded canonical registration to create owner-backed tenant baseline data.
+  - Files changed: `apps/api/src/services/registrationService.ts`.
+  - Validation: Registration service tests cover features, order types, catalog seeds, duplicate slug/email cleanup, and missing order-type cleanup.
+  - Docs updated: `docs/BUSINESS_TYPE_TEMPLATES.md`.
+- [x] Deprecated the alternate `POST /api/tenants/register` endpoint.
+  - Files changed: `apps/api/src/http/controllers/TenantsController.ts`.
+  - Validation: Route is still registered but returns 308 with deprecation, Location, and successor link metadata.
+  - Docs updated: README and business type docs.
+- [x] Consolidated frontend registration to one canonical path.
+  - Files changed: `apps/pos-terminal-web/src/pages/register.tsx`, `apps/pos-terminal-web/src/App.tsx`.
+  - Validation: POS terminal type-check passed.
+  - Docs updated: README.
+- [x] Added registration HTTP E2E coverage and extended service tests.
+  - Files changed: `apps/api/src/__tests__/registration-route-e2e.test.ts`, `apps/api/src/__tests__/registration-service.test.ts`.
+  - Validation: Targeted API registration tests passed.
+  - Docs updated: N/A.
+
+#### Partially Completed
+
+- [ ] API package type-check pass.
+  - Completed: Ran `pnpm --filter @pos/api type-check` and inspected failures.
+  - Remaining: Fix existing Express 4/5 rate-limit type mismatch and missing `@types/compression`/declaration.
+  - Reason: Failures are unrelated to this onboarding change and already affect route index/index declarations.
+
+#### Blocked
+
+- [ ] None for the requested onboarding implementation.
+  - Blocker: N/A.
+  - Required next step: N/A.
+
+#### Not Attempted
+
+- [ ] Full monorepo type-check/build.
+  - Reason: Targeted validations were run; API package type-check has unrelated pre-existing dependency/declaration blockers that should be resolved separately first.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/api exec tsx --test src/__tests__/registration-service.test.ts src/__tests__/registration-route-e2e.test.ts`
+- Result: Passed, 7 tests.
+- Notes: Covers service and HTTP-level canonical registration behavior.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: Passed.
+- Notes: Covers frontend route/page type safety.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Failed.
+- Notes: Unrelated existing failures: Express 4/5 type mismatch around rate limit middleware in `src/http/routes/index.ts`, plus missing declaration for `compression` in `src/index.ts`.
+
+### Documentation Updates
+
+- File: `README.md`
+- Change: Added canonical tenant onboarding endpoint/page and deprecated alternate endpoint notes.
+- File: `docs/BUSINESS_TYPE_TEMPLATES.md`
+- Change: Expanded registration defaults to include features, order types, starter catalog, canonical/deprecated endpoint behavior, and cleanup honesty.
+- File: `docs/aura-pos-tasklist-id.md`
+- Change: Marked prior `/api/tenants/register` checklist wording as deprecated for production onboarding.
+
+### Checklist Updates
+
+- File: `PLANS.md`
+- Change: Updated plan progress, validation, docs, and continuation notes.
+
+### Continuation Notes
+
+Recommended next batch: fix the existing API type-check blockers (`express-rate-limit` Express 5 type leakage vs Express 4 app types, and missing `compression` declaration) so `pnpm --filter @pos/api type-check` can pass cleanly.
