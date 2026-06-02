@@ -50,6 +50,13 @@
       "when": 1779293444010,
       "tag": "0006_auth_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780358400000,
+      "tag": "0015_native_uuid_alignment",
+      "breakpoints": true
     }
   ]
 }

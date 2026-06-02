@@ -186,7 +186,7 @@ export function requireModule(moduleKey: string) {
     // ── cache miss → DB query ────────────────────────────────────────────
     try {
       // Only select the specific module column instead of all columns (*)
-      const table = tenantModuleConfigs as Record<string, unknown>;
+      const table = tenantModuleConfigs as unknown as Record<string, unknown>;
       const col = table[moduleKey];
 
       if (!col) {

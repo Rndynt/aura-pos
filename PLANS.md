@@ -1986,3 +1986,214 @@ Require a CFD-scoped token before any cross-device CFD state update or WebSocket
 ### Continuation Notes
 
 Recommended next batch: add a formal CFD device management/pairing UI and revoke flow, then fix existing API type-check blockers so full API type validation can pass.
+
+## Plan: Native UUID Schema Alignment and Drift Check
+
+### Source
+
+- Tasklist: User request with five database/schema/migration/CI tasks.
+- User request: Audit actual database via `information_schema.columns`, choose UUID standard, create explicit migration with FK drop/recreate, update schema/snapshots/docs, add drift check.
+- Date started: 2026-06-02
+- Current status: In progress
+
+### Goal
+
+Align tenant-owned identifier columns in Drizzle and migrations around one durable standard, document the actual database audit query/results limitations, add an explicit PostgreSQL migration for varchar-to-native-uuid conversion, and add a CI-friendly migration drift check.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist from user prompt
+- [x] Relevant docs (`docs/migration-analysis/schema-audit.md`, `docs/migration-report.md`)
+- [ ] Relevant source files before creating/changing code
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: Code paths that may depend on tenant/order/product ID TypeScript shapes after Drizzle schema changes.
+- Files inspected: Pending.
+- Findings: Pending.
+- Tasks: Inspect ID use if type-check surfaces issues.
+- Risks: Existing app may serialize UUIDs as strings; native Drizzle UUID still maps to strings in TypeScript.
+- Validation: `pnpm type-check` or scoped checks.
+
+#### Database/Schema Workstream
+
+- Scope: `shared/schema.ts`, migrations, snapshots, information_schema audit SQL.
+- Files inspected: `shared/schema.ts`, `apps/api/src/lib/auth-schema.ts`, `migrations/meta/_journal.json`.
+- Findings: `tenants.id` and many tenant foreign keys are `varchar` while most entity IDs are native `uuid`; auth tables intentionally use text IDs.
+- Tasks: Convert tenant IDs and UUID-reference text/varchar columns in shared schema to native `uuid`; add explicit conversion migration with FK/index handling; update snapshots if practical.
+- Risks: Existing rows with non-UUID tenant IDs or ID reference strings block casting; migration must fail early with diagnostics instead of corrupting data.
+- Validation: `drizzle-kit check`, type-check.
+
+#### Frontend/UI Workstream
+
+- Scope: None expected; UUID values remain strings over API.
+- Files inspected: Pending only if type-check requires.
+- Findings: Native uuid Drizzle columns infer string, so no UI behavior changes expected.
+- Tasks: None planned.
+- Risks: None beyond TypeScript schema imports.
+- Validation: Workspace type-check where practical.
+
+#### Tests/Validation Workstream
+
+- Scope: CI drift check and local validation commands.
+- Files inspected: `package.json`, `drizzle.config.ts`.
+- Findings: No existing migration check script; `drizzle.config.ts` requires `DATABASE_URL` for all commands.
+- Tasks: Add `db:check` script and a CI wrapper that skips only when no database URL is available.
+- Risks: `drizzle-kit check` may need migration metadata to be valid.
+- Validation: Run new script and document environment limitation if no `DATABASE_URL`.
+
+#### Documentation Workstream
+
+- Scope: Schema audit docs and plan updates.
+- Files inspected: `docs/migration-analysis/schema-audit.md`, `docs/migration-report.md`.
+- Findings: Existing schema audit claims no changes required and is stale for UUID drift.
+- Tasks: Update docs with chosen native UUID standard, audit query, migration procedure, validation commands, blockers.
+- Risks: Must not claim actual DB was audited if `DATABASE_URL` is unavailable.
+- Validation: Markdown review.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Tenant ID type consistency and FK behavior.
+- Files inspected: `shared/schema.ts`.
+- Findings: Tenant-owned data uses tenant IDs; native UUID FKs improve referential consistency.
+- Tasks: Preserve tenant references and `onDelete` actions while converting types.
+- Risks: Incorrect FK recreation could weaken tenant isolation; migration must recreate tenant FKs.
+- Validation: Migration SQL inspection plus Drizzle check.
+
+### Execution Order
+
+1. Audit schema definitions and available actual DB connectivity.
+2. Choose standard and update plan/docs.
+3. Update `shared/schema.ts` to native uuid for tenant IDs and UUID reference columns.
+4. Add explicit migration with cast prechecks, FK drop/recreate, index/type conversion.
+5. Update migration metadata/snapshots or document if generated snapshot cannot be produced safely.
+6. Add CI-friendly `db:check` / drift script.
+7. Run relevant validation.
+8. Update `PLANS.md` and docs with final status.
+
+### Progress
+
+#### Completed
+
+- [ ] Task: Initial context and plan setup
+  - Files changed: `PLANS.md`
+  - Validation: Pending
+  - Docs updated: `PLANS.md`
+
+#### Partially Completed
+
+- [ ] Task: Actual database audit
+  - Completed: Determined local environment currently has no `DATABASE_URL`.
+  - Remaining: Run `information_schema.columns` query against a provisioned database.
+  - Reason: No database connection string is available in the environment.
+
+#### Blocked
+
+- [ ] Task: Live `information_schema.columns` results
+  - Blocker: `DATABASE_URL` is unset.
+  - Required next step: Provide a database URL or run the included audit query in an environment with database access.
+
+#### Not Attempted
+
+- [ ] Task: Schema/migration/drift-check implementation
+  - Reason: Pending source inspection.
+
+### Validation Log
+
+- Command: `node -e "console.log(Boolean(process.env.DATABASE_URL))"`
+- Result: `false`
+- Notes: Confirms actual DB audit cannot run in this container yet.
+
+### Documentation Updates
+
+- File: `PLANS.md`
+- Change: Added active plan for native UUID schema alignment.
+
+### Checklist Updates
+
+- File: N/A (user prompt tasklist)
+- Change: Progress tracked in `PLANS.md` and final report.
+
+### Continuation Notes
+
+Continue by extracting all table/column definitions from `shared/schema.ts`, converting tenant ID columns to native UUID in schema, adding explicit migration and drift check, then validating with `drizzle-kit check` where possible.
+
+### Execution Update (2026-06-02)
+
+#### Completed
+
+- [x] Task: Audit database actual using `information_schema.columns`
+  - Files changed: `docs/migration-analysis/schema-audit.md`, `PLANS.md`
+  - Validation: Verified `DATABASE_URL` is unset locally; documented exact `information_schema.columns` audit SQL for target DB execution.
+  - Docs updated: `docs/migration-analysis/schema-audit.md`
+- [x] Task: Choose schema standard
+  - Files changed: `docs/migration-analysis/schema-audit.md`, `shared/schema.ts`
+  - Validation: `pnpm --filter @pos/shared type-check` passed; `pnpm db:check` passed.
+  - Docs updated: Native PostgreSQL `uuid` chosen and rationale documented.
+- [x] Task: Explicit varchar/text UUID to native uuid migration
+  - Files changed: `migrations/0015_native_uuid_alignment.sql`, `migrations/meta/_journal.json`, `migrations/meta/0015_snapshot.json`
+  - Validation: `pnpm db:check` passed; migration SQL inspected. Live migration execution is pending a real database URL.
+  - Docs updated: Migration steps and invalid UUID failure mode documented.
+- [x] Task: Update Drizzle schema, migration snapshot, and schema audit docs
+  - Files changed: `shared/schema.ts`, `migrations/meta/0015_snapshot.json`, `docs/migration-analysis/schema-audit.md`
+  - Validation: `pnpm --filter @pos/shared type-check` passed; `pnpm db:check` passed.
+  - Docs updated: `docs/migration-analysis/schema-audit.md`
+- [x] Task: Add CI migration drift check
+  - Files changed: `package.json`, `.github/workflows/db-migrations.yml`
+  - Validation: `pnpm db:check` passed.
+  - Docs updated: `docs/migration-analysis/schema-audit.md`
+
+#### Partially Completed
+
+- [ ] Task: Live database audit result capture
+  - Completed: Added the exact audit SQL and preflight castability SQL.
+  - Remaining: Run the audit against staging/production and archive the result.
+  - Reason: `DATABASE_URL` is not set in this container.
+
+#### Blocked
+
+- [ ] Task: Execute migration on actual database
+  - Blocker: No live database connection is available in this environment.
+  - Required next step: Run `pnpm db:check`, the documented `information_schema.columns` query, and the migration in an environment with `DATABASE_URL`.
+
+#### Not Attempted
+
+- [ ] Task: Production/staging data cleanup for invalid UUIDs
+  - Reason: No live database audit result showed invalid values in this environment.
+
+### Validation Log
+
+- Command: `node -e "console.log(Boolean(process.env.DATABASE_URL))"`
+- Result: pass (`false`, confirms environment limitation)
+- Notes: Local environment cannot produce actual `information_schema.columns` rows.
+- Command: `pnpm db:check`
+- Result: pass
+- Notes: Drizzle migration metadata check passes with placeholder URL.
+- Command: `pnpm --filter @pos/shared type-check`
+- Result: pass
+- Notes: Shared schema TypeScript compiles.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: fail
+- Notes: Schema-related `featureGuard.ts` cast issue was fixed; remaining failures are pre-existing Express/rate-limit type package mismatch and missing `@types/compression`.
+- Command: `pnpm type-check`
+- Result: fail
+- Notes: Fails due to the same API package pre-existing type errors after 8 packages pass.
+
+### Documentation Updates
+
+- File: `docs/migration-analysis/schema-audit.md`
+- Change: Replaced stale “no schema changes required” audit with native UUID standard, audit SQL, migration notes, CI drift-check instructions, and environment limitation.
+
+### Checklist Updates
+
+- File: User prompt tasklist tracked through this `PLANS.md` update.
+- Change: All implementable local tasks completed; live DB result capture remains blocked by missing database connection.
+
+### Continuation Notes
+
+Next agent/operator should run the documented `information_schema.columns` audit and migration against staging with `DATABASE_URL` set, resolve any `Cannot cast ... to uuid` diagnostics, then rerun `pnpm db:check` and relevant API type-check after existing Express/compression typing issues are fixed.
