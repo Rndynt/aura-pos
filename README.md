@@ -48,8 +48,9 @@ AuraPoS adalah monorepo aplikasi Point of Sale (POS) untuk UMKM yang mencakup fr
 
 ## Environment Variables Tambahan (Tenant Resolution)
 - `BASE_DOMAIN`: domain utama untuk resolusi subdomain tenant (default `aurapos.my.id`).
+- Tenant untuk request POS normal diselesaikan dari subdomain tenant atau session login di server. Cache tenant di `localStorage` frontend hanya untuk display/cache offline dan tidak dipakai sebagai authority header.
 - `ALLOW_TENANT_HEADER`: kontrol fallback `x-tenant-id`/`tenant_id` di non-production; set `false` untuk mematikannya.
-- `TENANT_HEADER_SERVICE_TOKEN`: token service/device untuk mengizinkan fallback `x-tenant-id`/`tenant_id` di production melalui header `x-tenant-service-token`. Tanpa token ini, production wajib memakai subdomain tenant.
+- `TENANT_HEADER_SERVICE_TOKEN`: token service/device untuk mengizinkan fallback `x-tenant-id`/`tenant_id` di production melalui header `x-tenant-service-token`. Tanpa token ini, production wajib memakai subdomain tenant atau session login.
 
 ## Environment Variables Tambahan (Inventory Retry)
 - `INVENTORY_SYNC_RETRY_INTERVAL_MS`: interval job retry `inventory_sync_errors` (default `60000`).

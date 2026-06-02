@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useTenant } from "@/context/TenantContext";
 import { getCachedTables, saveCachedTables, getTablesCachedAt } from "@pos/offline";
 import type { Table } from "@shared/schema";
+import { buildApiHeaders } from "@/lib/outlet";
 
 export type OfflineTableStatus = "available" | "occupied" | "reserved" | "unknown";
 
@@ -61,7 +62,7 @@ export function useOfflineTables(params?: { status?: string; floor?: string }): 
 
         const response = await fetch(
           `/api/tables${query.toString() ? `?${query}` : ""}`,
-          { headers: { "x-tenant-id": tenantId } }
+          { headers: buildApiHeaders(), credentials: "include" }
         );
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);

@@ -22,6 +22,8 @@ import RegisterPage from "@/pages/register";
 import RegisterTenantPage from "@/pages/register-tenant";
 import { TenantProvider, useTenant } from "@/context/TenantContext";
 import { OutletProvider } from "@/context/OutletContext";
+import { clearActiveTenantCache } from "@/lib/tenant";
+import { clearActiveOutletId } from "@/lib/outlet";
 import { MainLayout } from "@/components/layout/MainLayout";
 
 // ── Lazy-loaded non-critical pages ───────────────────────────────────────────
@@ -206,6 +208,8 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
           setStatus("authenticated");
         } else {
           localStorage.removeItem(OFFLINE_SESSION_KEY);
+          clearActiveTenantCache();
+          clearActiveOutletId();
           setStatus("unauthenticated");
         }
       })
@@ -214,6 +218,8 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
         if (cached) {
           setStatus("authenticated");
         } else {
+          clearActiveTenantCache();
+          clearActiveOutletId();
           setStatus("unauthenticated");
         }
       });

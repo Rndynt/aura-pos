@@ -1,24 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getActiveTenantId } from "@/lib/tenant";
-
-function buildHeaders(extra?: Record<string, string>): Record<string, string> {
-  return { "x-tenant-id": getActiveTenantId(), "Content-Type": "application/json", ...extra };
-}
+import { buildApiHeaders } from "@/lib/outlet";
 
 async function apiFetch(url: string) {
-  const res = await fetch(url, { headers: buildHeaders(), credentials: "include" });
+  const res = await fetch(url, { headers: buildApiHeaders(), credentials: "include" });
   if (!res.ok) { const t = await res.text(); throw new Error(t || res.statusText); }
   return res.json();
 }
 
 async function apiPut(url: string, body: unknown) {
-  const res = await fetch(url, { method: "PUT", headers: buildHeaders(), credentials: "include", body: JSON.stringify(body) });
+  const res = await fetch(url, { method: "PUT", headers: buildApiHeaders({ "Content-Type": "application/json" }), credentials: "include", body: JSON.stringify(body) });
   if (!res.ok) { const t = await res.text(); throw new Error(t || res.statusText); }
   return res.json();
 }
 
 async function apiPost(url: string, body: unknown) {
-  const res = await fetch(url, { method: "POST", headers: buildHeaders(), credentials: "include", body: JSON.stringify(body) });
+  const res = await fetch(url, { method: "POST", headers: buildApiHeaders({ "Content-Type": "application/json" }), credentials: "include", body: JSON.stringify(body) });
   if (!res.ok) { const t = await res.text(); throw new Error(t || res.statusText); }
   return res.json();
 }

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTenant } from "@/context/TenantContext";
-import { getActiveOutletId } from "@/lib/outlet";
+import { buildApiHeaders, getActiveOutletId } from "@/lib/outlet";
 import type { Table } from "@shared/schema";
 import { saveCachedTables } from "@pos/offline";
 
@@ -52,11 +52,10 @@ export function useTables(status?: string, floor?: string) {
       if (floor) params.append("floor", floor);
       
       const outletId = getActiveOutletId();
-      const outletHeaders: Record<string, string> = { "x-tenant-id": tenantId };
-      if (outletId) outletHeaders["x-outlet-id"] = outletId;
+      const outletHeaders = buildApiHeaders();
       const response = await fetch(
         `/api/tables${params.toString() ? `?${params.toString()}` : ""}`,
-        { headers: outletHeaders }
+        { headers: outletHeaders, credentials: "include" }
       );
       if (!response.ok) throw new Error("Failed to fetch tables");
       const json = await response.json();
@@ -76,10 +75,8 @@ export function useOpenOrders() {
   return useQuery({
     queryKey: ["/api/orders/open", tenantId, outletId],
     queryFn: async (): Promise<OpenOrdersResponse> => {
-      const outletIdForOrders = getActiveOutletId();
-      const ordersHeaders: Record<string, string> = { "x-tenant-id": tenantId };
-      if (outletIdForOrders) ordersHeaders["x-outlet-id"] = outletIdForOrders;
-      const response = await fetch(`/api/orders/open`, { headers: ordersHeaders });
+      const ordersHeaders = buildApiHeaders();
+      const response = await fetch(`/api/orders/open`, { headers: ordersHeaders, credentials: "include" });
       if (!response.ok) throw new Error("Failed to fetch open orders");
       const json = await response.json() as ApiResponse<OpenOrdersResponse>;
       return json.data;

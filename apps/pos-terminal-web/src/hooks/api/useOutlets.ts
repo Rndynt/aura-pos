@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTenant } from "@/context/TenantContext";
 import type { Outlet } from "@/context/OutletContext";
-import { getActiveOutletId } from "@/lib/outlet";
+import { buildApiHeaders } from "@/lib/outlet";
 
 type OutletsResponse = { outlets: Outlet[] };
 
@@ -14,8 +14,8 @@ type CreateOutletBody = {
 
 type UpdateOutletBody = Partial<CreateOutletBody & { isActive: boolean }>;
 
-function apiHeaders(tenantId: string): Record<string, string> {
-  return { "x-tenant-id": tenantId, "Content-Type": "application/json" };
+function apiHeaders(): Record<string, string> {
+  return buildApiHeaders({ "Content-Type": "application/json" });
 }
 
 export function useOutlets() {
@@ -25,7 +25,7 @@ export function useOutlets() {
     queryKey: ["/api/outlets", tenantId],
     queryFn: async () => {
       const res = await fetch("/api/outlets", {
-        headers: { "x-tenant-id": tenantId },
+        headers: buildApiHeaders(),
         credentials: "include",
       });
       if (!res.ok) throw new Error(await res.text());
@@ -43,7 +43,7 @@ export function useCreateOutlet() {
     mutationFn: async (body: CreateOutletBody) => {
       const res = await fetch("/api/outlets", {
         method: "POST",
-        headers: apiHeaders(tenantId),
+        headers: apiHeaders(),
         credentials: "include",
         body: JSON.stringify(body),
       });
@@ -65,7 +65,7 @@ export function useUpdateOutlet() {
     mutationFn: async ({ id, ...body }: UpdateOutletBody & { id: string }) => {
       const res = await fetch(`/api/outlets/${id}`, {
         method: "PATCH",
-        headers: apiHeaders(tenantId),
+        headers: apiHeaders(),
         credentials: "include",
         body: JSON.stringify(body),
       });
@@ -87,7 +87,7 @@ export function useDeleteOutlet() {
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/outlets/${id}`, {
         method: "DELETE",
-        headers: { "x-tenant-id": tenantId },
+        headers: buildApiHeaders(),
         credentials: "include",
       });
       if (!res.ok) {
@@ -113,7 +113,7 @@ export function useOutletProductConfigs() {
     queryKey: ["/api/outlets/product-configs", tenantId],
     queryFn: async () => {
       const res = await fetch("/api/outlets/product-configs", {
-        headers: { "x-tenant-id": tenantId },
+        headers: buildApiHeaders(),
         credentials: "include",
       });
       if (!res.ok) throw new Error(await res.text());
@@ -139,7 +139,7 @@ export function useToggleOutletProductConfig() {
     }) => {
       const res = await fetch(`/api/outlets/${outletId}/product-configs/${productId}`, {
         method: "PUT",
-        headers: { "x-tenant-id": tenantId, "Content-Type": "application/json" },
+        headers: apiHeaders(),
         credentials: "include",
         body: JSON.stringify({ isAvailable }),
       });

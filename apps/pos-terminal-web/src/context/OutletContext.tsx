@@ -5,6 +5,7 @@ import {
   resolveInitialOutletId,
   setActiveOutletId,
   getActiveOutletId,
+  buildApiHeaders,
 } from "@/lib/outlet";
 
 export type Outlet = {
@@ -33,7 +34,7 @@ const OutletContext = createContext<OutletContextValue | undefined>(undefined);
 
 async function fetchOutlets(tenantId: string): Promise<Outlet[]> {
   const res = await fetch("/api/outlets", {
-    headers: { "x-tenant-id": tenantId },
+    headers: buildApiHeaders(),
     credentials: "include",
   });
   if (!res.ok) return [];

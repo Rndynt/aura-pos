@@ -1,4 +1,4 @@
-import { getActiveTenantId } from "@/lib/tenant";
+import { buildTenantAwareHeaders } from "@/lib/tenant";
 
 const STORAGE_KEY = "aurapos.activeOutletId";
 
@@ -30,16 +30,15 @@ export function clearActiveOutletId() {
 }
 
 /**
- * Build headers for API requests: includes x-tenant-id and x-outlet-id when available.
+ * Build headers for API requests. Tenant authority comes from subdomain/session;
+ * localStorage tenant data is only a display/cache hint and is not sent as a raw
+ * tenant header unless a server-issued tenant context token is present.
  */
 export function buildApiHeaders(extra?: Record<string, string>): Record<string, string> {
-  const tenantId = getActiveTenantId();
+  const headers = buildTenantAwareHeaders(extra);
   const outletId = getActiveOutletId();
-  const headers: Record<string, string> = {
-    "x-tenant-id": tenantId,
-  };
   if (outletId) {
     headers["x-outlet-id"] = outletId;
   }
-  return { ...headers, ...extra };
+  return headers;
 }

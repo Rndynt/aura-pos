@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { resolveInitialTenantId, setActiveTenantId } from "@/lib/tenant";
+import { clearActiveTenantCache, resolveInitialTenantId, setActiveTenantId } from "@/lib/tenant";
 import { getSubdomainSlug, resolveTenantBySlug } from "@/lib/subdomain";
+import { clearActiveOutletId } from "@/lib/outlet";
 import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import type { BusinessType } from "@pos/core";
 import type { TenantModuleConfig } from "@pos/domain/tenants/types";
@@ -53,10 +54,22 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     setActiveTenantId(nextTenantId);
   }, []);
 
-  // On every page load: subdomain → session → localStorage
+  // On every page load: subdomain → session. localStorage is display/cache only.
   useEffect(() => {
     resolveActiveTenant().then((id) => {
-      if (id && id !== tenantId) setTenantId(id);
+      if (id) {
+        if (id !== tenantId) {
+          clearActiveOutletId();
+          setTenantId(id);
+        } else {
+          setActiveTenantId(id);
+        }
+        return;
+      }
+
+      clearActiveTenantCache();
+      clearActiveOutletId();
+      updateTenantId("");
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

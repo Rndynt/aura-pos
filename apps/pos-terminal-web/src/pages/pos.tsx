@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getActiveTenantId } from "@/lib/tenant";
-import { getActiveOutletId } from "@/lib/outlet";
+import { buildApiHeaders } from "@/lib/outlet";
 import { useTenant } from "@/context/TenantContext";
 import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import { useCustomerDisplaySender, toCFDItem } from "@/hooks/useCustomerDisplay";
@@ -147,11 +147,8 @@ export default function POSPage() {
       
       const loadOrderIntoCart = async () => {
         try {
-          const tenantId = getActiveTenantId();
-          const _cOid = getActiveOutletId();
-          const _cHdrs: Record<string, string> = { "x-tenant-id": tenantId };
-          if (_cOid) _cHdrs["x-outlet-id"] = _cOid;
-          const response = await fetch(`/api/orders/${continueOrderId}`, { headers: _cHdrs });
+          const _cHdrs = buildApiHeaders();
+          const response = await fetch(`/api/orders/${continueOrderId}`, { headers: _cHdrs, credentials: "include" });
           if (!response.ok) throw new Error("Failed to fetch order");
           
           const json = await response.json();
@@ -640,10 +637,7 @@ export default function POSPage() {
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
-      const tenantId = getActiveTenantId();
-      const _sOid = getActiveOutletId();
-      const _sHdrs: Record<string, string> = { "Content-Type": "application/json", "x-tenant-id": tenantId };
-      if (_sOid) _sHdrs["x-outlet-id"] = _sOid;
+      const _sHdrs = buildApiHeaders({ "Content-Type": "application/json" });
       const res = await fetch(`/api/orders/${orderId}/status`, {
         method: "PATCH",
         headers: _sHdrs,
@@ -686,9 +680,7 @@ export default function POSPage() {
       const orderId = orderResult.order?.id;
       const orderNumber = orderResult.order?.order_number || orderResult.order?.id;
 
-      const _pOid = getActiveOutletId();
-      const _pHdrs: Record<string, string> = { "Content-Type": "application/json", "x-tenant-id": getActiveTenantId() };
-      if (_pOid) _pHdrs["x-outlet-id"] = _pOid;
+      const _pHdrs = buildApiHeaders({ "Content-Type": "application/json" });
       const paymentResult = await fetch(`/api/orders/${orderId}/payments`, {
         method: "POST",
         headers: _pHdrs,

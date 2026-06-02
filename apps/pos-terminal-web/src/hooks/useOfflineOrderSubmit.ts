@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback } from "react";
 import { getActiveTenantId } from "@/lib/tenant";
+import { buildApiHeaders } from "@/lib/outlet";
 import { queryClient } from "@/lib/queryClient";
 import {
   getOrCreateTerminalIdentity,
@@ -60,11 +61,10 @@ export function useOfflineOrderSubmit() {
         try {
           const res = await fetch("/api/orders/create-and-pay", {
             method: "POST",
-            headers: {
+            headers: buildApiHeaders({
               "Content-Type": "application/json",
-              "x-tenant-id": tenantId,
               "x-idempotency-key": idempotencyKey,
-            },
+            }),
             credentials: "include",
             body: JSON.stringify(input),
           });

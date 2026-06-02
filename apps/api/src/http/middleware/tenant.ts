@@ -131,6 +131,16 @@ function isPlatformAdmin(role: string | null | undefined): boolean {
   return role === 'platform-admin';
 }
 
+async function resolveTenantFromAuthenticatedSession(req: Request): Promise<TenantAuthUser | null> {
+  const session = await defaultGetSession(req);
+  const userId = session?.user?.id;
+  if (!userId) return null;
+
+  const user = await defaultGetUserById(userId);
+  if (!user?.tenantId) return null;
+  return user;
+}
+
 export function createTenantAuthGuard(deps: TenantAuthGuardDeps = {}) {
   const getSession = deps.getSession ?? defaultGetSession;
   const getUserById = deps.getUserById ?? defaultGetUserById;
@@ -230,7 +240,34 @@ export async function tenantMiddleware(
       return next();
     }
 
-    // ── 2. Header / query fallback (dev, service/device client) ─────────────
+    // ── 2. Authenticated session: server-owned tenant authority ───────────────
+    const sessionUser = await resolveTenantFromAuthenticatedSession(req);
+    if (sessionUser?.tenantId) {
+      req.tenantId = sessionUser.tenantId;
+      req.authTenantUser = sessionUser;
+
+      const cached = getCachedTenant(sessionUser.tenantId);
+      if (cached) {
+        if (!cached.isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
+        req.tenantSlug = cached.slug;
+        return next();
+      }
+
+      const rows = await db.select({ id: tenants.id, slug: tenants.slug, isActive: tenants.isActive }).from(tenants)
+        .where(eq(tenants.id, sessionUser.tenantId)).limit(1);
+
+      if (!rows.length) { res.status(404).json({ error: 'Tenant not found' }); return; }
+      if (!rows[0].isActive) { res.status(403).json({ error: 'Tenant inactive' }); return; }
+
+      setCachedTenant(rows[0].id, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive, ts: Date.now() });
+      setCachedTenant(rows[0].slug, { id: rows[0].id, slug: rows[0].slug, isActive: rows[0].isActive, ts: Date.now() });
+
+      req.tenantId = rows[0].id;
+      req.tenantSlug = rows[0].slug;
+      return next();
+    }
+
+    // ── 3. Header / query fallback (dev, service/device client) ─────────────
     const headerTenantId = getFirstHeaderValue(req.headers['x-tenant-id'])?.trim();
     const queryTenantId = typeof req.query.tenant_id === 'string' ? req.query.tenant_id.trim() : undefined;
     const requestedFallbackTenantId = headerTenantId || queryTenantId;
@@ -248,7 +285,7 @@ export async function tenantMiddleware(
     const tenantId = allowTenantHeader ? requestedFallbackTenantId : undefined;
 
     if (!tenantId) {
-      res.status(400).json({ error: 'Missing tenant', message: 'Use {slug}.aurapos.my.id or provide x-tenant-id header' });
+      res.status(400).json({ error: 'Missing tenant', message: 'Use tenant subdomain, authenticated session, or an approved tenant context token' });
       return;
     }
 
