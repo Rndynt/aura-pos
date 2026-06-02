@@ -918,3 +918,212 @@ Make quick-pay order creation, payment recording, stock deduction, and inventory
 
 ### Continuation Notes
 Next recommended batch is to fix the pre-existing API type-check errors in `featureGuard.ts`, `routes/index.ts`, and compression typings so `pnpm --filter @pos/api type-check` can pass cleanly.
+
+## Plan: Kebijakan Inventory Strict vs Allow-Negative + Retry Movement
+
+### Source
+
+- Tasklist: User request direct inventory/order hardening items 1-5.
+- User request: Tentukan policy per tenant/module, enforce strict inventory before confirm/complete response, durable errors for allow-negative, remove silent catches, add alert/retry job.
+- Date started: 2026-06-02
+- Current status: In progress
+
+### Goal
+
+Make online order stock movement behavior explicit per tenant/module: strict inventory blocks order confirmation/quick-pay completion until stock and ledger writes succeed, while allow-negative permits order flow but records durable retryable inventory sync failures instead of silent console errors.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (user-provided list)
+- [x] Relevant docs (`docs/ORDER_LIFECYCLE.md`)
+- [x] Relevant source files (`OrdersController`, `CreateAndPayOrder`, `stockMovements`, schema, API startup)
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: order confirm/kitchen/create-and-pay stock paths, startup job registration.
+- Files inspected: `apps/api/src/http/controllers/OrdersController.ts`, `apps/api/src/index.ts`, `apps/api/src/container.ts`.
+- Findings: confirm and kitchen-ticket paths swallow stock deduction errors with `.catch(() => {})`; create-and-pay forces strict stock behavior; no retry job exists.
+- Tasks: resolve tenant inventory policy, replace silent catches with strict/allow-negative handler, start retry job.
+- Risks: confirm use case commits status before stock movement in current architecture; strict mode must fail response on movement failure but may need follow-up transactional status+stock refactor for full rollback.
+- Validation: API/application type-check and targeted tests where available.
+
+#### Database/Schema Workstream
+
+- Scope: durable `inventory_sync_errors` table.
+- Files inspected: `shared/schema.ts`, `migrations/`.
+- Findings: no durable table for failed stock movement retry/alert records exists.
+- Tasks: add schema and SQL migration with tenant/order/product indexes.
+- Risks: Drizzle meta snapshots are not regenerated in this environment; SQL migration is added manually.
+- Validation: type-check.
+
+#### Frontend/UI Workstream
+
+- Scope: none for this backend-only batch.
+- Files inspected: not applicable.
+- Findings: no perceptible web UI change expected.
+- Tasks: none.
+- Risks: none.
+- Validation: not applicable.
+
+#### Tests/Validation Workstream
+
+- Scope: API/application type-check and existing API tests.
+- Files inspected: `apps/api/package.json`, `packages/application/package.json`.
+- Findings: pnpm scripts available for type-check/test.
+- Tasks: run relevant validation after implementation.
+- Risks: existing tests may require DATABASE_URL/test environment.
+- Validation: record exact commands/results.
+
+#### Documentation Workstream
+
+- Scope: order lifecycle and plan tracking.
+- Files inspected: `docs/ORDER_LIFECYCLE.md`, `PLANS.md`.
+- Findings: existing docs claim strict atomic quick-pay; needs policy caveat for allow-negative retry behavior.
+- Tasks: update docs after implementation.
+- Risks: avoid overstating production readiness.
+- Validation: docs reviewed.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: tenant-aware policy lookup and retry records.
+- Files inspected: schema and stock helpers.
+- Findings: stock helpers filter products by tenant; retry/error records must include tenant_id and retry job must use tenant filter.
+- Tasks: keep all inventory sync errors and retry movement lookup tenant-scoped.
+- Risks: retry must avoid cross-tenant order/product access.
+- Validation: type-check and code review.
+
+### Execution Order
+
+1. Add durable schema/migration for `inventory_sync_errors`.
+2. Add policy resolver and durable error helpers.
+3. Replace silent stock movement failures in order controllers.
+4. Make create-and-pay use tenant policy.
+5. Add retry/alert job and start it from API boot.
+6. Update docs and this plan.
+7. Run validation, commit, create PR.
+
+### Progress
+
+#### Completed
+
+- [ ] Task:
+  - Files changed:
+  - Validation:
+  - Docs updated:
+
+#### Partially Completed
+
+- [ ] Task:
+  - Completed:
+  - Remaining:
+  - Reason:
+
+#### Blocked
+
+- [ ] Task:
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+
+- [ ] Task:
+  - Reason:
+
+### Validation Log
+
+- Command: pending
+- Result: pending
+- Notes: pending
+
+### Documentation Updates
+
+- File: pending
+- Change: pending
+
+### Checklist Updates
+
+- File: user request / PLANS.md
+- Change: plan section added; final status pending
+
+### Continuation Notes
+
+Continue by adding schema/migration, implementing policy/error/retry helpers, then replacing silent catches in order flows.
+
+### Progress Update (2026-06-02)
+
+#### Completed
+
+- [x] Task: Tentukan policy per tenant/module (`strict` atau `allow_negative`).
+  - Files changed: `packages/application/inventory/inventoryPolicy.ts`, `packages/application/inventory/index.ts`.
+  - Validation: `pnpm --filter @pos/application type-check` passed; `pnpm --filter @pos/api test` passed.
+  - Docs updated: `docs/ORDER_LIFECYCLE.md` documents `tenant_module_configs.config.inventory_policy` / `inventoryPolicy` and module defaults.
+- [x] Task: Strict inventory must complete stock update + ledger before order confirm/complete response.
+  - Files changed: `apps/api/src/http/controllers/OrdersController.ts`, `packages/application/orders/CreateAndPayOrder.ts`.
+  - Validation: `pnpm --filter @pos/application type-check` passed; `pnpm --filter @pos/api test` passed.
+  - Docs updated: `docs/ORDER_LIFECYCLE.md` documents strict behavior.
+- [x] Task: Allow-negative inventory records durable failure instead of only logging.
+  - Files changed: `shared/schema.ts`, `migrations/0011_inventory_sync_errors.sql`, `packages/application/inventory/inventorySyncErrors.ts`, `apps/api/src/http/controllers/OrdersController.ts`, `packages/application/orders/CreateAndPayOrder.ts`.
+  - Validation: `pnpm --filter @pos/application type-check` passed; `pnpm --filter @pos/api test` passed.
+  - Docs updated: `docs/ORDER_LIFECYCLE.md` documents durable `inventory_sync_errors` fallback.
+- [x] Task: Hapus `.catch(() => {})` silent failure di order stock movement paths.
+  - Files changed: `apps/api/src/http/controllers/OrdersController.ts`; `packages/application/orders/CreateAndPayOrder.ts` inspected and now records allow-negative failures explicitly.
+  - Validation: `rg -n "catch\(\(\) => \{\}\)|console\.error" apps/api/src/http/controllers/OrdersController.ts packages/application/orders/CreateAndPayOrder.ts` returned no matches.
+  - Docs updated: not required beyond order lifecycle behavior docs.
+- [x] Task: Tambahkan alert/retry job untuk inventory movement yang gagal.
+  - Files changed: `apps/api/src/jobs/inventorySyncRetryJob.ts`, `apps/api/src/index.ts`, `README.md`.
+  - Validation: `pnpm --filter @pos/api test` passed; API type-check attempted but still has unrelated pre-existing Express/rate-limit/compression declaration issues.
+  - Docs updated: `README.md` documents retry job environment variables.
+
+#### Partially Completed
+
+- [ ] Task: Make non-quick-pay confirm status update and stock movement a single DB transaction in strict mode.
+  - Completed: strict mode now blocks the HTTP response when stock update/ledger fails; quick-pay strict remains fully transactional.
+  - Remaining: refactor `ConfirmOrder` repository update and stock movement into one DB transaction so failed strict inventory also rolls back the already-confirmed status for the standalone confirm endpoint.
+  - Reason: current `ConfirmOrder` use case commits status before API-level stock helper runs; changing repository transaction boundaries is a larger follow-up.
+
+#### Blocked
+
+- [ ] Task: Full API type-check green.
+  - Blocker: `pnpm --filter @pos/api type-check` still fails on unrelated existing Express v4/v5 `RateLimitRequestHandler` type mismatch, missing `@types/compression`, and `featureGuard.ts` table cast issue.
+  - Required next step: dependency/type hygiene pass for API package.
+
+#### Not Attempted
+
+- [ ] Task: Frontend UI for inventory sync alerts.
+  - Reason: user requested alert/retry job; backend job logs warning alerts and durable failed status. No UI change was required in this batch.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: Application package compiles.
+- Command: `pnpm --filter @pos/api test`
+- Result: pass
+- Notes: 19 API tests passed.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: fail
+- Notes: unrelated existing API type issues in `featureGuard.ts`, `routes/index.ts`, and missing `@types/compression` declaration.
+- Command: `rg -n "catch\(\(\) => \{\}\)|console\.error" apps/api/src/http/controllers/OrdersController.ts packages/application/orders/CreateAndPayOrder.ts`
+- Result: pass (no matches)
+- Notes: requested silent failures removed from the specified files.
+
+### Documentation Updates
+
+- File: `docs/ORDER_LIFECYCLE.md`
+- Change: documented strict vs allow-negative inventory policy, quick-pay transactional behavior, and durable retry/audit fallback.
+- File: `README.md`
+- Change: documented inventory sync retry job environment variables.
+
+### Checklist Updates
+
+- File: `PLANS.md`
+- Change: added and updated active plan for inventory policy/retry execution.
+
+### Continuation Notes
+
+Next safest follow-up is to make standalone `/api/orders/:id/confirm` status transition and stock movement share one DB transaction in strict mode, then clean the existing API type-check blockers.

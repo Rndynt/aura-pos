@@ -50,3 +50,9 @@ AuraPoS adalah monorepo aplikasi Point of Sale (POS) untuk UMKM yang mencakup fr
 - `BASE_DOMAIN`: domain utama untuk resolusi subdomain tenant (default `aurapos.my.id`).
 - `ALLOW_TENANT_HEADER`: kontrol fallback `x-tenant-id`/`tenant_id` di non-production; set `false` untuk mematikannya.
 - `TENANT_HEADER_SERVICE_TOKEN`: token service/device untuk mengizinkan fallback `x-tenant-id`/`tenant_id` di production melalui header `x-tenant-service-token`. Tanpa token ini, production wajib memakai subdomain tenant.
+
+## Environment Variables Tambahan (Inventory Retry)
+- `INVENTORY_SYNC_RETRY_INTERVAL_MS`: interval job retry `inventory_sync_errors` (default `60000`).
+- `INVENTORY_SYNC_RETRY_BATCH_SIZE`: jumlah maksimum error pending yang diproses per tick (default `25`).
+- `INVENTORY_SYNC_RETRY_MAX_RETRIES`: batas retry sebelum record ditandai `failed` (default `5`).
+- `INVENTORY_SYNC_RETRY_DELAY_MS`: jeda sebelum retry berikutnya setelah gagal (default `300000`).

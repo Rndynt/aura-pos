@@ -679,3 +679,31 @@ export const inventoryMovements = pgTable("inventory_movements", {
 export const insertInventoryMovementSchema = createInsertSchema(inventoryMovements).omit({ id: true, createdAt: true });
 export type InsertInventoryMovement = z.infer<typeof insertInventoryMovementSchema>;
 export type InventoryMovement = typeof inventoryMovements.$inferSelect;
+
+// ── Durable Inventory Sync Errors / Retry Queue ──────────────────────────────
+
+export const inventorySyncErrors = pgTable("inventory_sync_errors", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  outletId: uuid("outlet_id").references(() => outlets.id, { onDelete: "set null" }),
+  orderId: uuid("order_id").references(() => orders.id, { onDelete: "set null" }),
+  productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+  operation: varchar("operation", { length: 40 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  payload: jsonb("payload").notNull(),
+  lastError: text("last_error").notNull(),
+  retryCount: integer("retry_count").notNull().default(0),
+  nextRetryAt: timestamp("next_retry_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  tenantIdx: index("inventory_sync_errors_tenant_idx").on(table.tenantId),
+  statusNextRetryIdx: index("inventory_sync_errors_status_next_retry_idx").on(table.status, table.nextRetryAt),
+  orderIdx: index("inventory_sync_errors_order_idx").on(table.orderId),
+  productIdx: index("inventory_sync_errors_product_idx").on(table.productId),
+}));
+
+export const insertInventorySyncErrorSchema = createInsertSchema(inventorySyncErrors).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertInventorySyncError = z.infer<typeof insertInventorySyncErrorSchema>;
+export type InventorySyncError = typeof inventorySyncErrors.$inferSelect;
