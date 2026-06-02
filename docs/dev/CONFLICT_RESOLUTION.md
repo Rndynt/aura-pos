@@ -253,6 +253,8 @@ The `sync-conflicts.tsx` page (`/sync-conflicts` route) provides owner/manager t
 | Abaikan (Ignore) | `PATCH /api/sync/conflicts/:id/resolve` `{ resolution: "ignored" }` | Dismisses; order was already processed as best effort |
 | Expand | (client-side) | Shows full `conflict_data` JSON for debugging |
 
+Conflict resolution mutations in the POS terminal use the shared `apiRequest` helper. The helper sends `credentials: "include"` and builds headers with `buildApiHeaders()`, so tenant context tokens, terminal tokens, and the active outlet header are attached when the terminal has those contexts available.
+
 ### Conflict Detail Example (PRICE_CHANGED)
 ```json
 {

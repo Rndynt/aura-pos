@@ -2968,3 +2968,152 @@ Make order creation retry-safe by enforcing `(tenant_id, idempotency_key)` uniqu
 ### Continuation Notes
 
 Next safest batch is to fix the unrelated API type-check blockers (`express-rate-limit` Express type mismatch and `compression` typings), then add optional real-Postgres duplicate-key race coverage for create order/create-and-pay.
+
+## Plan: Tenant-aware POS `apiRequest` conflict resolution headers
+
+### Source
+
+- Tasklist: User-provided 4-item implementation request for `apiRequest` tenant/outlet context and conflict resolve header coverage.
+- User request: Replace or update POS `apiRequest`, audit imports, and add mocked fetch/header assertion for conflict resolve.
+- Date started: 2026-06-02
+- Current status: Implemented; validation attempted in this batch.
+
+### Goal
+
+Ensure POS terminal mutation calls made through the shared `apiRequest` helper include session credentials plus tenant/outlet context headers from the existing outlet/tenant helpers, and cover sync conflict resolution with a mocked fetch assertion.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active user tasklist/checklist
+- [x] Relevant docs (`docs/dev/CONFLICT_RESOLUTION.md`, `docs/dev/SYNC_PROTOCOL.md`)
+- [x] Relevant source files (`queryClient.ts`, `outlet.ts`, `tenant.ts`, `sync-conflicts.tsx`, `lib/api/hooks.ts`)
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: No backend implementation changes required.
+- Files inspected: `docs/dev/CONFLICT_RESOLUTION.md`, `docs/dev/SYNC_PROTOCOL.md`.
+- Findings: Conflict resolution endpoint is tenant-scoped (`PATCH /api/sync/conflicts/:id/resolve`) and frontend requests must preserve credentials and tenant/outlet context.
+- Tasks: None changed server-side.
+- Risks: Backend must continue rejecting missing or mismatched tenant context.
+- Validation: Frontend mocked fetch assertion verifies request shape.
+
+#### Database/Schema Workstream
+
+- Scope: No schema changes.
+- Files inspected: Conflict documentation for `server_sync_conflicts` behavior.
+- Findings: Header propagation change does not alter persisted data shape.
+- Tasks: None.
+- Risks: None introduced.
+- Validation: Not applicable.
+
+#### Frontend/UI Workstream
+
+- Scope: POS shared request helper and sync conflict page usage.
+- Files inspected: `apps/pos-terminal-web/src/lib/queryClient.ts`, `apps/pos-terminal-web/src/lib/outlet.ts`, `apps/pos-terminal-web/src/pages/sync-conflicts.tsx`.
+- Findings: `sync-conflicts.tsx` used `apiRequest`; centralizing header behavior in `apiRequest` fixes this and future calls.
+- Tasks: Updated `apiRequest` to call `buildApiHeaders()` while preserving `credentials: "include"`; switched outlet helper import to a runtime-friendly relative import.
+- Risks: `buildTenantAwareHeaders()` intentionally sends raw tenant header only when server-issued tenant or terminal context tokens are present.
+- Validation: Mocked fetch test and type-check attempted.
+
+#### Tests/Validation Workstream
+
+- Scope: Header coverage for conflict resolve request.
+- Files inspected: Existing package scripts and test conventions.
+- Findings: POS terminal package has no existing test script; root has `tsx`, so a Node test was added under `tests/` and run with `pnpm exec tsx --test`.
+- Tasks: Added `tests/pos-terminal-api-request.test.ts`.
+- Risks: None observed in this batch.
+- Validation: Targeted mocked fetch test and package type-check passed.
+
+#### Documentation Workstream
+
+- Scope: Conflict resolution docs.
+- Files inspected: `docs/dev/CONFLICT_RESOLUTION.md`.
+- Findings: Per-conflict action table did not document tenant-aware frontend headers.
+- Tasks: Add note that conflict UI uses `apiRequest`, includes credentials, and adds tenant/outlet headers via `buildApiHeaders()`.
+- Risks: None.
+- Validation: Documentation reviewed with source changes.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Tenant/outlet header propagation for tenant-scoped mutations.
+- Files inspected: `apps/pos-terminal-web/src/lib/tenant.ts`, `apps/pos-terminal-web/src/lib/outlet.ts`, `apps/pos-terminal-web/src/lib/queryClient.ts`, `apps/pos-terminal-web/src/lib/api/hooks.ts`, `apps/pos-terminal-web/src/pages/sync-conflicts.tsx`.
+- Findings: Only active `apiRequest` call is conflict resolve; stale import in API hooks was unused. Central helper now includes existing tenant-context-token/terminal-token-gated tenant header and active outlet header.
+- Tasks: Updated helper and removed unused import.
+- Risks: Raw localStorage tenant ID is still not treated as authority, matching existing security design.
+- Validation: Mocked fetch assertion covers credentials, tenant token, terminal token, tenant ID, and outlet ID.
+
+### Execution Order
+
+1. Read required instructions/docs/source.
+2. Audit `apiRequest` imports and usage.
+3. Update central POS `apiRequest` helper.
+4. Add mocked fetch assertion for conflict resolve headers.
+5. Synchronize conflict-resolution docs and plan.
+6. Run validation.
+7. Commit and open PR.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Update `apiRequest` to use tenant/outlet-aware headers.
+  - Files changed: `apps/pos-terminal-web/src/lib/queryClient.ts`, `apps/pos-terminal-web/src/lib/outlet.ts`
+  - Validation: Targeted mocked fetch test passed; type-check attempted.
+  - Docs updated: `docs/dev/CONFLICT_RESOLUTION.md`
+- [x] Task: Audit `apiRequest` imports.
+  - Files changed: `apps/pos-terminal-web/src/lib/api/hooks.ts`
+  - Validation: `rg "apiRequest" apps/pos-terminal-web/src -n` showed only the helper export and sync conflict page usage after cleanup.
+  - Docs updated: This plan documents the audit.
+- [x] Task: Add conflict resolve request header assertion.
+  - Files changed: `tests/pos-terminal-api-request.test.ts`
+  - Validation: `pnpm exec tsx --test tests/pos-terminal-api-request.test.ts` passed.
+  - Docs updated: None required beyond plan and conflict docs.
+
+#### Partially Completed
+
+- [ ] Task: None.
+  - Completed: None.
+  - Remaining: None.
+  - Reason: No partial tasks in this batch.
+
+#### Blocked
+
+- [ ] Task: None.
+  - Blocker: None.
+  - Required next step: None.
+
+#### Not Attempted
+
+- [ ] Task: UI screenshot.
+  - Reason: No perceptible UI behavior or visual change was made.
+
+### Validation Log
+
+- Command: `rg "apiRequest" apps/pos-terminal-web/src -n`
+- Result: Passed; only helper export and sync-conflict usage remained.
+- Notes: Removed unused import from centralized API hooks.
+- Command: `pnpm exec tsx --test tests/pos-terminal-api-request.test.ts`
+- Result: Passed.
+- Notes: Verifies conflict resolve `PATCH` request includes credentials and tenant/outlet-aware headers.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: Passed.
+- Notes: POS terminal package type-check completed successfully after this change.
+
+### Documentation Updates
+
+- File: `docs/dev/CONFLICT_RESOLUTION.md`
+- Change: Documented that conflict resolution UI requests use tenant-aware `apiRequest` headers and credentials.
+
+### Checklist Updates
+
+- File: `PLANS.md`
+- Change: Added this active plan with completed, partial, validation, and continuation status.
+
+### Continuation Notes
+
+This header task is implemented and validated. No continuation is required for this batch.

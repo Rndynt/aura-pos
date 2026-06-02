@@ -1,4 +1,4 @@
-import { buildTenantAwareHeaders } from "@/lib/tenant";
+import { buildTenantAwareHeaders } from "./tenant";
 
 const STORAGE_KEY = "aurapos.activeOutletId";
 
