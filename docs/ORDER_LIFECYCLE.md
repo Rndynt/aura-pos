@@ -208,6 +208,7 @@ A: Not yet implemented. Current system: void order (don't mark complete) and cre
 
 ### Database Schema
 - `orders` table: `id`, `tenant_id`, `order_type_id`, `status`, `payment_status`, etc.
+- `order_number_sequences` table: tenant-scoped order number allocator keyed by `(tenant_id, business_date)` with `last_seq`. Order creation increments this row inside the database transaction with `INSERT ... ON CONFLICT ... DO UPDATE ... RETURNING last_seq`; `business_date` is derived from `tenants.timezone`, not the server UTC date.
 - `order_items` table: Links items to orders with quantity and prices
 - `order_payments` table: Records all payments (full and partial)
 

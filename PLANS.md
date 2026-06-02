@@ -1406,3 +1406,133 @@ Make `POST /api/orders/:id/payments` safe to retry with the same idempotency key
 
 ### Continuation Notes
 Next safest follow-up is to fix existing API type-check blockers so `pnpm --filter @pos/api type-check` can be restored as a clean gate.
+
+## Plan: Transaction-safe tenant business-date order numbers
+
+### Source
+- Tasklist: User-provided 5-item implementation request for `order_number_sequences`.
+- User request: Add sequence table keyed by `(tenant_id, business_date)`, use transactional upsert sequence increments, replace `generateOrderNumber` in repository and create-and-pay use case, use tenant timezone for business date, and add same-tenant parallel order tests.
+- Date started: 2026-06-02
+- Current status: Implemented; API package type-check still has unrelated pre-existing blockers.
+
+### Goal
+Make order number generation concurrency-safe per tenant and per tenant-local business date, replacing count-based order numbering that can collide under parallel order creation.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active user tasklist
+- [x] Relevant docs (`docs/ORDER_LIFECYCLE.md` inspected for order lifecycle/data-integrity context)
+- [x] Relevant source files (`shared/schema.ts`, `OrderRepository.ts`, `CreateAndPayOrder.ts`, existing create-and-pay concurrency tests)
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: Order creation and create-and-pay order number generation.
+- Files inspected: `packages/infrastructure/repositories/orders/OrderRepository.ts`, `packages/application/orders/CreateAndPayOrder.ts`.
+- Findings: Both paths used count-based date sequence generation; create-and-pay generated inside transaction but still counted orders.
+- Tasks: Completed. Shared sequence helper now allocates numbers with tenant timezone and upserted sequence rows; create-and-pay calls it inside the order/payment transaction; repository `generateOrderNumber` wraps sequence allocation in a transaction.
+- Risks: Normal `CreateOrder` still calls repository `generateOrderNumber` before repository `create`, so sequence allocation is concurrency-safe but may leave gaps if later order insertion fails.
+- Validation: API tests passed; application and infrastructure package type-check passed.
+
+#### Database/Schema Workstream
+- Scope: New sequence table and migration.
+- Files inspected: `shared/schema.ts`, `migrations/`.
+- Findings: Tenant timezone exists on `tenants.timezone`; no sequence table existed.
+- Tasks: Completed. Added `order_number_sequences` schema and `0012_order_number_sequences.sql` migration.
+- Risks: No historical backfill was added because current task targets future sequence generation.
+- Validation: Type-check for application/infrastructure packages and API tests.
+
+#### Tests/Validation Workstream
+- Scope: Concurrency tests.
+- Files inspected: `apps/api/src/__tests__/create-and-pay-stock-concurrency.test.ts`.
+- Findings: Existing fake DB serialized transactions and was expanded to emulate sequence upsert/tenant timezone.
+- Tasks: Completed. Added many-parallel same-tenant order number uniqueness/sequence test and timezone business-date unit coverage.
+- Risks: Fake Drizzle emulates the raw SQL path; full database integration would require a real PostgreSQL test harness.
+- Validation: `pnpm --filter @pos/api test` passed.
+
+#### Documentation Workstream
+- Scope: Order lifecycle docs and plan.
+- Files inspected: `docs/ORDER_LIFECYCLE.md`, `PLANS.md`.
+- Findings: Docs mentioned transaction-safe create-and-pay but not sequence table.
+- Tasks: Completed. Added database schema note for `order_number_sequences` and transactional tenant-timezone sequence allocation.
+- Risks: None known.
+- Validation: Documentation review.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Tenant-owned sequence isolation.
+- Files inspected: `shared/schema.ts`, order creation paths.
+- Findings: Sequence key needed tenant and business date; timezone needed to be fetched by tenant inside helper.
+- Tasks: Completed. Sequence primary key is `(tenant_id, business_date)`, tenant FK cascades, and helper fetches `tenants.timezone` by tenant id.
+- Risks: Invalid tenant timezone falls back to UTC to keep order creation available.
+- Validation: Tenant timezone test confirms non-UTC business date behavior.
+
+### Execution Order
+1. [x] Add schema/migration for `order_number_sequences`.
+2. [x] Implement shared transactional order number helper using tenant timezone and upsert increment.
+3. [x] Replace repository and create-and-pay generators.
+4. [x] Update fake DB and add concurrency tests.
+5. [x] Update docs/plan.
+6. [x] Run relevant validation, commit, create PR.
+
+### Progress
+
+#### Completed
+- [x] Task: Create `order_number_sequences` with `(tenant_id, business_date)` key and `last_seq`.
+  - Files changed: `shared/schema.ts`, `migrations/0012_order_number_sequences.sql`
+  - Validation: API tests passed; application/infrastructure type-check passed.
+  - Docs updated: `docs/ORDER_LIFECYCLE.md`
+- [x] Task: Use transactional `INSERT ... ON CONFLICT ... DO UPDATE SET last_seq = last_seq + 1 RETURNING last_seq`.
+  - Files changed: `packages/application/orders/orderNumberSequence.ts`
+  - Validation: API tests passed.
+  - Docs updated: `docs/ORDER_LIFECYCLE.md`
+- [x] Task: Replace `generateOrderNumber` in `OrderRepository.ts` and `CreateAndPayOrder.ts`.
+  - Files changed: `packages/infrastructure/repositories/orders/OrderRepository.ts`, `packages/application/orders/CreateAndPayOrder.ts`
+  - Validation: API tests passed; package type-check passed.
+  - Docs updated: `docs/ORDER_LIFECYCLE.md`
+- [x] Task: Use tenant timezone for `business_date`.
+  - Files changed: `packages/application/orders/orderNumberSequence.ts`
+  - Validation: Added timezone business-date test.
+  - Docs updated: `docs/ORDER_LIFECYCLE.md`
+- [x] Task: Add concurrency tests for many parallel orders on one tenant.
+  - Files changed: `apps/api/src/__tests__/create-and-pay-stock-concurrency.test.ts`
+  - Validation: API tests passed.
+  - Docs updated: None.
+
+#### Partially Completed
+- [ ] Task: None.
+  - Completed:
+  - Remaining:
+  - Reason:
+
+#### Blocked
+- [ ] Task: Full `@pos/api` type-check gate.
+  - Blocker: Existing unrelated TypeScript errors in `apps/api/src/http/middleware/featureGuard.ts`, `apps/api/src/http/routes/index.ts`, and missing `compression` declarations in `apps/api/src/index.ts`.
+  - Required next step: Separate cleanup of API type dependency/type errors.
+
+#### Not Attempted
+- [ ] Task: Real PostgreSQL integration concurrency test.
+  - Reason: Existing test suite uses fake DB unit coverage for this flow; no real Postgres test harness was introduced in this batch.
+
+### Validation Log
+- Command: pnpm --filter @pos/api test
+- Result: Pass (24 tests passed)
+- Notes: Covers same-tenant parallel order number allocation and timezone business date helper.
+- Command: pnpm --filter @pos/application type-check && pnpm --filter @pos/infrastructure type-check
+- Result: Pass
+- Notes: Validates changed package code.
+- Command: pnpm --filter @pos/api type-check
+- Result: Fail (unrelated/pre-existing blockers)
+- Notes: Errors are in feature guard cast, express-rate-limit/@types express mismatch, and missing `@types/compression`.
+
+### Documentation Updates
+- File: `docs/ORDER_LIFECYCLE.md`
+- Change: Documented `order_number_sequences` and tenant-timezone business-date transactional allocation.
+
+### Checklist Updates
+- File: User tasklist in prompt
+- Change: All five requested implementation items completed; no source checklist file exists.
+
+### Continuation Notes
+Recommended next batch: fix existing API type-check blockers or add a real PostgreSQL integration test harness for transaction-level sequence allocation under true database concurrency.

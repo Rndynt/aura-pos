@@ -20,6 +20,7 @@ import {
 import { eq, and, gte, lte, inArray, desc, sql } from 'drizzle-orm';
 import { toInsertOrderItemDb, toInsertOrderItemModifierDb, toDomainSelectedOption } from '../../../application/orders/mappers';
 import type { OrderItem as DomainOrderItem } from '@pos/domain/orders/types';
+import { nextOrderNumberForTenant } from '../../../application/orders/orderNumberSequence';
 
 export interface OrderFilters {
   status?: string[];
@@ -530,37 +531,17 @@ export class OrderRepository
   }
 
   /**
-   * Generate unique order number for a tenant.
-   * Uses count-based approach with retry on unique constraint violation (P1.3).
-   * The unique index on (tenant_id, order_number) enforces DB-level uniqueness.
+   * Generate a unique order number for a tenant-local business date.
+   *
+   * The sequence increment is allocated through `order_number_sequences` with
+   * `INSERT ... ON CONFLICT ... DO UPDATE ... RETURNING last_seq`, so concurrent
+   * requests for the same tenant/date serialize at the database row instead of
+   * racing on `count(orders)`.
    */
-  async generateOrderNumber(tenantId: string, attempt = 0): Promise<string> {
-    const MAX_ATTEMPTS = 10;
+  async generateOrderNumber(tenantId: string): Promise<string> {
     try {
-      const today = new Date();
-      const datePrefix = today.toISOString().split('T')[0].replace(/-/g, '');
-
-      const startOfDay = new Date(today);
-      startOfDay.setHours(0, 0, 0, 0);
-
-      const countResult = await this.db
-        .select({ value: sql<number>`count(*)::int` })
-        .from(orders)
-        .where(
-          and(
-            eq(orders.tenantId, tenantId),
-            gte(orders.orderDate, startOfDay)
-          )
-        );
-
-      const todayCount = Number(countResult[0]?.value ?? 0);
-      const seq = (todayCount + 1 + attempt).toString().padStart(4, '0');
-      return `ORD-${datePrefix}-${seq}`;
+      return await this.db.transaction((tx) => nextOrderNumberForTenant(tx, tenantId));
     } catch (error) {
-      if (attempt < MAX_ATTEMPTS) {
-        // Retry with incremented attempt to avoid collision
-        return this.generateOrderNumber(tenantId, attempt + 1);
-      }
       this.handleError('generate order number', error);
     }
   }

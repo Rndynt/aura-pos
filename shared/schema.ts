@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, uuid, integer, decimal, boolean, timestamp, json, jsonb, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, uuid, integer, decimal, boolean, timestamp, date, json, jsonb, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -352,6 +352,21 @@ export const insertTenantOrderTypeSchema = createInsertSchema(tenantOrderTypes).
 export const selectTenantOrderTypeSchema = createSelectSchema(tenantOrderTypes);
 export type InsertTenantOrderType = z.infer<typeof insertTenantOrderTypeSchema>;
 export type TenantOrderType = typeof tenantOrderTypes.$inferSelect;
+
+
+export const orderNumberSequences = pgTable("order_number_sequences", {
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  businessDate: date("business_date").notNull(),
+  lastSeq: integer("last_seq").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  pk: primaryKey({ name: "order_number_sequences_tenant_id_business_date_pk", columns: [table.tenantId, table.businessDate] }),
+  tenantIdx: index("order_number_sequences_tenant_idx").on(table.tenantId),
+}));
+
+export type OrderNumberSequence = typeof orderNumberSequences.$inferSelect;
+export type InsertOrderNumberSequence = typeof orderNumberSequences.$inferInsert;
 
 export const orders = pgTable("orders", {
   id: uuid("id").primaryKey().defaultRandom(),

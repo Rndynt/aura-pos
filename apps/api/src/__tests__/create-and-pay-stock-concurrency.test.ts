@@ -7,7 +7,8 @@ process.env.DATABASE_URL ||= 'postgres://user:pass@127.0.0.1:5432/aurapos_test';
 process.env.BETTER_AUTH_SECRET ||= 'test-secret-with-at-least-32-characters';
 
 const { CreateAndPayOrder } = await import('@pos/application/orders/CreateAndPayOrder');
-const { inventoryMovements, orderItems, orderPayments, orders, products } = await import('@shared/schema');
+const { inventoryMovements, orderItems, orderPayments, orders, products, tenants } = await import('@shared/schema');
+const { getBusinessDateForTimezone } = await import('@pos/application/orders/orderNumberSequence');
 
 type ProductRow = {
   id: string;
@@ -23,6 +24,8 @@ type Store = {
   orderItems: any[];
   payments: any[];
   movements: any[];
+  tenantTimezone: string;
+  orderNumberSequences: Record<string, number>;
 };
 
 class AsyncMutex {
@@ -60,6 +63,8 @@ class FakeDb {
         this.store.orderItems = snapshot.orderItems;
         this.store.payments = snapshot.payments;
         this.store.movements = snapshot.movements;
+        this.store.tenantTimezone = snapshot.tenantTimezone;
+        this.store.orderNumberSequences = snapshot.orderNumberSequences;
         throw error;
       }
     });
@@ -75,6 +80,17 @@ class FakeDb {
 
   update(table: unknown) {
     return new FakeUpdate(this.store, table);
+  }
+
+  async execute(query: any): Promise<any[]> {
+    const chunks = query?.queryChunks ?? [];
+    const tenantId = chunks.find((chunk: any) => typeof chunk === 'string' && chunk.startsWith('tenant-')) ?? 'tenant-1';
+    const businessDate = chunks.find((chunk: any) => typeof chunk === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(chunk))
+      ?? getBusinessDateForTimezone(new Date(), this.store.tenantTimezone);
+    const key = `${tenantId}:${businessDate}`;
+    const lastSeq = (this.store.orderNumberSequences[key] ?? 0) + 1;
+    this.store.orderNumberSequences[key] = lastSeq;
+    return [{ last_seq: lastSeq }];
   }
 }
 
@@ -122,7 +138,9 @@ class FakeSelect {
   private async execute(): Promise<any[]> {
     let rows: any[];
 
-    if (this.table === products) {
+    if (this.table === tenants) {
+      rows = [{ id: 'tenant-1', timezone: this.store.tenantTimezone }];
+    } else if (this.table === products) {
       rows = [this.store.product].map((product) => ({
         id: product.id,
         isActive: product.isActive,
@@ -252,6 +270,8 @@ function buildUseCase(initialStockQty: number) {
     orderItems: [],
     payments: [],
     movements: [],
+    tenantTimezone: 'Asia/Jakarta',
+    orderNumberSequences: {},
   };
 
   return {
@@ -301,6 +321,39 @@ describe('CreateAndPayOrder stock concurrency', () => {
     assert.equal(store.movements.length, 1);
     assert.equal(store.movements[0].quantityBefore, 1);
     assert.equal(store.movements[0].quantityAfter, 0);
+  });
+
+
+  it('allocates unique sequential order numbers for many parallel orders on the same tenant business date', async () => {
+    const { store, useCase } = buildUseCase(50);
+    const parallelCount = 25;
+
+    const results = await Promise.all(
+      Array.from({ length: parallelCount }, (_, index) =>
+        useCase.execute(orderInput(`parallel-sequence-${index + 1}`)),
+      ),
+    );
+
+    const orderNumbers = results.map((result) => result.order.orderNumber);
+    const uniqueOrderNumbers = new Set(orderNumbers);
+    const businessDate = getBusinessDateForTimezone(new Date(), store.tenantTimezone).replace(/-/g, '');
+
+    assert.equal(uniqueOrderNumbers.size, parallelCount);
+    assert.deepEqual(
+      orderNumbers.sort(),
+      Array.from({ length: parallelCount }, (_, index) =>
+        `ORD-${businessDate}-${String(index + 1).padStart(4, '0')}`,
+      ),
+    );
+    assert.equal(store.orders.length, parallelCount);
+    assert.equal(store.orderNumberSequences[`tenant-1:${getBusinessDateForTimezone(new Date(), store.tenantTimezone)}`], parallelCount);
+  });
+
+  it('derives business date from tenant timezone instead of UTC server date', () => {
+    const utcLateNight = new Date('2026-06-02T17:30:00.000Z');
+
+    assert.equal(getBusinessDateForTimezone(utcLateNight, 'Asia/Jakarta'), '2026-06-03');
+    assert.equal(getBusinessDateForTimezone(utcLateNight, 'UTC'), '2026-06-02');
   });
 
   it('keeps a fully paid quick-pay order operationally confirmed by default', async () => {

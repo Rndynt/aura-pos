@@ -22,7 +22,7 @@ import {
   products,
   type InsertOrder,
 } from '../../../shared/schema';
-import { eq, and, inArray, gte, count } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { toInsertOrderItemDb, toInsertOrderItemModifierDb } from './mappers';
 import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE } from '@pos/core/pricing';
 import { calculateSelectedOptionsDelta, flattenSelectedOptions } from '../catalog';
@@ -30,6 +30,7 @@ import type { SelectedOption, SelectedOptionGroup } from '@pos/domain/orders/typ
 import { deductStockForItems } from '../inventory/stockMovements';
 import { resolveInventoryPolicy } from '../inventory/inventoryPolicy';
 import { recordInventorySyncError } from '../inventory/inventorySyncErrors';
+import { nextOrderNumberForTenant } from './orderNumberSequence';
 
 // ---------------------------------------------------------------------------
 // Input / Output types
@@ -194,8 +195,9 @@ export class CreateAndPayOrder {
     // ------------------------------------------------------------------
 
     // ------------------------------------------------------------------
-    // Generate order number with retry (P1.3: unique constraint safety)
-    // Deferred to inside transaction to prevent race condition.
+    // Allocate tenant-local business-date order number from order_number_sequences.
+    // Deferred to inside transaction so sequence allocation, order, payment,
+    // and strict inventory writes commit or roll back together.
     // ------------------------------------------------------------------
 
     const inventoryPolicy = await resolveInventoryPolicy(tenant_id, this.db);
@@ -242,8 +244,8 @@ export class CreateAndPayOrder {
         }
       }
 
-      // Generate order number inside transaction to prevent race condition
-      const orderNumber = await this.generateOrderNumber(tenant_id, tx);
+      // Allocate order number inside transaction to prevent concurrent duplicates
+      const orderNumber = await nextOrderNumberForTenant(tx, tenant_id);
 
       // 1. Insert order
       const orderData: Omit<InsertOrder, 'id' | 'createdAt' | 'updatedAt'> = {
@@ -394,33 +396,4 @@ export class CreateAndPayOrder {
     };
   }
 
-  /**
-   * Generate a unique order number for the tenant.
-   * Uses count-based approach with retry on unique constraint violation (P1.3).
-   * Runs inside transaction to prevent race condition on concurrent orders.
-   */
-  private async generateOrderNumber(tenantId: string, tx?: any, attempt = 0): Promise<string> {
-    const MAX_ATTEMPTS = 5;
-    const today = new Date();
-    const datePrefix = today.toISOString().split('T')[0].replace(/-/g, '');
-
-    // Count today's orders for this tenant to derive sequence number
-    const startOfDay = new Date(today);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const dbOrTx = tx ?? this.db;
-    const countResult = await dbOrTx
-      .select({ value: count() })
-      .from(orders)
-      .where(
-        and(
-          eq(orders.tenantId, tenantId),
-          gte(orders.orderDate, startOfDay)
-        )
-      );
-
-    const todayCount = Number(countResult[0]?.value ?? 0);
-    const seq = (todayCount + 1 + attempt).toString().padStart(4, '0');
-    return `ORD-${datePrefix}-${seq}`;
-  }
 }
