@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useTables, useOpenOrders } from "@/lib/api/tableHooks";
 import { useCart } from "@/hooks/useCart";
 import { getActiveTenantId } from "@/lib/tenant";
-import { getActiveOutletId } from "@/lib/outlet";
+import { buildApiHeaders } from "@/lib/outlet";
 import { queryClient } from "@/lib/queryClient";
 import {
   Search,
@@ -140,10 +140,8 @@ export default function TablesManagementPage() {
 
   const handleContinueOrder = async (order: any) => {
     try {
-      const _outletId = getActiveOutletId();
-    const _hdrs: Record<string, string> = { "x-tenant-id": getActiveTenantId() };
-    if (_outletId) _hdrs["x-outlet-id"] = _outletId;
-    const res = await fetch(`/api/orders/${order.id}`, { headers: _hdrs });
+    const _hdrs = buildApiHeaders();
+    const res = await fetch(`/api/orders/${order.id}`, { headers: _hdrs, credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch order details");
       const json = await res.json();
       toast({ title: "Order dimuat", description: `Order #${order.orderNumber} siap dilanjutkan.` });

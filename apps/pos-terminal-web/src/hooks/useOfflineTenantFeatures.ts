@@ -14,6 +14,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { getActiveTenantId } from "@/lib/tenant";
+import { buildApiHeaders } from "@/lib/outlet";
 import {
   getCachedOrderTypes,
   saveCachedOrderTypes,
@@ -41,7 +42,7 @@ export interface OfflineTenantFeaturesResult {
 
 async function fetchWithTenant(url: string) {
   const res = await fetch(url, {
-    headers: { "x-tenant-id": getActiveTenantId() },
+    headers: buildApiHeaders(),
     credentials: "include",
   });
   if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);

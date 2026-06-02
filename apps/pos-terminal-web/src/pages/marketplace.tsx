@@ -7,6 +7,7 @@ import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import { useTenantFeatures } from "@/lib/api/hooks";
 import { useToast } from "@/hooks/use-toast";
 import { getActiveTenantId } from "@/lib/tenant";
+import { buildApiHeaders } from "@/lib/outlet";
 import { PageHeader } from "@/components/design";
 import {
   Crown, Sparkles, ChevronRight, X, Zap,
@@ -600,7 +601,8 @@ export default function MarketplacePage() {
     try {
       const res = await fetch("/api/tenants/plan", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-tenant-id": getActiveTenantId() },
+        headers: buildApiHeaders({ "Content-Type": "application/json" }),
+        credentials: "include",
         body: JSON.stringify({ plan_tier: tier }),
       });
       if (!res.ok) throw new Error("Gagal mengganti paket");
@@ -633,7 +635,8 @@ export default function MarketplacePage() {
         const newVal = !isModuleActive(mItem);
         const res = await fetch("/api/tenants/modules", {
           method: "PATCH",
-          headers: { "Content-Type": "application/json", "x-tenant-id": getActiveTenantId() },
+          headers: buildApiHeaders({ "Content-Type": "application/json" }),
+          credentials: "include",
           body: JSON.stringify({ [mItem.moduleConfigKey]: newVal }),
         });
         if (!res.ok) throw new Error();
@@ -643,7 +646,8 @@ export default function MarketplacePage() {
         const fItem = item as FeatureItem;
         const res = await fetch("/api/tenants/features/toggle", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-tenant-id": getActiveTenantId() },
+          headers: buildApiHeaders({ "Content-Type": "application/json" }),
+          credentials: "include",
           body: JSON.stringify({ feature_code: fItem.featureCode }),
         });
         if (!res.ok) throw new Error();

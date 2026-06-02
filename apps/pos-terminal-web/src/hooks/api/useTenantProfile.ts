@@ -21,11 +21,8 @@ type TenantProfileResponse = {
 /**
  * Fetch tenant profile from API
  */
-async function fetchTenantProfile(tenantId: string): Promise<TenantProfile> {
+async function fetchTenantProfile(): Promise<TenantProfile> {
   const res = await fetch("/api/tenants/profile", {
-    headers: {
-      "x-tenant-id": tenantId,
-    },
     credentials: "include",
   });
 
@@ -58,7 +55,7 @@ async function fetchTenantProfile(tenantId: string): Promise<TenantProfile> {
 export function useTenantProfile(tenantId: string) {
   return useQuery<TenantProfile>({
     queryKey: ["/api/tenants/profile", tenantId],
-    queryFn: () => fetchTenantProfile(tenantId),
+    queryFn: () => fetchTenantProfile(),
     enabled: !!tenantId,
   });
 }

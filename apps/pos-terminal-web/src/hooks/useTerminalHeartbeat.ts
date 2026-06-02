@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { getOrCreateTerminalIdentity } from "@pos/offline";
 import { getActiveTenantId } from "@/lib/tenant";
+import { buildApiHeaders } from "@/lib/outlet";
 
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const REGISTER_URL = "/api/terminals/register";
@@ -9,7 +10,7 @@ async function registerOrHeartbeat(tenantId: string, terminalId: string, termina
   try {
     const res = await fetch(REGISTER_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-tenant-id": tenantId },
+      headers: buildApiHeaders({ "Content-Type": "application/json" }),
       credentials: "include",
       body: JSON.stringify({
         terminal_code: terminalId,
@@ -28,7 +29,7 @@ async function sendHeartbeat(tenantId: string, serverId: string): Promise<void> 
   try {
     await fetch(`/api/terminals/${serverId}/heartbeat`, {
       method: "PATCH",
-      headers: { "x-tenant-id": tenantId },
+      headers: buildApiHeaders(),
       credentials: "include",
     });
   } catch {

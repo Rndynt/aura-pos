@@ -2197,3 +2197,169 @@ Continue by extracting all table/column definitions from `shared/schema.ts`, con
 ### Continuation Notes
 
 Next agent/operator should run the documented `information_schema.columns` audit and migration against staging with `DATABASE_URL` set, resolve any `Cannot cast ... to uuid` diagnostics, then rerun `pnpm db:check` and relevant API type-check after existing Express/compression typing issues are fixed.
+
+## Plan: Frontend tenant authority hardening
+
+### Source
+- User request: make session/subdomain the frontend tenant source of truth, demote localStorage to display cache, stop sending raw tenant headers from POS request helpers, use signed/server-issued context for dev/offline fallback, and clear invalid tenant cache after login/logout.
+- Date started: 2026-06-02
+- Current status: In progress
+
+### Goal
+Remove localStorage-backed raw `x-tenant-id` authority from POS frontend API calls while preserving tenant-aware display/query cache and supporting authenticated session/subdomain tenant resolution.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (user-provided task list)
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: Tenant middleware compatibility with no frontend tenant header.
+- Files inspected: `apps/api/src/http/middleware/tenant.ts`
+- Findings: Middleware resolved subdomain before raw header/query fallback, but did not use authenticated session tenant as a fallback.
+- Tasks: Add session tenant resolution before raw header/query fallback.
+- Risks: Public/device routes without session still need subdomain or approved device context.
+- Validation: Type-check relevant package.
+
+#### Frontend/UI Workstream
+- Scope: POS request helpers and tenant/outlet cache behavior.
+- Files inspected: `apps/pos-terminal-web/src/lib/tenant.ts`, `apps/pos-terminal-web/src/lib/outlet.ts`, `apps/pos-terminal-web/src/lib/api/hooks.ts`, `apps/pos-terminal-web/src/hooks/api/*`, `apps/pos-terminal-web/src/context/*`, `apps/pos-terminal-web/src/lib/auth.ts`, `apps/pos-terminal-web/src/App.tsx`, `apps/pos-terminal-web/src/pages/home.tsx`
+- Findings: Several helpers always attached `x-tenant-id` from localStorage-backed active tenant cache.
+- Tasks: Centralize tenant-aware header construction without raw tenant header by default; clear invalid tenant/outlet cache on session transitions.
+- Risks: Dev/offline unauthenticated localhost flows require a signed/server-issued tenant context token instead of raw cache.
+- Validation: Type-check relevant package.
+
+#### Database/Schema Workstream
+- Scope: None.
+- Files inspected: None.
+- Findings: No schema change required.
+- Tasks: None.
+- Risks: None.
+- Validation: Not applicable.
+
+#### Tests/Validation Workstream
+- Scope: Type/build validation.
+- Files inspected: package scripts.
+- Findings: pnpm is required by repo instructions.
+- Tasks: Run focused type-checks.
+- Risks: Existing unrelated type errors may appear.
+- Validation: `pnpm --filter @pos/terminal-web type-check`, `pnpm --filter @pos/api type-check`.
+
+#### Documentation Workstream
+- Scope: Plan tracking and tenant env notes if needed.
+- Files inspected: `README.md`, `PLANS.md`
+- Findings: README already documents production tenant header fallback token.
+- Tasks: Update `PLANS.md`; update docs only if public behavior/env changes require it.
+- Risks: Avoid overstating unsupported offline token behavior.
+- Validation: Review final diff.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Eliminate cache-as-authority and raw tenant header sends.
+- Files inspected: tenant/header helper files and API middleware.
+- Findings: Raw `x-tenant-id` from localStorage was a tenant authority risk.
+- Tasks: Prefer subdomain/session, only allow raw header with server-issued/signed token headers present.
+- Risks: Any remaining raw headers must be removed or justified.
+- Validation: ripgrep for `x-tenant-id` in POS request helpers.
+
+### Execution Order
+1. Add safe shared frontend tenant header helper.
+2. Update POS request helpers/hooks/outlet code to use it.
+3. Add session fallback in API tenant middleware.
+4. Clear invalid tenant cache on login/logout/session invalidation.
+5. Validate and update progress.
+
+### Progress
+
+#### Completed
+- [ ] Task: Pending implementation.
+  - Files changed:
+  - Validation:
+  - Docs updated:
+
+#### Partially Completed
+- [ ] Task: Pending implementation.
+  - Completed:
+  - Remaining:
+  - Reason:
+
+#### Blocked
+- [ ] Task: None currently.
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+- [ ] Task: Validation.
+  - Reason: Implementation not complete yet.
+
+### Validation Log
+- Command: Pending
+- Result: Pending
+- Notes:
+
+### Documentation Updates
+- File: `PLANS.md`
+- Change: Added active execution plan.
+
+### Checklist Updates
+- File: User-provided task list
+- Change: Will report completion status in final response.
+
+### Continuation Notes
+Continue by centralizing frontend tenant headers, updating the named helpers/hooks, adding API session fallback, then run focused type-checks.
+
+### Completion Update (2026-06-02)
+
+#### Completed
+- [x] Tenant authority centralized so normal POS frontend requests rely on tenant subdomain or authenticated session instead of localStorage-backed raw `x-tenant-id`.
+  - Files changed: `apps/pos-terminal-web/src/lib/tenant.ts`, `apps/pos-terminal-web/src/lib/outlet.ts`, `apps/pos-terminal-web/src/lib/api/hooks.ts`, `apps/pos-terminal-web/src/hooks/api/*`, and related POS request callers.
+  - Validation: `pnpm --filter @pos/terminal-web type-check` passed.
+  - Docs updated: `README.md`, `PLANS.md`.
+- [x] API tenant middleware accepts authenticated session tenant as server-side authority before raw header/query fallback.
+  - Files changed: `apps/api/src/http/middleware/tenant.ts`, `apps/api/src/index.ts`.
+  - Validation: `pnpm --filter @pos/api type-check` attempted; failed on pre-existing Express type dependency conflicts and missing `@types/compression`, not this tenant middleware change.
+  - Docs updated: `README.md`, `PLANS.md`.
+- [x] Login/logout/session guards clear invalid tenant and outlet cache.
+  - Files changed: `apps/pos-terminal-web/src/lib/auth.ts`, `apps/pos-terminal-web/src/context/TenantContext.tsx`, `apps/pos-terminal-web/src/App.tsx`, `apps/pos-terminal-web/src/pages/home.tsx`.
+  - Validation: `pnpm --filter @pos/terminal-web type-check` passed.
+  - Docs updated: `PLANS.md`.
+
+#### Partially Completed
+- [ ] Server-issued terminal/signed tenant context fallback.
+  - Completed: Frontend only sends raw `x-tenant-id` from `buildTenantAwareHeaders` when a server-issued/signed fallback token is cached (`aurapos.tenantContextToken` or `aurapos.terminalToken`) and exposes the matching token headers; CORS allows those headers.
+  - Remaining: Implement/standardize the server endpoint and verification logic for generic POS terminal tenant context tokens if required beyond the existing production `TENANT_HEADER_SERVICE_TOKEN`/device patterns.
+  - Reason: User asked to avoid localStorage authority; a full generic terminal-token issuance flow is a separate backend/device lifecycle task.
+
+#### Blocked
+- [ ] `@pos/api` full type-check clean pass.
+  - Blocker: Existing Express v4/v5 type mismatch around rate-limit handlers and missing `compression` declaration.
+  - Required next step: Align Express type dependencies and add/declare `@types/compression`.
+
+#### Not Attempted
+- [ ] Full workspace build/test.
+  - Reason: Focused type validation was selected for this tenant-helper security change; API type-check already exposes unrelated package-level blockers.
+
+### Validation Log
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: POS frontend compiles after tenant header/helper updates.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: fail (pre-existing/unrelated type dependency issues)
+- Notes: Errors are in `src/http/routes/index.ts` rate-limit Express type compatibility and `src/index.ts` missing `compression` declarations.
+
+### Documentation Updates
+- File: `README.md`
+- Change: Tenant resolution notes now state normal POS requests resolve tenant from subdomain/session and localStorage is only display/cache.
+- File: `PLANS.md`
+- Change: Added plan and completion update for tenant authority hardening.
+
+### Checklist Updates
+- File: User-provided task list
+- Change: Implemented all frontend header/cache/guard items; token issuance flow documented as partial/future backend hardening.
+
+### Continuation Notes
+Recommended next batch: implement a first-class POS terminal tenant-context token issuance/verification flow and fix the existing API TypeScript dependency mismatch so `@pos/api` type-check can pass cleanly.

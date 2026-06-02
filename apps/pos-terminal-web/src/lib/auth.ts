@@ -1,4 +1,5 @@
-import { setActiveTenantId } from './tenant';
+import { clearActiveTenantCache, setActiveTenantId } from './tenant';
+import { clearActiveOutletId } from './outlet';
 
 export type AuthResult = {
   ok: boolean;
@@ -36,9 +37,13 @@ async function applyTenantFromSession(): Promise<void> {
     const tenantId: string | null = body?.data?.tenantId ?? null;
     if (tenantId) {
       setActiveTenantId(tenantId);
+    } else {
+      clearActiveTenantCache();
+      clearActiveOutletId();
     }
   } catch {
-    // non-fatal — user stays on demo-tenant fallback
+    clearActiveTenantCache();
+    clearActiveOutletId();
   }
 }
 

@@ -170,7 +170,6 @@ export function useCustomerDisplaySender() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-tenant-id': tenantId,
           ...(cfdTokenRef.current ? { 'x-cfd-key': cfdTokenRef.current } : {}),
         },
         body: JSON.stringify(msg),

@@ -26,6 +26,8 @@ import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { useOutlet } from "@/context/OutletContext";
+import { clearActiveTenantCache } from "@/lib/tenant";
+import { clearActiveOutletId } from "@/lib/outlet";
 
 type CurrentUser = {
   id: string;
@@ -183,6 +185,8 @@ export default function HomePage() {
         method: "POST",
         credentials: "include",
       });
+      clearActiveTenantCache();
+      clearActiveOutletId();
       localStorage.clear();
       setLocation("/login");
     } catch {

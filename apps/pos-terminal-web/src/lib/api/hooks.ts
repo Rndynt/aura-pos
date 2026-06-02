@@ -9,7 +9,7 @@ import type { Product } from "@pos/domain/catalog/types";
 import type { Order, OrderItem, OrderPayment, KitchenTicket, SelectedOption, OrderType, TenantOrderType } from "@pos/domain/orders/types";
 import type { TenantFeature, FeatureCheck } from "@pos/domain/tenants/types";
 import { getActiveTenantId } from "@/lib/tenant";
-import { getActiveOutletId } from "@/lib/outlet";
+import { buildApiHeaders, getActiveOutletId } from "@/lib/outlet";
 import {
   getCachedOrderTypes,
   saveCachedOrderTypes,
@@ -66,10 +66,7 @@ function mapApiOrder(raw: Record<string, any>): Order {
 // Helper to add tenant header to fetch requests
 async function fetchWithTenantHeader(url: string) {
   const tenantId = getActiveTenantId();
-  const { getActiveOutletId } = await import("@/lib/outlet");
-  const outletId = getActiveOutletId();
-  const headers: Record<string, string> = { "x-tenant-id": tenantId };
-  if (outletId) headers["x-outlet-id"] = outletId;
+  const headers = buildApiHeaders();
   const res = await fetch(url, {
     headers,
     credentials: "include",
@@ -87,13 +84,7 @@ async function fetchWithTenantHeader(url: string) {
 // Helper to add tenant header to mutations
 async function mutateWithTenantHeader(method: string, url: string, data?: unknown) {
   const tenantId = getActiveTenantId();
-  const { getActiveOutletId } = await import("@/lib/outlet");
-  const outletId = getActiveOutletId();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "x-tenant-id": tenantId,
-  };
-  if (outletId) headers["x-outlet-id"] = outletId;
+  const headers = buildApiHeaders({ "Content-Type": "application/json" });
   const res = await fetch(url, {
     method,
     headers,
