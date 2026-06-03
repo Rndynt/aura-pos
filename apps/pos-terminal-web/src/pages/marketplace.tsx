@@ -16,6 +16,7 @@ import {
   Layers, SplitSquareVertical, Tag, ClipboardList, Printer, QrCode,
   BarChart3, PieChart, Globe, Webhook, CalendarClock, Bell, PackageSearch,
   Banknote, Link2,
+  Moon, Palette, BookOpen,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -327,6 +328,30 @@ const FEATURE_CATALOG: FeatureItem[] = [
     icon: CalendarClock, iconBg: "bg-indigo-100", iconColor: "text-indigo-600", requiredPlan: "pro",
     comingSoon: true,
   },
+  {
+    type: "feature", featureCode: "accounting_sync",
+    title: "Sinkronisasi Akuntansi", category: "Integrasi Eksternal",
+    description: "Ekspor data transaksi ke Jurnal, Accurate, atau Excel otomatis.",
+    longDesc: "Sync data penjualan & pembayaran ke software akuntansi (Jurnal, Accurate) atau ekspor otomatis ke Excel setiap tutup hari. Tidak perlu input manual lagi.",
+    icon: BookOpen, iconBg: "bg-emerald-100", iconColor: "text-emerald-600", requiredPlan: "growth",
+    comingSoon: true,
+  },
+  {
+    type: "feature", featureCode: "dark_mode",
+    title: "Mode Gelap", category: "Kasir & Transaksi",
+    description: "Tampilan kasir mode gelap — nyaman untuk shift malam.",
+    longDesc: "Aktifkan dark mode di seluruh tampilan POS. Cocok untuk operasional malam hari atau lingkungan dengan pencahayaan rendah.",
+    icon: Moon, iconBg: "bg-slate-100", iconColor: "text-slate-600", requiredPlan: "growth",
+    comingSoon: true,
+  },
+  {
+    type: "feature", featureCode: "custom_branding",
+    title: "Kustomisasi Merek", category: "Kasir & Transaksi",
+    description: "Logo toko, warna tema, & nama brand di struk dan tampilan.",
+    longDesc: "Pasang logo bisnis, pilih warna tema POS, dan sesuaikan nama brand yang tampil di struk serta layar customer-facing display.",
+    icon: Palette, iconBg: "bg-pink-100", iconColor: "text-pink-600", requiredPlan: "growth",
+    comingSoon: true,
+  },
 ];
 
 // ─── Plan config ──────────────────────────────────────────────────────────────
@@ -334,16 +359,29 @@ const FEATURE_CATALOG: FeatureItem[] = [
 const PLANS = [
   {
     tier: "free" as PlanTier, name: "Starter", price: "Gratis",
-    features: ["POS Terminal", "Manajemen Produk", "Laporan Penjualan", "Variasi Produk", "Diskon & Parsial", "Printer Struk", "Panel Antrian"],
+    features: [
+      "POS Terminal", "Manajemen Produk", "Laporan Penjualan",
+      "Variasi Produk", "Diskon & Parsial", "Printer Struk", "Panel Antrian",
+    ],
   },
   {
     tier: "growth" as PlanTier, name: "Growth", price: "Rp 149.000",
-    features: ["Semua Starter", "KDS + Loyalitas + Delivery", "Inventori (tracking + laporan)", "Appointment", "Notifikasi Order", "Dashboard Analitik", "Label Printer + Scanner"],
+    features: [
+      "Semua Starter",
+      "Kitchen Display System (KDS)", "Printer Dapur", "Tiket Dapur",
+      "Inventori Lanjutan (tracking + laporan)", "Dashboard Analitik",
+      "Notifikasi Order", "Label Printer", "Scanner Barcode",
+      "Mode Gelap", "Kustomisasi Merek", "Sinkronisasi Akuntansi",
+    ],
     popular: true,
   },
   {
     tier: "pro" as PlanTier, name: "Pro", price: "Rp 349.000",
-    features: ["Semua Growth", "Multi Lokasi", "Payment Gateway", "API Integration", "Booking Online", "Calendar Sync"],
+    features: [
+      "Semua Growth",
+      "Multi Lokasi", "Payment Gateway",
+      "API Integration", "Booking Online", "Calendar Sync",
+    ],
   },
 ];
 
