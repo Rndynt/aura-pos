@@ -1,6 +1,7 @@
 import { eq, inArray, sql } from 'drizzle-orm';
 import type { BusinessType } from '@pos/core';
 import { getBusinessTypeTemplate } from '@pos/application/tenants';
+import { PLAN_FEATURE_MAP } from '../constants/planFeatureMap';
 import { db } from '@pos/infrastructure/database';
 import {
   orderTypes,
@@ -309,6 +310,20 @@ export async function registerTenantOwner(
 
       const now = new Date();
       const featureCodes = template.features.map((feature) => feature.feature_code);
+
+      // Safety guard: validate that every feature in the template is allowed
+      // for the plan tier. This prevents template bugs from granting free tenants
+      // paid features that would disappear when the billing system resyncs.
+      const allowedForPlan: string[] = PLAN_FEATURE_MAP[template.tenantDefaults.plan_tier] ?? PLAN_FEATURE_MAP.free;
+      const outOfPlan = featureCodes.filter((code) => !allowedForPlan.includes(code));
+      if (outOfPlan.length > 0) {
+        throw new RegistrationError(
+          `Template seeds features that exceed plan_tier \'${template.tenantDefaults.plan_tier}\': ${outOfPlan.join(', ')}`,
+          'TEMPLATE_PLAN_MISMATCH',
+          500,
+        );
+      }
+
       if (template.features.length > 0) {
         await tx.insert(tenantFeatures).values(
           template.features.map((feature) => ({

@@ -18,45 +18,7 @@ import {
 } from '../../services/cacheInvalidation';
 
 // ─── Plan → Feature mapping (must stay in sync with marketplace.tsx PLANS) ────
-/**
- * Canonical mapping: plan tier → all included feature codes.
- * This is the single source of truth for which features belong to each plan.
- * Keep in sync with:
- *   - packages/domain/tenants/types.ts FEATURE_CODES
- *   - packages/core/enums.ts FeatureCode
- *   - apps/pos-terminal-web/src/pages/marketplace.tsx PLANS
- */
-const PLAN_FEATURE_MAP: Record<string, string[]> = {
-  free: [
-    'product_variants', 'partial_payment', 'discounts', 'order_queue',
-    'receipt_printer', 'sales_reports',
-  ],
-  growth: [
-    // All free features
-    'product_variants', 'partial_payment', 'discounts', 'order_queue',
-    'receipt_printer', 'sales_reports',
-    // Growth additions
-    'kitchen_ticket', 'kitchen_display', 'kitchen_printer',
-    'order_notifications', 'analytics_dashboard',
-    'label_printer', 'barcode_scanner',
-    'inventory_tracking', 'inventory_reports',
-    'dark_mode', 'custom_branding',
-    'accounting_sync',
-  ],
-  pro: [
-    // All growth features
-    'product_variants', 'partial_payment', 'discounts', 'order_queue',
-    'receipt_printer', 'sales_reports',
-    'kitchen_ticket', 'kitchen_display', 'kitchen_printer',
-    'order_notifications', 'analytics_dashboard',
-    'label_printer', 'barcode_scanner',
-    'inventory_tracking', 'inventory_reports',
-    'dark_mode', 'custom_branding',
-    'accounting_sync',
-    // Pro additions
-    'payment_gateway', 'api_integration', 'online_booking', 'calendar_sync',
-  ],
-};
+import { PLAN_FEATURE_MAP } from '../constants/planFeatureMap';
 
 /**
  * GET /api/tenants/features
