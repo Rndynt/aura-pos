@@ -82,7 +82,14 @@ export function getItemDiscountAmount(item: CartItem): number {
 }
 
 // ─── Session storage keys ──────────────────────────────────────────────────────
-const STORAGE_KEY = "pos_cart_session";
+// IMPORTANT: key is scoped by tenantId to prevent cross-tenant cart contamination.
+// When tenant A logs out and tenant B logs in (same browser session), each tenant
+// reads/writes their own isolated sessionStorage key.
+const STORAGE_KEY_PREFIX = "pos_cart_session";
+
+function cartStorageKey(tenantId: string): string {
+  return `${STORAGE_KEY_PREFIX}_${tenantId}`;
+}
 
 interface CartSession {
   items: CartItem[];
@@ -95,9 +102,9 @@ interface CartSession {
   orderDiscount: ItemDiscount | null;
 }
 
-function loadSession(): CartSession | null {
+function loadSession(tenantId: string): CartSession | null {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(cartStorageKey(tenantId));
     if (!raw) return null;
     return JSON.parse(raw) as CartSession;
   } catch {
@@ -105,17 +112,17 @@ function loadSession(): CartSession | null {
   }
 }
 
-function saveSession(session: CartSession) {
+function saveSession(tenantId: string, session: CartSession) {
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    sessionStorage.setItem(cartStorageKey(tenantId), JSON.stringify(session));
   } catch {
     // sessionStorage might be unavailable
   }
 }
 
-function clearSession() {
+function clearSession(tenantId: string) {
   try {
-    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(cartStorageKey(tenantId));
   } catch {
     // ignore
   }
@@ -127,8 +134,8 @@ export type OrderType = "dine-in" | "take-away" | "delivery";
 
 // ─── Hook ──────────────────────────────────────────────────────────────────────
 export function useCart() {
-  const saved = useRef(loadSession());
   const tenantId = getActiveTenantId() || resolveInitialTenantId() || "default";
+  const saved = useRef(loadSession(tenantId));
 
   const [items, setItems] = useState<CartItem[]>(saved.current?.items ?? []);
   const [customerName, setCustomerName] = useState<string>(saved.current?.customerName ?? "");
@@ -168,7 +175,7 @@ export function useCart() {
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
     persistTimerRef.current = setTimeout(() => {
       const session = { items, customerName, tableNumber, paymentMethod, selectedOrderTypeId, orderType, orderNumber, orderDiscount };
-      saveSession(session);
+      saveSession(tenantId, session);
       saveCartSession(tenantId, session).catch(() => undefined);
     }, 300);
     return () => {
@@ -257,7 +264,7 @@ export function useCart() {
     setSelectedOrderTypeId(null);
     setOrderType("dine-in");
     setOrderDiscount(null);
-    clearSession();
+    clearSession(tenantId);
     clearCartSession().catch(() => undefined);
   };
 

@@ -389,7 +389,10 @@ export async function registerTenantOwner(
 
       createdOwnerUserId = ownerUserId;
 
-      await tx
+      // Better Auth creates the user outside the transaction scope (uses shared pool connection).
+      // Use authDb directly (outside tx) so the update is guaranteed visible and not subject
+      // to transaction isolation issues between the Better Auth connection and the tx connection.
+      await authDb
         .update(authUser)
         .set({ tenantId: tenant.id, role: 'owner', updatedAt: new Date() })
         .where(eq(authUser.id, ownerUserId));

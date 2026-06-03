@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
+import { useTenant } from "@/context/TenantContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { offlineDb, runSyncEngine } from "@pos/offline";
 import type { LocalOrder, SyncStatus } from "@pos/offline";
@@ -69,16 +70,24 @@ export function LocalOrderList() {
   const [isRetrying, setIsRetrying] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  // Scope all offline data to the currently active tenant to prevent cross-tenant data leakage
+  const { tenantId } = useTenant();
 
   const { data: orders = [], isLoading } = useQuery<LocalOrder[]>({
-    queryKey: ["local-orders-list"],
-    queryFn: () => offlineDb.local_orders.orderBy("createdAtLocal").reverse().toArray(),
+    queryKey: ["local-orders-list", tenantId],
+    queryFn: () =>
+      tenantId
+        ? offlineDb.local_orders.where("tenantId").equals(tenantId).reverse().sortBy("createdAtLocal")
+        : Promise.resolve([]),
     refetchInterval: 4000,
   });
 
   const { data: payments = [] } = useQuery({
-    queryKey: ["local-payments-list"],
-    queryFn: () => offlineDb.local_order_payments.toArray(),
+    queryKey: ["local-payments-list", tenantId],
+    queryFn: () =>
+      tenantId
+        ? offlineDb.local_order_payments.where("tenantId").equals(tenantId).toArray()
+        : Promise.resolve([]),
     refetchInterval: 8000,
   });
 

@@ -179,7 +179,8 @@ app.use((req, res, next) => {
 /**
  * Run Drizzle migrations in the background after the server starts.
  * This keeps startup fast — the server accepts requests immediately.
- * If tables already exist (existing DB), migration is skipped gracefully.
+ * Drizzle tracks applied migrations in __drizzle_migrations and only runs new ones,
+ * so this is always safe to call even on an existing database.
  */
 async function runMigrationAsync() {
   try {
@@ -192,11 +193,16 @@ async function runMigrationAsync() {
     log("DB migrations complete.");
   } catch (err) {
     const msg = (err as Error).message ?? "";
-    const isExistingDb = msg.includes("already exists");
-    if (isExistingDb) {
-      log("Existing DB detected — skipping migration.");
+    // Only suppress the harmless NOTICE that Drizzle emits when its own schema/table
+    // already exists (code 42P06/42P07). Any other error — including missing tables
+    // that need a new migration — must surface as a real warning so operators can act.
+    const isDrizzleSchemaNotice =
+      msg.includes('schema "drizzle" already exists') ||
+      msg.includes('relation "__drizzle_migrations" already exists');
+    if (isDrizzleSchemaNotice) {
+      log("DB migration schema already initialised — continuing.");
     } else {
-      log(`Background migration warning: ${msg}`, "warn");
+      log(`[MIGRATION ERROR] ${msg}. Check that all pending migrations have been applied.`, "warn");
     }
   }
 }

@@ -80,24 +80,46 @@ async function applyOrderInventoryMovement(
 /**
  * GET /api/orders/queue/stream
  * SSE stream for near real-time order queue updates per tenant.
+ *
+ * NOTE: This handler does NOT use asyncHandler because headers are flushed immediately.
+ * Once flushHeaders() is called, Express's global error handler can no longer send an
+ * HTTP 500 response — doing so causes "Cannot set headers after they are sent".
+ * All errors are caught here and written as SSE error events instead.
  */
-export const streamOrderQueue = asyncHandler(async (req: Request, res: Response) => {
+export const streamOrderQueue = (req: Request, res: Response) => {
   const tenantId = req.tenantId!;
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders?.();
 
-  const unsubscribe = subscribeOrderQueue(tenantId, res);
+  let unsubscribe: (() => void) | undefined;
   const heartbeat = setInterval(() => {
-    res.write(`event: ping\ndata: ${Date.now()}\n\n`);
+    if (!res.writableEnded) {
+      res.write(`event: ping\ndata: ${Date.now()}\n\n`);
+    }
   }, 15000);
 
-  req.on('close', () => {
+  const cleanup = () => {
     clearInterval(heartbeat);
-    unsubscribe();
-  });
-});
+    unsubscribe?.();
+  };
+
+  req.on('close', cleanup);
+
+  try {
+    unsubscribe = subscribeOrderQueue(tenantId, res);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Write the error as an SSE event so the client can handle it gracefully,
+    // then end the stream. Do NOT call res.status() — headers are already sent.
+    if (!res.writableEnded) {
+      res.write(`event: error\ndata: ${JSON.stringify({ message: msg })}\n\n`);
+      res.end();
+    }
+    cleanup();
+  }
+};
 
 /**
  * POST /api/orders

@@ -188,6 +188,7 @@ export default function HomePage() {
       clearActiveTenantCache();
       clearActiveOutletId();
       localStorage.clear();
+      sessionStorage.clear(); // Prevent cart/session data from leaking to next tenant login
       setLocation("/login");
     } catch {
       toast({
