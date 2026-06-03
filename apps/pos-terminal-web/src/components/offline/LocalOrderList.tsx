@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback } from "react";
 import { useTenant } from "@/context/TenantContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { offlineDb, runSyncEngine } from "@pos/offline";
-import type { LocalOrder, SyncStatus } from "@pos/offline";
+import type { LocalOrder, LocalPayment, SyncStatus } from "@pos/offline";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
