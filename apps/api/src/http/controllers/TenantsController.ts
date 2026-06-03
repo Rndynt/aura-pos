@@ -18,7 +18,7 @@ import {
 } from '../../services/cacheInvalidation';
 
 // ─── Plan → Feature mapping (must stay in sync with marketplace.tsx PLANS) ────
-import { PLAN_FEATURE_MAP } from '../constants/planFeatureMap';
+import { PLAN_FEATURE_MAP } from '../../constants/planFeatureMap';
 
 /**
  * GET /api/tenants/features
