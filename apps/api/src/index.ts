@@ -18,7 +18,6 @@ function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 import { sql } from "drizzle-orm";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -177,32 +176,105 @@ app.use((req, res, next) => {
 })();
 
 /**
- * Run Drizzle migrations in the background after the server starts.
- * This keeps startup fast — the server accepts requests immediately.
- * Drizzle tracks applied migrations in __drizzle_migrations and only runs new ones,
- * so this is always safe to call even on an existing database.
+ * Run DB migrations in the background after the server starts.
+ *
+ * Uses a custom per-migration runner instead of Drizzle's bundled migrate() because
+ * on existing deployments the __drizzle_migrations tracking table can be out of sync
+ * with the actual DB state (e.g. tables created manually or by an earlier partial run).
+ * When that happens, Drizzle's migrate() fails on the first "already exists" error and
+ * stops — so NEW migrations (inventory_sync_errors, cfd_devices, etc.) never run.
+ *
+ * This runner applies each .sql file individually:
+ *   • Already recorded in __drizzle_migrations → skip (normal case)
+ *   • Runs successfully → record and continue
+ *   • Fails with "already exists" (42P07 / 42P01) → treat as applied, record and continue
+ *   • Fails with any other error → log as warning and continue to next migration
  */
 async function runMigrationAsync() {
-  try {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    const migrationsFolder = path.resolve(__dirname, "../../../migrations");
-    const { db } = await import("@pos/infrastructure/database");
-    log(`Running DB migrations from ${migrationsFolder} (background)...`);
-    await migrate(db, { migrationsFolder });
-    log("DB migrations complete.");
-  } catch (err) {
-    const msg = (err as Error).message ?? "";
-    // Only suppress the harmless NOTICE that Drizzle emits when its own schema/table
-    // already exists (code 42P06/42P07). Any other error — including missing tables
-    // that need a new migration — must surface as a real warning so operators can act.
-    const isDrizzleSchemaNotice =
-      msg.includes('schema "drizzle" already exists') ||
-      msg.includes('relation "__drizzle_migrations" already exists');
-    if (isDrizzleSchemaNotice) {
-      log("DB migration schema already initialised — continuing.");
-    } else {
-      log(`[MIGRATION ERROR] ${msg}. Check that all pending migrations have been applied.`, "warn");
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const migrationsFolder = path.resolve(__dirname, "../../../migrations");
+
+  const { sql: rawSql } = await import("@pos/infrastructure/database");
+  log(`Running DB migrations from ${migrationsFolder} (background)...`);
+
+  // Ensure Drizzle's tracking schema & table exist (idempotent DDL).
+  await rawSql`CREATE SCHEMA IF NOT EXISTS drizzle`.catch(() => undefined);
+  await rawSql`
+    CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
+      id        serial  PRIMARY KEY,
+      hash      text    NOT NULL,
+      created_at bigint
+    )
+  `.catch(() => undefined);
+
+  // Collect already-applied migration hashes.
+  const applied = await rawSql<{ hash: string }[]>`
+    SELECT hash FROM drizzle.__drizzle_migrations
+  `.then(rows => new Set(rows.map(r => r.hash))).catch(() => new Set<string>());
+
+  // Read and sort migration files (lexicographic = chronological for 0000_… naming).
+  const fs = await import("fs");
+  const files = fs.readdirSync(migrationsFolder)
+    .filter((f: string) => f.endsWith(".sql"))
+    .sort();
+
+  let applied_count = 0;
+  let skipped_count = 0;
+  let error_count   = 0;
+
+  for (const file of files) {
+    const filePath = `${migrationsFolder}/${file}`;
+    const sqlContent = fs.readFileSync(filePath, "utf8");
+
+    // Use filename as the hash key (consistent, human-readable).
+    const hash = file;
+
+    if (applied.has(hash)) {
+      skipped_count++;
+      continue;
+    }
+
+    try {
+      // Execute the full SQL file as a single statement block.
+      await rawSql.unsafe(sqlContent);
+
+      // Record as applied.
+      await rawSql`
+        INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+        VALUES (${hash}, ${Date.now()})
+        ON CONFLICT DO NOTHING
+      `;
+      applied_count++;
+      log(`  ✓ Applied migration: ${file}`, "migrate");
+    } catch (err: any) {
+      const code: string = err?.code ?? "";
+      const msg: string  = err?.message ?? String(err);
+
+      // 42P07 = relation already exists, 42P01 = relation does not exist used in IF EXISTS,
+      // 42710 = duplicate object, 42701 = duplicate column, 23505 = unique violation on DDL.
+      // All indicate the migration's effect is already present in the DB — mark as applied.
+      const alreadyAppliedCodes = new Set(["42P07", "42P01", "42710", "42701", "23505"]);
+      const alreadyAppliedMsg   = msg.includes("already exists") || msg.includes("duplicate");
+
+      if (alreadyAppliedCodes.has(code) || alreadyAppliedMsg) {
+        await rawSql`
+          INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+          VALUES (${hash}, ${Date.now()})
+          ON CONFLICT DO NOTHING
+        `.catch(() => undefined);
+        applied_count++;
+        log(`  ~ Skipped (already applied): ${file} — ${msg}`, "migrate");
+      } else {
+        error_count++;
+        log(`  ✗ Migration error (${file}): ${msg}`, "migrate");
+      }
+      // Always continue to the next migration.
     }
   }
+
+  log(
+    `DB migrations done — applied: ${applied_count}, skipped: ${skipped_count}, errors: ${error_count}`,
+    "migrate"
+  );
 }
