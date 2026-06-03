@@ -75,19 +75,21 @@ export function LocalOrderList() {
 
   const { data: orders = [], isLoading } = useQuery<LocalOrder[]>({
     queryKey: ["local-orders-list", tenantId],
-    queryFn: () =>
-      tenantId
-        ? offlineDb.local_orders.where("tenantId").equals(tenantId).reverse().sortBy("createdAtLocal")
-        : Promise.resolve([]),
+    // async wrapper converts Dexie's PromiseExtended → standard Promise,
+    // and ensures the empty-path [] is inferred as LocalOrder[] not never[].
+    queryFn: async () => {
+      if (!tenantId) return [] as LocalOrder[];
+      return offlineDb.local_orders.where("tenantId").equals(tenantId).reverse().sortBy("createdAtLocal");
+    },
     refetchInterval: 4000,
   });
 
-  const { data: payments = [] } = useQuery({
+  const { data: payments = [] } = useQuery<LocalPayment[]>({
     queryKey: ["local-payments-list", tenantId],
-    queryFn: () =>
-      tenantId
-        ? offlineDb.local_order_payments.where("tenantId").equals(tenantId).toArray()
-        : Promise.resolve([]),
+    queryFn: async () => {
+      if (!tenantId) return [] as LocalPayment[];
+      return offlineDb.local_order_payments.where("tenantId").equals(tenantId).toArray();
+    },
     refetchInterval: 8000,
   });
 
