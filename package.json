@@ -10,7 +10,7 @@
     "shared"
   ],
   "scripts": {
-    "dev": "NODE_ENV=development tsx --tsconfig apps/api/tsconfig.node.json apps/api/src/index.ts",
+    "dev": "NODE_ENV=development npx tsx --tsconfig apps/api/tsconfig.node.json apps/api/src/index.ts",
     "dev:turbo": "turbo run dev",
     "build": "turbo run build && pnpm run build:static:api",
     "build:legacy": "vite build && esbuild apps/api/src/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
