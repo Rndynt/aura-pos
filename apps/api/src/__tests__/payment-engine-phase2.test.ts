@@ -140,6 +140,12 @@ function makeFakeTxRepo() {
       store.find(r => r.tenantId === tenantId && r.idempotencyKey === key) ?? null,
     findByProviderReference: async (provider: string, ref: string, _tenantId: string, _tx?: any) =>
       store.find(r => r.provider === provider && r.providerReference === ref) ?? null,
+    /**
+     * Simulates FOR UPDATE lock — in unit tests we just return the row.
+     * Real concurrency behaviour is exercised via DB-backed integration tests.
+     */
+    lockByProviderReferenceForUpdate: async (provider: string, ref: string, _tenantId: string, _tx: any) =>
+      store.find(r => r.provider === provider && r.providerReference === ref) ?? null,
     update: async (id: string, _tenantId: string, data: any, _tx?: any) => {
       const idx = store.findIndex(r => r.id === id);
       if (idx === -1) throw new Error('not found');
@@ -648,9 +654,15 @@ describe('ConfirmFakeGatewayPayment', () => {
 });
 
 // ── Test suite 5: fake-gateway/confirm route — production guard ───────────────
-
+//
+// Hardening note (Task 3 fix):
+// The /fake-gateway/confirm route is now registered BEFORE
+// `router.use(requirePaymentOperator)` in payment-engine.ts.
+// This guarantees that in production the 404 fires before ANY auth check —
+// unauthenticated production callers receive 404, not 401.
+//
 describe('fake-gateway/confirm — production guard', () => {
-  it('returns 404 when NODE_ENV is production', async () => {
+  it('returns 404 BEFORE auth check when NODE_ENV is production', async () => {
     const originalEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
 
@@ -710,6 +722,11 @@ describe('IPaymentTransactionRepository interface — Phase 2 additions', () => 
     assert.strictEqual(typeof txRepo.findByProviderReference, 'function');
   });
 
+  it('fake txRepo implements lockByProviderReferenceForUpdate', () => {
+    const txRepo = makeFakeTxRepo();
+    assert.strictEqual(typeof txRepo.lockByProviderReferenceForUpdate, 'function');
+  });
+
   it('fake txRepo implements update', () => {
     const txRepo = makeFakeTxRepo();
     assert.strictEqual(typeof txRepo.update, 'function');
@@ -736,6 +753,266 @@ describe('IPaymentTransactionRepository interface — Phase 2 additions', () => 
     const updated = await txRepo.update(tx.id, 'tenant-a', { status: 'succeeded', succeededAt: new Date() });
     assert.strictEqual(updated.status, 'succeeded');
     assert.ok(updated.succeededAt instanceof Date);
+  });
+});
+
+// ── Test suite 8: Phase 2 Hardening ───────────────────────────────────────────
+//
+// These tests cover the three bug fixes introduced in Phase 2 Hardening:
+//   H1  — CreateGatewayPayment idempotency replay works after intent is paid
+//   H2  — New gateway payment on paid intent (no replay) is still rejected
+//   H3  — Idempotency key conflict on different intent still throws even if
+//          the requesting intent is paid
+//   H4  — Duplicate success confirmation does NOT create duplicate allocation
+//   H5  — ConfirmFakeGatewayPayment uses lockByProviderReferenceForUpdate
+//
+
+describe('Phase 2 Hardening', () => {
+  // ── H1: Idempotency replay after paid intent ──────────────────────────────
+  it('H1: idempotency replay succeeds even when intent is already paid', async () => {
+    // Scenario:
+    //  1. Client creates gateway payment with key K → pending tx
+    //  2. Fake confirm → tx succeeded, intent = paid
+    //  3. Client retries create gateway payment with same key K
+    //  4. Engine MUST return idempotent replay — NOT reject with terminal-intent error
+
+    // Start with a PAID intent (simulates state after successful confirmation)
+    const paidIntent = makeIntent({
+      id: 'intent-h1',
+      tenantId: 'tenant-a',
+      amountDue: 100000,
+      amountPaid: 100000,
+      amountRefunded: 0,
+      amountRemaining: 0,
+      status: 'paid',
+    });
+
+    const fakeDb = makeFakeDb();
+    const intentRepo = makeFakeIntentRepo(paidIntent);
+    const txRepo = makeFakeTxRepo();
+    const registry = new PaymentProviderRegistry().register(new FakeGatewayProvider());
+    const useCase = new CreateGatewayPayment(fakeDb as any, intentRepo as any, txRepo as any, registry);
+
+    // Pre-seed the existing pending tx with idempotency key K
+    // (this is the tx that was created before confirmation)
+    const existingTx = makeDbTx({
+      id: 'tx-h1-existing',
+      tenantId: 'tenant-a',
+      paymentIntentId: 'intent-h1',
+      status: 'succeeded', // already confirmed
+      idempotencyKey: 'idem-key-h1',
+      provider: 'fake_gateway',
+      providerReference: 'fake_intent-h1_existing',
+    });
+    txRepo._store().push(existingTx);
+
+    // Retry call: same key on paid intent → must replay, NOT throw
+    const result = await useCase.execute({
+      tenantId: 'tenant-a',
+      paymentIntentId: 'intent-h1',
+      amount: 100000,
+      method: 'qris',
+      provider: 'fake_gateway',
+      idempotencyKey: 'idem-key-h1',
+    });
+
+    assert.strictEqual(result.idempotentReplay, true);
+    assert.strictEqual(result.transaction.id, 'tx-h1-existing');
+    assert.strictEqual(result.transaction.status, 'succeeded');
+    // No new tx row should be created
+    assert.strictEqual(txRepo._store().length, 1);
+  });
+
+  // ── H2: New payment on paid intent without replay is still rejected ───────
+  it('H2: creating new gateway payment on paid intent (no idempotency key) is rejected', async () => {
+    const paidIntent = makeIntent({
+      id: 'intent-h2',
+      tenantId: 'tenant-a',
+      amountDue: 100000,
+      amountPaid: 100000,
+      amountRefunded: 0,
+      amountRemaining: 0,
+      status: 'paid',
+    });
+
+    const fakeDb = makeFakeDb();
+    const intentRepo = makeFakeIntentRepo(paidIntent);
+    const txRepo = makeFakeTxRepo();
+    const registry = new PaymentProviderRegistry().register(new FakeGatewayProvider());
+    const useCase = new CreateGatewayPayment(fakeDb as any, intentRepo as any, txRepo as any, registry);
+
+    await assert.rejects(
+      () => useCase.execute({
+        tenantId: 'tenant-a',
+        paymentIntentId: 'intent-h2',
+        amount: 100000,
+        method: 'qris',
+        provider: 'fake_gateway',
+        // No idempotency key — fresh call on paid intent
+      }),
+      (err: any) => {
+        assert.ok(err instanceof PaymentPolicyError);
+        // assertIntentAcceptsPayment throws 'INTENT_NOT_PAYABLE' for terminal-status intents
+        assert.strictEqual(err.code, 'INTENT_NOT_PAYABLE');
+        return true;
+      },
+    );
+  });
+
+  // ── H3: Idempotency conflict on different intent still works when requesting intent is terminal
+  it('H3: idempotency conflict on different intent still throws even when requesting intent is paid', async () => {
+    const paidIntent = makeIntent({
+      id: 'intent-h3-paid',
+      tenantId: 'tenant-a',
+      status: 'paid',
+      amountPaid: 100000,
+      amountRemaining: 0,
+    });
+
+    const fakeDb = makeFakeDb();
+    const intentRepo = makeFakeIntentRepo(paidIntent);
+    const txRepo = makeFakeTxRepo();
+    const registry = new PaymentProviderRegistry().register(new FakeGatewayProvider());
+    const useCase = new CreateGatewayPayment(fakeDb as any, intentRepo as any, txRepo as any, registry);
+
+    // Pre-seed tx that used the key on a DIFFERENT intent
+    const conflictTx = makeDbTx({
+      tenantId: 'tenant-a',
+      paymentIntentId: 'intent-OTHER-h3',
+      idempotencyKey: 'conflict-key-h3',
+    });
+    txRepo._store().push(conflictTx);
+
+    await assert.rejects(
+      () => useCase.execute({
+        tenantId: 'tenant-a',
+        paymentIntentId: 'intent-h3-paid',
+        amount: 100000,
+        method: 'qris',
+        provider: 'fake_gateway',
+        idempotencyKey: 'conflict-key-h3',
+      }),
+      (err: any) => {
+        assert.ok(err instanceof PaymentPolicyError);
+        assert.strictEqual(err.code, 'IDEMPOTENCY_KEY_CONFLICT');
+        return true;
+      },
+    );
+  });
+
+  // ── H4: Duplicate success confirmation does NOT create duplicate allocation ─
+  it('H4: second success confirmation on an already-succeeded tx returns INVALID_TRANSITION (no duplicate allocation)', async () => {
+    const intent = makeIntent({
+      id: 'intent-h4',
+      tenantId: 'tenant-a',
+      amountDue: 100000,
+      amountPaid: 0,
+      amountRemaining: 100000,
+    });
+
+    const fakeDb = makeFakeDb();
+    const intentRepo = makeFakeIntentRepo(intent);
+    const txRepo = makeFakeTxRepo();
+    const allocationRepo = makeFakeAllocationRepo();
+    const recalculate = new RecalculatePaymentIntent(intentRepo as any, txRepo as any);
+    const useCase = new ConfirmFakeGatewayPayment(
+      fakeDb as any,
+      intentRepo as any,
+      txRepo as any,
+      allocationRepo as any,
+      recalculate,
+    );
+
+    // Seed a pending transaction
+    txRepo._store().push(makeDbTx({
+      id: 'tx-h4',
+      tenantId: 'tenant-a',
+      paymentIntentId: 'intent-h4',
+      status: 'pending',
+      provider: 'fake_gateway',
+      providerReference: 'fake_h4_ref',
+      amount: '100000.00',
+    }));
+
+    // First confirmation — should succeed and create exactly 1 allocation
+    const first = await useCase.execute({
+      tenantId: 'tenant-a',
+      providerReference: 'fake_h4_ref',
+      status: 'succeeded',
+    });
+    assert.strictEqual(first.transaction.status, 'succeeded');
+    assert.strictEqual(allocationRepo._store().length, 1);
+
+    // Second confirmation — tx is now 'succeeded', must throw INVALID_TRANSITION
+    await assert.rejects(
+      () => useCase.execute({
+        tenantId: 'tenant-a',
+        providerReference: 'fake_h4_ref',
+        status: 'succeeded',
+      }),
+      (err: any) => {
+        assert.ok(err instanceof PaymentPolicyError);
+        assert.strictEqual(err.code, 'INVALID_TRANSITION');
+        return true;
+      },
+    );
+
+    // Allocation count must still be 1 — no duplicate was created
+    assert.strictEqual(allocationRepo._store().length, 1);
+  });
+
+  // ── H5: ConfirmFakeGatewayPayment uses lockByProviderReferenceForUpdate ────
+  it('H5: ConfirmFakeGatewayPayment calls lockByProviderReferenceForUpdate (not just findByProviderReference)', async () => {
+    let lockCalled = false;
+    let findCalled = false;
+
+    const intent = makeIntent({ id: 'intent-h5', tenantId: 'tenant-a' });
+    const fakeDb = makeFakeDb();
+    const intentRepo = makeFakeIntentRepo(intent);
+
+    // Intercept tx repo to track which method gets called
+    const txRepo = makeFakeTxRepo();
+    const pendingTx = makeDbTx({
+      id: 'tx-h5',
+      tenantId: 'tenant-a',
+      paymentIntentId: 'intent-h5',
+      status: 'pending',
+      provider: 'fake_gateway',
+      providerReference: 'fake_h5_ref',
+      amount: '100000.00',
+    });
+    txRepo._store().push(pendingTx);
+
+    const originalLock = txRepo.lockByProviderReferenceForUpdate;
+    const originalFind = txRepo.findByProviderReference;
+    txRepo.lockByProviderReferenceForUpdate = async (...args: any[]) => {
+      lockCalled = true;
+      return originalLock(...args as [string, string, string, any]);
+    };
+    txRepo.findByProviderReference = async (...args: any[]) => {
+      findCalled = true;
+      return originalFind(...args as [string, string, string, any]);
+    };
+
+    const allocationRepo = makeFakeAllocationRepo();
+    const recalculate = new RecalculatePaymentIntent(intentRepo as any, txRepo as any);
+    const useCase = new ConfirmFakeGatewayPayment(
+      fakeDb as any,
+      intentRepo as any,
+      txRepo as any,
+      allocationRepo as any,
+      recalculate,
+    );
+
+    await useCase.execute({
+      tenantId: 'tenant-a',
+      providerReference: 'fake_h5_ref',
+      status: 'succeeded',
+    });
+
+    assert.strictEqual(lockCalled, true, 'lockByProviderReferenceForUpdate should be called');
+    // findByProviderReference should NOT be the primary lookup path in ConfirmFakeGatewayPayment
+    assert.strictEqual(findCalled, false, 'findByProviderReference should NOT be called directly by ConfirmFakeGatewayPayment');
   });
 });
 

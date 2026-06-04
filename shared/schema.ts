@@ -825,6 +825,23 @@ export const paymentAllocations = pgTable("payment_allocations", {
   intentIdx: index("payment_allocations_intent_idx").on(table.paymentIntentId),
   transactionIdx: index("payment_allocations_transaction_idx").on(table.paymentTransactionId),
   targetIdx: index("payment_allocations_target_idx").on(table.tenantId, table.targetType, table.targetId),
+  /**
+   * Phase 2 Hardening — duplicate allocation guard.
+   *
+   * A single payment_transaction can only have ONE allocation for a given
+   * (target_type, target_id) pair. This acts as a schema-level safety net
+   * against concurrent ConfirmFakeGatewayPayment calls that might both pass
+   * the FOR UPDATE lock check (e.g. across read replicas) and both attempt to
+   * insert an allocation for the same confirmed transaction.
+   *
+   * Migration note: run `npx drizzle-kit push` or generate and apply a
+   * migration before deploying this change to production.
+   */
+  txTargetUnique: uniqueIndex("payment_allocations_tx_target_unique").on(
+    table.paymentTransactionId,
+    table.targetType,
+    table.targetId,
+  ),
 }));
 
 export const insertPaymentAllocationSchema = createInsertSchema(paymentAllocations).omit({ id: true, createdAt: true });

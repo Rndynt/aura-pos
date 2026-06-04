@@ -87,6 +87,55 @@ function requirePaymentOperator(req: Request, res: Response, next: NextFunction)
 }
 
 router.use(requireTenantContext);
+
+// ── Phase 2: fake-gateway/confirm — REGISTERED BEFORE requirePaymentOperator ──
+//
+// IMPORTANT: This route is intentionally registered before the global
+// `router.use(requirePaymentOperator)` call below. Express processes middleware
+// and route handlers in registration order. Because this route sends a response
+// before the global requirePaymentOperator runs (when in production), the 404
+// guard fires *before* any authentication check for production requests.
+//
+// Behaviour by environment:
+//   production:     → 404 immediately, no auth check, handler never reached.
+//   non-production: → production guard calls next(), inline requirePaymentOperator
+//                     runs (service token or session check), then handler.
+//
+// All other payment-engine routes are protected by the global
+// `router.use(requirePaymentOperator)` below.
+
+/**
+ * POST /api/payment-engine/fake-gateway/confirm
+ *
+ * Dev/test-only controlled gateway confirmation.
+ * Simulates a gateway callback (succeeded | failed) for fake_gateway transactions.
+ *
+ * Security guarantee:
+ * - In production: returns 404 before ANY auth check (production guard runs first).
+ * - In non-production: requires payment operator authorization (same as other routes).
+ * - NOT a real webhook handler — do not call from untrusted sources.
+ *
+ * Phase 3 will add real webhook endpoints under /webhooks/:provider.
+ */
+router.post(
+  '/fake-gateway/confirm',
+  (req: Request, res: Response, next: NextFunction) => {
+    // Production guard — must run before requirePaymentOperator.
+    if (process.env.NODE_ENV === 'production') {
+      res.status(404).json({
+        success: false,
+        error: 'Not found',
+      });
+      return;
+    }
+    next();
+  },
+  // Auth guard — only reached in non-production environments.
+  requirePaymentOperator,
+  PaymentEngineController.confirmFakeGatewayPayment,
+);
+
+// ── Global auth guard for all remaining routes ─────────────────────────────────
 router.use(requirePaymentOperator);
 
 // POST /api/payment-engine/intents — Create a new payment intent
@@ -101,39 +150,8 @@ router.get('/intents/:id/transactions', PaymentEngineController.listTransactions
 // POST /api/payment-engine/intents/:id/manual-payments — Record manual payment
 router.post('/intents/:id/manual-payments', PaymentEngineController.recordManualPayment);
 
-// ── Phase 2: Gateway abstraction ───────────────────────────────────────────────
-
 // POST /api/payment-engine/intents/:id/gateway-payments
 // Create a pending gateway payment transaction. Phase 2: only fake_gateway allowed.
 router.post('/intents/:id/gateway-payments', PaymentEngineController.createGatewayPayment);
-
-/**
- * POST /api/payment-engine/fake-gateway/confirm
- *
- * Dev/test-only controlled gateway confirmation.
- * Simulates a gateway callback (succeeded | failed) for fake_gateway transactions.
- *
- * Security rules:
- * - Hard-disabled in production (NODE_ENV === 'production') — returns 404.
- * - In non-production, protected by the same requirePaymentOperator guard
- *   (service token or cashier+ session).
- * - NOT a real webhook handler — do not call from untrusted sources.
- *
- * Phase 3 will add real webhook endpoints under /webhooks/:provider.
- */
-router.post(
-  '/fake-gateway/confirm',
-  (req, res, next) => {
-    if (process.env.NODE_ENV === 'production') {
-      res.status(404).json({
-        success: false,
-        error: 'Not found',
-      });
-      return;
-    }
-    next();
-  },
-  PaymentEngineController.confirmFakeGatewayPayment,
-);
 
 export default router;

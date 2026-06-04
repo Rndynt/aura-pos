@@ -5,7 +5,7 @@ import {
   type PaymentTransaction,
   type InsertPaymentTransaction,
 } from '../../../../shared/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 export interface IPaymentTransactionRepository {
   create(data: InsertPaymentTransaction, tx?: any): Promise<PaymentTransaction>;
@@ -13,6 +13,13 @@ export interface IPaymentTransactionRepository {
   findByIntentId(paymentIntentId: string, tenantId: string, tx?: any): Promise<PaymentTransaction[]>;
   findByIdempotencyKey(tenantId: string, idempotencyKey: string, tx?: any): Promise<PaymentTransaction | null>;
   findByProviderReference(provider: string, providerReference: string, tenantId: string, tx?: any): Promise<PaymentTransaction | null>;
+  /**
+   * Acquire a row-level FOR UPDATE lock on the payment_transaction row identified
+   * by (provider, providerReference, tenantId), then return the typed row.
+   * Must be called inside an active DB transaction.
+   * Returns null if no matching row exists (no lock acquired).
+   */
+  lockByProviderReferenceForUpdate(provider: string, providerReference: string, tenantId: string, tx: any): Promise<PaymentTransaction | null>;
   update(id: string, tenantId: string, data: Partial<PaymentTransaction>, tx?: any): Promise<PaymentTransaction>;
 }
 
@@ -112,6 +119,48 @@ export class PaymentTransactionRepository
       return rows[0] ?? null;
     } catch (error) {
       this.handleError('find by provider reference', error);
+    }
+  }
+
+  /**
+   * Acquire a row-level FOR UPDATE lock on the payment_transaction row, then
+   * return the fully-typed Drizzle row (still within the same transaction).
+   *
+   * Lock ordering: always lock the transaction row BEFORE the intent row to
+   * avoid deadlocks with ConfirmFakeGatewayPayment.
+   *
+   * Returns null if no matching row exists (no lock acquired in that case).
+   */
+  async lockByProviderReferenceForUpdate(
+    provider: string,
+    providerReference: string,
+    tenantId: string,
+    tx: any,
+  ): Promise<PaymentTransaction | null> {
+    try {
+      // Acquire the row-level lock
+      await tx.execute(sql`
+        SELECT id FROM payment_transactions
+        WHERE tenant_id = ${tenantId}
+          AND provider = ${provider}
+          AND provider_reference = ${providerReference}
+        FOR UPDATE
+      `);
+      // Return typed ORM row (already locked — safe to use within same tx)
+      const rows = await tx
+        .select()
+        .from(paymentTransactions)
+        .where(
+          and(
+            eq(paymentTransactions.tenantId, tenantId),
+            eq(paymentTransactions.provider, provider),
+            eq(paymentTransactions.providerReference, providerReference),
+          ),
+        )
+        .limit(1);
+      return rows[0] ?? null;
+    } catch (error) {
+      this.handleError('lock by provider reference', error);
     }
   }
 

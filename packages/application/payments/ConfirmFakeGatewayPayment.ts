@@ -34,6 +34,18 @@ export interface ConfirmFakeGatewayPaymentOutput {
  * │  production — see the route file for the NODE_ENV guard.               │
  * └──────────────────────────────────────────────────────────────────────────┘
  *
+ * Concurrency safety
+ * ------------------
+ * The transaction row is locked with `SELECT ... FOR UPDATE` via
+ * `lockByProviderReferenceForUpdate()` before checking its status.
+ * This prevents two concurrent confirmations from both seeing `pending`
+ * and creating duplicate allocations.
+ *
+ * The additional unique DB index on
+ * `payment_allocations(payment_transaction_id, target_type, target_id)` acts
+ * as a second safety net (schema-level guard). See `shared/schema.ts` and
+ * migration notes in `docs/reports/payment-engine-phase-2-hardening-report.md`.
+ *
  * Rules
  * -----
  * - Only `fake_gateway` transactions can be confirmed through this use case.
@@ -47,7 +59,8 @@ export interface ConfirmFakeGatewayPaymentOutput {
  *     2. No allocation.
  *     3. No amountPaid change.
  *     4. Intent status derived from succeeded transactions only (unchanged if none).
- * - All steps run in a single DB transaction with a FOR UPDATE lock on the intent.
+ * - All steps run in a single DB transaction with FOR UPDATE locks on both the
+ *   payment_transaction row and the payment_intent row.
  */
 export class ConfirmFakeGatewayPayment {
   constructor(
@@ -62,8 +75,10 @@ export class ConfirmFakeGatewayPayment {
     input: ConfirmFakeGatewayPaymentInput,
   ): Promise<ConfirmFakeGatewayPaymentOutput> {
     return await this.db.transaction(async (tx) => {
-      // Step 1 — Find the transaction by provider reference + tenant.
-      const txRow = await this.txRepo.findByProviderReference(
+      // Step 1 — Lock the transaction row FOR UPDATE before reading its status.
+      // This ensures two concurrent confirmations cannot both see `pending`
+      // and proceed to create duplicate allocations.
+      const txRow = await this.txRepo.lockByProviderReferenceForUpdate(
         'fake_gateway',
         input.providerReference,
         input.tenantId,
@@ -87,6 +102,9 @@ export class ConfirmFakeGatewayPayment {
       }
 
       // Step 3 — Reject already-terminal transactions.
+      // Because we hold a FOR UPDATE lock on the row, the status we see here
+      // is the authoritative current state — no other concurrent confirmation
+      // can have modified it in the time since we acquired the lock.
       const activeStatuses = new Set(['pending', 'requires_action']);
       if (!activeStatuses.has(txRow.status)) {
         throw new PaymentPolicyError(
@@ -97,6 +115,9 @@ export class ConfirmFakeGatewayPayment {
       }
 
       // Step 4 — Lock the related intent row FOR UPDATE.
+      // Lock order is always: transaction first, then intent — never reversed.
+      // Consistent lock ordering prevents deadlocks with CreateGatewayPayment
+      // (which only locks the intent and never the transaction row).
       const intentRow = await this.intentRepo.lockForUpdate(
         txRow.paymentIntentId,
         input.tenantId,
@@ -126,6 +147,10 @@ export class ConfirmFakeGatewayPayment {
         );
 
         // Step 5b — Create default allocation to intent payable target.
+        // The unique index payment_allocations_tx_target_unique on
+        // (payment_transaction_id, target_type, target_id) guarantees that even
+        // if two requests somehow both pass the FOR UPDATE check (e.g. via
+        // read replicas), only one allocation is persisted.
         const txAmount =
           typeof txRow.amount === 'string' ? parseFloat(txRow.amount) : Number(txRow.amount);
         const allocationData: InsertPaymentAllocation = {

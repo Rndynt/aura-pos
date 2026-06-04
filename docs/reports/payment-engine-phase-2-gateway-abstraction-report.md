@@ -19,7 +19,7 @@ The phase adds:
 - A **ConfirmFakeGatewayPayment** use case that simulates gateway callbacks (succeeded or failed) in a controlled, atomic way.
 - Two new API endpoints guarded by the existing `requirePaymentOperator` middleware.
 - Two new repository methods on `PaymentTransactionRepository`: `findByProviderReference` and `update`.
-- 42 new test cases across 7 suites.
+- 39 new test cases across 7 suites.
 
 The legacy order payment flow was **not intentionally changed**.
 

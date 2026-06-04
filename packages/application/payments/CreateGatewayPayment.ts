@@ -79,14 +79,22 @@ export class CreateGatewayPayment {
 
       const intentDomain = intentRowToDomain(intentRow);
 
-      // Step 2 — Reject terminal intents immediately (before idempotency check
-      // so that a duplicate call on a paid intent still returns the error).
-      // NOTE: For gateway payments we enforce the terminal-state check BEFORE
-      // the idempotency replay so callers cannot sneak a new pending transaction
-      // onto an already-paid intent via replay.
-      assertIntentAcceptsPayment(intentDomain);
-
-      // Step 3 — Idempotency check (inside the locked transaction).
+      // Step 2 — Idempotency check (BEFORE terminal-state validation).
+      //
+      // Correct ordering rationale:
+      // When a client sends a gateway payment request with idempotency key K:
+      //   a) The request is processed → pending tx created
+      //   b) A fake-confirmation makes the tx succeed and the intent becomes 'paid'
+      //   c) The client retries the SAME request with idempotency key K
+      //
+      // In step (c), the intent is terminal ('paid'), but the idempotent replay
+      // MUST succeed and return the original transaction — not reject with a
+      // "terminal intent" error. This mirrors standard idempotency guarantees:
+      // a safe retry of an already-completed operation returns the same result.
+      //
+      // Security note: the idempotency check only *reads* an existing tx row.
+      // It never creates a new allocation on a paid intent — the original
+      // transaction already went through confirmation before the intent was paid.
       if (input.idempotencyKey) {
         const existingTx = await this.txRepo.findByIdempotencyKey(
           input.tenantId,
@@ -95,12 +103,15 @@ export class CreateGatewayPayment {
         );
         if (existingTx) {
           if (existingTx.paymentIntentId !== input.paymentIntentId) {
+            // Same key, different intent — always a conflict (regardless of intent state).
             throw new PaymentPolicyError(
               'Idempotency key was already used for a different payment intent',
               'IDEMPOTENCY_KEY_CONFLICT',
             );
           }
-          // Same key + same intent → idempotent replay of the pending transaction.
+          // Same key + same intent → idempotent replay.
+          // Return the CURRENT intent state (which may now be 'paid') and the
+          // original transaction row as-is.
           return {
             intent: intentDomain,
             transaction: txRowToDomain(existingTx),
@@ -111,6 +122,11 @@ export class CreateGatewayPayment {
           };
         }
       }
+
+      // Step 3 — No idempotency replay found. Validate that a NEW transaction
+      // can be added. Reject terminal-state intents only when we would actually
+      // create a new pending transaction.
+      assertIntentAcceptsPayment(intentDomain);
 
       // Step 4 — Amount validation (same rules as RecordManualPayment).
       assertAmountValid(input.amount, intentDomain.amountRemaining, intentDomain.allowPartial);
