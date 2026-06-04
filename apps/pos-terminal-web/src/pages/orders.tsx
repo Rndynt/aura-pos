@@ -451,38 +451,40 @@ export default function OrdersPage() {
           >
             {selectedOrder ? (
               <>
-                {/* Panel Header */}
-                <div className="p-6 border-b border-slate-100 flex justify-between items-start">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-800 mb-1">
-                      Detail Pesanan
-                    </h2>
-                    <div className="flex items-center gap-3 text-sm text-slate-500">
-                      <span className="font-bold text-slate-800 text-lg">
+                {/* Panel Header — compact single row */}
+                <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3">
+                  {/* Drag handle on mobile */}
+                  <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-10 h-1 bg-slate-200 rounded-full md:hidden" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-slate-800 text-base truncate">
                         {selectedOrder.customer_name || "Pelanggan"}
+                      </span>
+                      <span className="text-xs text-slate-400 font-mono truncate">
+                        #{selectedOrder.order_number}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold capitalize ${ORDER_STATUS_CONFIG[selectedOrder.status].color}`}>
+                        {selectedOrder.status}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        {selectedOrder.items?.length || 0} item
                       </span>
                     </div>
                   </div>
                   <button
                     onClick={() => setSelectedOrderId(null)}
-                    className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-500"
+                    className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-500 flex-shrink-0"
                     data-testid="button-close-details"
                   >
-                    <X size={20} />
+                    <X size={16} />
                   </button>
                 </div>
 
                 {/* Panel Content */}
-                <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 space-y-6">
-                  {/* Status Section */}
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">
-                      Status
-                    </h3>
-                    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold capitalize ${ORDER_STATUS_CONFIG[selectedOrder.status].color}`}>
-                      {selectedOrder.status}
-                    </div>
-                  </div>
+                <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 space-y-4">
+
 
                   {/* Order Items Section */}
                   <div>
@@ -560,26 +562,26 @@ export default function OrdersPage() {
                   </div>
                 </div>
 
-                {/* Panel Footer */}
-                <div className="p-6 border-t border-slate-200 bg-white space-y-2">
+                {/* Panel Footer — horizontal layout saves vertical space */}
+                <div className="px-4 py-3 border-t border-slate-200 bg-white flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-shrink-0 font-semibold py-2 px-3 rounded-lg text-sm"
+                    data-testid="button-reprint-receipt"
+                    onClick={handleReprintReceipt}
+                    disabled={isPrinting}
+                  >
+                    <Printer size={14} />
+                  </Button>
                   <Button 
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-sm"
                     data-testid="button-process-transaction"
                     onClick={handleProcessTransaction}
                     disabled={recordPaymentMutation.isPending || selectedOrder.payment_status === "paid"}
                   >
                     {recordPaymentMutation.isPending ? "Memproses..." : "Proses Transaksi"}
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full font-semibold py-2.5 rounded-lg"
-                    data-testid="button-reprint-receipt"
-                    onClick={handleReprintReceipt}
-                    disabled={isPrinting}
-                  >
-                    <Printer size={15} className="mr-2" />
-                    {isPrinting ? "Mencetak…" : "Cetak Ulang Struk"}
-                  </Button>
+
                 </div>
               </>
             ) : (
