@@ -20,6 +20,7 @@ function txRowToDomain(row: any): DomainPaymentTransaction {
     id: row.id,
     tenantId: row.tenantId,
     paymentIntentId: row.paymentIntentId,
+    parentTransactionId: row.parentTransactionId ?? null,
     direction: row.direction,
     transactionType: row.transactionType,
     method: row.method,

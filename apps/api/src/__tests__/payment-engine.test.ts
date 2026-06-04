@@ -71,6 +71,7 @@ function makeTx(overrides: Partial<DomainPaymentTransaction> = {}): DomainPaymen
     id: `tx-${++txIdSeq}`,
     tenantId: 'tenant-a',
     paymentIntentId: 'intent-1',
+    parentTransactionId: null,
     direction: 'incoming',
     transactionType: 'payment',
     method: 'cash',

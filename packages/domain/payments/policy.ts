@@ -83,27 +83,47 @@ export function calculateCashChange(
 
 /**
  * Calculate new intent status from aggregated transaction totals.
+ *
+ * Phase 4 status priority order:
+ *  1. refunded         — amountPaid > 0 AND amountRefunded >= amountPaid
+ *  2. partially_refunded — amountRefunded > 0 AND amountRefunded < amountPaid
+ *  3. paid             — amountRefunded = 0 AND netPaid >= amountDue
+ *  4. partially_paid   — netPaid > 0 AND netPaid < amountDue
+ *  5. requires_payment — fallthrough
+ *
+ * Important: status `paid` is never returned after any refund has occurred.
+ * amountRemaining is NOT set to 0 after a full refund (it becomes amountDue again).
  */
 export function calculateIntentStatus(
   amountDue: number,
   amountPaid: number,
   amountRefunded: number,
-  amountRemaining: number
+  _amountRemaining: number
 ): PaymentIntentStatus {
-  if (amountRemaining <= 0.001 && amountPaid >= amountDue - 0.001) {
-    if (amountRefunded > 0 && amountRefunded >= amountPaid - 0.001) {
-      return 'refunded';
-    }
-    if (amountRefunded > 0) {
-      return 'partially_refunded';
-    }
+  const EPS = 0.001;
+
+  // 1. refunded: all paid amount has been refunded back
+  if (amountPaid > EPS && amountRefunded >= amountPaid - EPS) {
+    return 'refunded';
+  }
+
+  // 2. partially_refunded: some but not all paid amount was refunded
+  if (amountRefunded > EPS && amountRefunded < amountPaid - EPS) {
+    return 'partially_refunded';
+  }
+
+  // 3. paid: no refund, net paid covers the full amount due
+  const netPaid = amountPaid - amountRefunded;
+  if (amountRefunded < EPS && netPaid >= amountDue - EPS) {
     return 'paid';
   }
 
-  if (amountPaid > 0.001 && amountRemaining > 0.001) {
+  // 4. partially_paid: some net payment received but not enough
+  if (netPaid > EPS) {
     return 'partially_paid';
   }
 
+  // 5. requires_payment: nothing collected yet
   return 'requires_payment';
 }
 

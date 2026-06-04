@@ -24,6 +24,8 @@ export interface DomainPaymentTransaction {
   id: string;
   tenantId: string;
   paymentIntentId: string;
+  /** Phase 4: links refund/void rows to the original incoming transaction. */
+  parentTransactionId: string | null;
   direction: PaymentDirection;
   transactionType: TransactionType;
   method: PaymentMethod;

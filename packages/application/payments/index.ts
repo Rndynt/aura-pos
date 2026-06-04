@@ -20,3 +20,13 @@ export type {
   HandlePaymentProviderWebhookInput,
   HandlePaymentProviderWebhookOutput,
 } from './HandlePaymentProviderWebhook';
+export { RefundPaymentTransaction } from './RefundPaymentTransaction';
+export type {
+  RefundPaymentTransactionInput,
+  RefundPaymentTransactionOutput,
+} from './RefundPaymentTransaction';
+export { VoidPaymentTransaction } from './VoidPaymentTransaction';
+export type {
+  VoidPaymentTransactionInput,
+  VoidPaymentTransactionOutput,
+} from './VoidPaymentTransaction';

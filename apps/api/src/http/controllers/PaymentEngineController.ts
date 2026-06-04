@@ -220,6 +220,120 @@ export async function handleProviderWebhook(req: Request, res: Response): Promis
   }
 }
 
+// ── Phase 4 handlers ───────────────────────────────────────────────────────────
+
+const refundTransactionSchema = z.object({
+  amount: z.number().positive(),
+  reason: z.string().max(500).optional(),
+  metadata: z.record(z.unknown()).optional(),
+  idempotency_key: z.string().max(128).optional(),
+});
+
+const voidTransactionSchema = z.object({
+  reason: z.string().max(500).optional(),
+  metadata: z.record(z.unknown()).optional(),
+  idempotency_key: z.string().max(128).optional(),
+});
+
+/**
+ * POST /api/payment-engine/transactions/:id/refund
+ *
+ * Refund a succeeded incoming transaction (full or partial).
+ * Creates an outgoing refund transaction and recalculates the payment intent.
+ *
+ * Returns:
+ *   200 — refund succeeded (idempotent replay)
+ *   201 — refund created
+ *   400 — validation error
+ *   404 — transaction not found
+ *   409 — idempotency key conflict
+ *   422 — invalid transition / amount exceeds refundable
+ */
+export async function refundTransaction(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+
+  const parsed = refundTransactionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendError(res, parsed.error.errors.map((e) => e.message).join(', '), 400);
+    return;
+  }
+
+  const data = parsed.data;
+
+  try {
+    const result = await container.refundPaymentTransaction.execute({
+      tenantId: req.tenantId!,
+      transactionId: id,
+      amount: data.amount,
+      reason: data.reason,
+      metadata: data.metadata,
+      idempotencyKey: data.idempotency_key,
+    });
+
+    sendSuccess(res, result, 201);
+  } catch (err: any) {
+    if (err instanceof PaymentPolicyError && err.code === 'TRANSACTION_NOT_FOUND') {
+      sendError(res, err.message, 404);
+    } else if (err instanceof PaymentPolicyError && err.code === 'IDEMPOTENCY_KEY_CONFLICT') {
+      sendError(res, err.message, 409);
+    } else if (err instanceof PaymentPolicyError) {
+      sendError(res, err.message, 422);
+    } else if (err.message?.includes('not found')) {
+      sendError(res, err.message, 404);
+    } else {
+      sendError(res, err.message ?? 'Internal server error', 500);
+    }
+  }
+}
+
+/**
+ * POST /api/payment-engine/transactions/:id/void
+ *
+ * Void a pending or requires_action transaction.
+ * Marks the transaction as voided. Does not affect amountPaid.
+ *
+ * Returns:
+ *   200 — voided
+ *   400 — validation error
+ *   404 — transaction not found
+ *   422 — invalid transition (e.g. already succeeded, already voided)
+ */
+export async function voidTransaction(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+
+  const parsed = voidTransactionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendError(res, parsed.error.errors.map((e) => e.message).join(', '), 400);
+    return;
+  }
+
+  const data = parsed.data;
+
+  try {
+    const result = await container.voidPaymentTransaction.execute({
+      tenantId: req.tenantId!,
+      transactionId: id,
+      reason: data.reason,
+      metadata: data.metadata,
+      idempotencyKey: data.idempotency_key,
+    });
+
+    sendSuccess(res, result);
+  } catch (err: any) {
+    if (err instanceof PaymentPolicyError && err.code === 'TRANSACTION_NOT_FOUND') {
+      sendError(res, err.message, 404);
+    } else if (err instanceof PaymentPolicyError && err.code === 'INVALID_TRANSITION') {
+      sendError(res, err.message, 422);
+    } else if (err instanceof PaymentPolicyError) {
+      sendError(res, err.message, 422);
+    } else if (err.message?.includes('not found')) {
+      sendError(res, err.message, 404);
+    } else {
+      sendError(res, err.message ?? 'Internal server error', 500);
+    }
+  }
+}
+
 // ── Phase 2 handlers ───────────────────────────────────────────────────────────
 
 /**

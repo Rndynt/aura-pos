@@ -185,4 +185,14 @@ router.post('/intents/:id/manual-payments', PaymentEngineController.recordManual
 // Create a pending gateway payment transaction. Phase 2: only fake_gateway allowed.
 router.post('/intents/:id/gateway-payments', PaymentEngineController.createGatewayPayment);
 
+// ── Phase 4: Refund / Void endpoints ───────────────────────────────────────────
+
+// POST /api/payment-engine/transactions/:id/refund
+// Refund a succeeded incoming transaction (full or partial).
+router.post('/transactions/:id/refund', PaymentEngineController.refundTransaction);
+
+// POST /api/payment-engine/transactions/:id/void
+// Void a pending or requires_action transaction.
+router.post('/transactions/:id/void', PaymentEngineController.voidTransaction);
+
 export default router;

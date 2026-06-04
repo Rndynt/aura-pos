@@ -774,6 +774,12 @@ export const paymentTransactions = pgTable("payment_transactions", {
   id: uuid("id").primaryKey().defaultRandom(),
   tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
   paymentIntentId: uuid("payment_intent_id").notNull().references(() => paymentIntents.id, { onDelete: "cascade" }),
+  /**
+   * Phase 4: nullable self-reference linking refund/void rows to the original
+   * incoming transaction. Set for direction=outgoing transactionType=refund rows.
+   * NULL for all original incoming payment rows.
+   */
+  parentTransactionId: uuid("parent_transaction_id").references((): any => paymentTransactions.id, { onDelete: "set null" }),
   direction: varchar("direction", { length: 20 }).notNull().default("incoming"),
   transactionType: varchar("transaction_type", { length: 50 }).notNull().default("payment"),
   method: varchar("method", { length: 50 }).notNull(),
@@ -796,6 +802,7 @@ export const paymentTransactions = pgTable("payment_transactions", {
 }, (table) => ({
   tenantIdx: index("payment_transactions_tenant_idx").on(table.tenantId),
   intentIdx: index("payment_transactions_intent_idx").on(table.paymentIntentId),
+  parentIdx: index("payment_transactions_parent_idx").on(table.parentTransactionId),
   statusIdx: index("payment_transactions_status_idx").on(table.tenantId, table.status),
   providerReferenceIdx: index("payment_transactions_provider_reference_idx").on(table.provider, table.providerReference),
   tenantIdempotencyUnique: uniqueIndex("payment_transactions_tenant_idempotency_unique")

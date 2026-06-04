@@ -36,6 +36,8 @@ import { CreateGatewayPayment } from '@pos/application/payments/CreateGatewayPay
 import { ConfirmFakeGatewayPayment } from '@pos/application/payments/ConfirmFakeGatewayPayment';
 import { ApplyGatewayTransactionStatus } from '@pos/application/payments/ApplyGatewayTransactionStatus';
 import { HandlePaymentProviderWebhook } from '@pos/application/payments/HandlePaymentProviderWebhook';
+import { RefundPaymentTransaction } from '@pos/application/payments/RefundPaymentTransaction';
+import { VoidPaymentTransaction } from '@pos/application/payments/VoidPaymentTransaction';
 
 // Payment Providers
 import { ManualProvider } from '@pos/domain/payments';
@@ -144,6 +146,10 @@ class Container {
   public readonly applyGatewayTransactionStatus: ApplyGatewayTransactionStatus;
   public readonly confirmFakeGatewayPayment: ConfirmFakeGatewayPayment;
   public readonly handlePaymentProviderWebhook: HandlePaymentProviderWebhook;
+
+  // Payment Engine (Phase 4: Refund / Void Lifecycle)
+  public readonly refundPaymentTransaction: RefundPaymentTransaction;
+  public readonly voidPaymentTransaction: VoidPaymentTransaction;
 
   constructor() {
     // Initialize Repositories
@@ -305,6 +311,20 @@ class Container {
       this.paymentProviderEventRepository,
       this.paymentTransactionRepository,
       this.applyGatewayTransactionStatus,
+    );
+
+    // Payment Engine — Phase 4: Refund / Void Lifecycle
+    this.refundPaymentTransaction = new RefundPaymentTransaction(
+      db,
+      this.paymentIntentRepository,
+      this.paymentTransactionRepository,
+      this.recalculatePaymentIntent,
+    );
+
+    this.voidPaymentTransaction = new VoidPaymentTransaction(
+      db,
+      this.paymentIntentRepository,
+      this.paymentTransactionRepository,
     );
   }
 }

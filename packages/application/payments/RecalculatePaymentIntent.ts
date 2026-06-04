@@ -35,10 +35,9 @@ export class RecalculatePaymentIntent {
     const { amountPaid, amountRefunded } = aggregateTransactionTotals(transactions);
     const amountDue = typeof intentRow.amountDue === 'string' ? parseFloat(intentRow.amountDue) : intentRow.amountDue;
 
+    // amountRemaining = amountDue - netPaid, where netPaid = amountPaid - amountRefunded.
+    // After a full refund this equals amountDue (not zero) — intentional per Phase 4 spec.
     const amountRemaining = Math.max(0, amountDue - amountPaid + amountRefunded);
-    // Phase 4 note: calculateIntentStatus does not yet account for void/refund flows.
-    // The 'refunded' and 'partially_refunded' branches are reserved for Phase 4.
-    // Do not add refund/void logic here until Phase 4 is implemented.
     const status = calculateIntentStatus(amountDue, amountPaid, amountRefunded, amountRemaining);
 
     const updated = await this.intentRepo.update(input.intentId, input.tenantId, {

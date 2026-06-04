@@ -78,6 +78,13 @@
       "when": 1780358400003,
       "tag": "0020_payment_allocations_tx_target_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1780444800000,
+      "tag": "0021_payment_transactions_parent_id",
+      "breakpoints": true
     }
   ]
 }

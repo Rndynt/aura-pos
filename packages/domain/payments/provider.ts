@@ -105,13 +105,16 @@ export interface PaymentProvider {
  *
  * Transactions succeed immediately — no external gateway or webhook required.
  *
- * Phase 1 limitations
- * -------------------
- * - `cancelPayment` is NOT supported. Returns success:false with an explicit
- *   reason. Void/cancel flow will be implemented in Phase 4.
- * - `refundPayment` is NOT supported. Returns success:false with an explicit
- *   reason. Refund flow (outgoing transactions + status recalculation) will be
- *   implemented in Phase 4.
+ * Provider-level notes (Phase 4)
+ * --------------------------------
+ * - `cancelPayment` is NOT supported at provider level. Manual payments do not
+ *   go through an external gateway, so void/cancel is handled internally by
+ *   VoidPaymentTransaction use case, not by calling a provider API.
+ * - `refundPayment` is NOT supported at provider level. Phase 4 refund lifecycle
+ *   is internal engine behavior: RefundPaymentTransaction creates an outgoing
+ *   refund transaction directly without calling any external provider API.
+ *   Real provider refund API calls (Midtrans, Xendit, Stripe) will be added
+ *   in a future phase when real gateway integration is implemented.
  * - `verifyWebhook` / `parseWebhook` are unsupported (no external gateway).
  */
 export class ManualProvider implements PaymentProvider {
@@ -128,25 +131,28 @@ export class ManualProvider implements PaymentProvider {
   }
 
   /**
-   * Cancel is not implemented for manual payments in Phase 1.
-   * Void/cancel support is planned for Phase 4.
+   * Cancel/void is not implemented at provider level for manual payments.
+   * Phase 4 void is handled internally by VoidPaymentTransaction use case —
+   * no external provider API call is required.
    */
   async cancelPayment(_input: CancelProviderPaymentInput): Promise<CancelProviderPaymentResult> {
     return {
       success: false,
-      failureReason: 'ManualProvider does not support cancel/void in Phase 1. This will be implemented in Phase 4.',
+      failureReason: 'ManualProvider does not call an external cancel API. Use VoidPaymentTransaction use case instead.',
     };
   }
 
   /**
-   * Refund is not implemented for manual payments in Phase 1.
-   * Refund support (outgoing transactions + intent recalculation) is planned for Phase 4.
+   * Refund is not implemented at provider level for manual payments.
+   * Phase 4 refund is handled internally by RefundPaymentTransaction use case —
+   * no external provider API call is required.
+   * Real provider refund API calls will be added in a future phase.
    */
   async refundPayment(_input: RefundProviderPaymentInput): Promise<RefundProviderPaymentResult> {
     return {
       providerReference: null,
       success: false,
-      failureReason: 'ManualProvider does not support refund in Phase 1. This will be implemented in Phase 4.',
+      failureReason: 'ManualProvider does not call an external refund API. Use RefundPaymentTransaction use case instead.',
     };
   }
 
