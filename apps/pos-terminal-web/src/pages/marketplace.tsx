@@ -8,6 +8,12 @@ import { useTenantFeatures } from "@/lib/api/hooks";
 import { useToast } from "@/hooks/use-toast";
 import { getActiveTenantId } from "@/lib/tenant";
 import { buildApiHeaders } from "@/lib/outlet";
+import {
+  type PlanTier,
+  PLAN_RANK,
+  MODULE_REQUIRED_PLAN,
+  FEATURE_REQUIRED_PLAN,
+} from "@/lib/featureCatalog";
 import { PageHeader } from "@/components/design";
 import {
   Crown, Sparkles, ChevronRight, X, Zap,
@@ -20,8 +26,8 @@ import {
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
+// PlanTier is imported from @/lib/featureCatalog — single source of truth.
 
-type PlanTier = "free" | "growth" | "pro";
 type TabType = "modul" | "fitur";
 type ModuleKey =
   | "enable_table_management" | "enable_kitchen_ticket" | "enable_loyalty"
@@ -83,13 +89,17 @@ type CatalogItem = ModuleItem | FeatureItem;
 // ─── Module Catalog ────────────────────────────────────────────────────────────
 // Each module may bundle related feature codes that ONLY make sense together.
 // These bundled features are NOT shown separately in the Fitur Satuan tab.
+//
+// NOTE: `requiredPlan` is NOT hardcoded here — it is derived at runtime from
+// MODULE_REQUIRED_PLAN (featureCatalog.ts), the single source of truth.
+// To change a module's required plan, edit featureCatalog.ts only.
 
-const MODULE_CATALOG: ModuleItem[] = [
+const MODULE_CATALOG: ModuleItem[] = ([
   {
     type: "module",
     moduleKey: "enable_table_management",
     moduleConfigKey: "enableTableManagement",
-    price: null,              // null = termasuk dalam paket Growth
+    price: null,
     title: "Manajemen Meja",
     category: "Restoran & Meja",
     description: "Denah meja real-time, status duduk, & kelola pesanan per meja.",
@@ -98,14 +108,13 @@ const MODULE_CATALOG: ModuleItem[] = [
     icon: LayoutGrid,
     iconBg: "bg-blue-100",
     iconColor: "text-blue-600",
-    requiredPlan: "growth",
     bundledFeatures: [],
   },
   {
     type: "module",
     moduleKey: "enable_kitchen_ticket",
     moduleConfigKey: "enableKitchenTicket",
-    price: null,              // null = termasuk dalam paket Growth
+    price: null,
     title: "Kitchen Display (KDS)",
     category: "Restoran & Meja",
     description: "Tiket dapur, layar KDS, & printer dapur — satu paket lengkap.",
@@ -114,7 +123,6 @@ const MODULE_CATALOG: ModuleItem[] = [
     icon: ChefHat,
     iconBg: "bg-orange-100",
     iconColor: "text-orange-600",
-    requiredPlan: "growth",
     bundledFeatures: [
       { code: "kitchen_ticket", label: "Tiket Dapur" },
       { code: "kitchen_display", label: "Layar KDS" },
@@ -125,7 +133,7 @@ const MODULE_CATALOG: ModuleItem[] = [
     type: "module",
     moduleKey: "enable_loyalty",
     moduleConfigKey: "enableLoyalty",
-    price: null,              // null = termasuk dalam paket Growth
+    price: null,
     title: "Program Loyalitas",
     category: "Pelanggan",
     description: "Poin reward, member card, & retensi pelanggan jangka panjang.",
@@ -134,7 +142,6 @@ const MODULE_CATALOG: ModuleItem[] = [
     icon: Heart,
     iconBg: "bg-pink-100",
     iconColor: "text-pink-600",
-    requiredPlan: "growth",
     badge: "Populer",
     comingSoon: true,
     bundledFeatures: [],
@@ -143,7 +150,7 @@ const MODULE_CATALOG: ModuleItem[] = [
     type: "module",
     moduleKey: "enable_delivery",
     moduleConfigKey: "enableDelivery",
-    price: null,              // null = termasuk dalam paket Growth
+    price: null,
     title: "Delivery & Pengiriman",
     category: "Pelanggan",
     description: "Tipe order delivery, input alamat pengiriman, & tracking.",
@@ -152,14 +159,13 @@ const MODULE_CATALOG: ModuleItem[] = [
     icon: Truck,
     iconBg: "bg-emerald-100",
     iconColor: "text-emerald-600",
-    requiredPlan: "growth",
     bundledFeatures: [],
   },
   {
     type: "module",
     moduleKey: "enable_appointments",
     moduleConfigKey: "enableAppointments",
-    price: null,              // null = termasuk dalam paket Growth
+    price: null,
     title: "Sistem Appointment",
     category: "Pelanggan",
     description: "Jadwal booking, reminder otomatis, & manajemen antrian janji.",
@@ -168,7 +174,6 @@ const MODULE_CATALOG: ModuleItem[] = [
     icon: CalendarDays,
     iconBg: "bg-violet-100",
     iconColor: "text-violet-600",
-    requiredPlan: "growth",
     comingSoon: true,
     bundledFeatures: [],
   },
@@ -176,7 +181,7 @@ const MODULE_CATALOG: ModuleItem[] = [
     type: "module",
     moduleKey: "enable_inventory",
     moduleConfigKey: "enableInventory",
-    price: null,              // null = Gratis (free plan)
+    price: null,
     title: "Stok Dasar",
     category: "Inventori",
     description: "Lihat stok per produk, status menipis/habis, & adjust qty.",
@@ -185,7 +190,6 @@ const MODULE_CATALOG: ModuleItem[] = [
     icon: Package,
     iconBg: "bg-amber-100",
     iconColor: "text-amber-600",
-    requiredPlan: "free",
     bundledFeatures: [],
     isCore: true,
   },
@@ -193,7 +197,7 @@ const MODULE_CATALOG: ModuleItem[] = [
     type: "module",
     moduleKey: "enable_inventory_advanced",
     moduleConfigKey: "enableInventoryAdvanced",
-    price: null,              // null = termasuk dalam paket Growth
+    price: null,
     title: "Stok Lanjutan",
     category: "Inventori",
     description: "Mutasi stok bertipe, riwayat audit trail, & laporan pergerakan.",
@@ -202,7 +206,6 @@ const MODULE_CATALOG: ModuleItem[] = [
     icon: PackageSearch,
     iconBg: "bg-emerald-100",
     iconColor: "text-emerald-600",
-    requiredPlan: "growth",
     badge: "Growth",
     bundledFeatures: [
       { code: "inventory_tracking", label: "Tracking Otomatis per Transaksi" },
@@ -213,7 +216,7 @@ const MODULE_CATALOG: ModuleItem[] = [
     type: "module",
     moduleKey: "enable_multi_location",
     moduleConfigKey: "enableMultiLocation",
-    price: null,              // null = termasuk dalam paket Pro
+    price: null,
     title: "Multi Lokasi",
     category: "Ekspansi",
     description: "Kelola beberapa cabang dari satu dashboard terpusat.",
@@ -222,47 +225,66 @@ const MODULE_CATALOG: ModuleItem[] = [
     icon: MapPin,
     iconBg: "bg-cyan-100",
     iconColor: "text-cyan-600",
-    requiredPlan: "pro",
     badge: "Pro",
     bundledFeatures: [],
   },
-];
+] as any[]).map((m) => ({ ...m, requiredPlan: MODULE_REQUIRED_PLAN[m.moduleKey] ?? "free" }));
 
 // ─── Feature Catalog ───────────────────────────────────────────────────────────
 // ONLY standalone features that work independently.
 // Features that are bundled inside a module (kitchen_ticket, kitchen_display,
 // kitchen_printer, inventory_tracking, inventory_reports) are NOT listed here
 // to avoid confusion and duplicate purchases.
+//
+// NOTE: `requiredPlan` is NOT hardcoded here — it is derived at runtime from
+// FEATURE_REQUIRED_PLAN (featureCatalog.ts), the single source of truth.
+// To change a feature's required plan, edit featureCatalog.ts only.
 
-const FEATURE_CATALOG: FeatureItem[] = [
+const FEATURE_CATALOG: FeatureItem[] = ([
   // Kasir & Transaksi
   {
     type: "feature", featureCode: "product_variants", price: null,
     title: "Variasi Produk", category: "Kasir & Transaksi",
     description: "Size, topping, rasa — tambahkan pilihan ke setiap produk.",
     longDesc: "Buat variasi produk fleksibel (ukuran, rasa, topping, add-on). Tiap varian bisa punya harga berbeda. Pelanggan pilih opsi saat checkout.",
-    icon: Layers, iconBg: "bg-blue-100", iconColor: "text-blue-600", requiredPlan: "free",
+    icon: Layers, iconBg: "bg-blue-100", iconColor: "text-blue-600",
   },
   {
     type: "feature", featureCode: "partial_payment", price: null,
     title: "Pembayaran Parsial", category: "Kasir & Transaksi",
     description: "Bayar sebagian, lunasi nanti — split bill & cicilan.",
     longDesc: "Terima pembayaran parsial atau split bill antar pelanggan. Sisa tagihan tercatat dan bisa dilunasi di waktu berbeda dengan metode bayar berbeda.",
-    icon: SplitSquareVertical, iconBg: "bg-green-100", iconColor: "text-green-600", requiredPlan: "free",
+    icon: SplitSquareVertical, iconBg: "bg-green-100", iconColor: "text-green-600",
   },
   {
     type: "feature", featureCode: "discounts", price: null,
     title: "Sistem Diskon", category: "Kasir & Transaksi",
     description: "Diskon per item (% atau Rp) dan diskon keseluruhan order.",
     longDesc: "Berikan diskon fleksibel: persentase atau nominal per item, plus diskon total per order. Badge hemat tampil otomatis di struk.",
-    icon: Tag, iconBg: "bg-rose-100", iconColor: "text-rose-600", requiredPlan: "free",
+    icon: Tag, iconBg: "bg-rose-100", iconColor: "text-rose-600",
   },
   {
     type: "feature", featureCode: "order_queue", price: null,
     title: "Panel Antrian Order", category: "Kasir & Transaksi",
     description: "Tampilkan antrian semua order aktif real-time di layar kasir.",
     longDesc: "Panel samping yang menampilkan semua order aktif secara real-time beserta status bayar. Kasir pantau pesanan tanpa berpindah layar.",
-    icon: ClipboardList, iconBg: "bg-indigo-100", iconColor: "text-indigo-600", requiredPlan: "free",
+    icon: ClipboardList, iconBg: "bg-indigo-100", iconColor: "text-indigo-600",
+  },
+  {
+    type: "feature", featureCode: "dark_mode", price: null,
+    title: "Mode Gelap", category: "Kasir & Transaksi",
+    description: "Tampilan kasir mode gelap — nyaman untuk shift malam.",
+    longDesc: "Aktifkan dark mode di seluruh tampilan POS. Cocok untuk operasional malam hari atau lingkungan dengan pencahayaan rendah.",
+    icon: Moon, iconBg: "bg-slate-100", iconColor: "text-slate-600",
+    comingSoon: true,
+  },
+  {
+    type: "feature", featureCode: "custom_branding", price: null,
+    title: "Kustomisasi Merek", category: "Kasir & Transaksi",
+    description: "Logo toko, warna tema, & nama brand di struk dan tampilan.",
+    longDesc: "Pasang logo bisnis, pilih warna tema POS, dan sesuaikan nama brand yang tampil di struk serta layar customer-facing display.",
+    icon: Palette, iconBg: "bg-pink-100", iconColor: "text-pink-600",
+    comingSoon: true,
   },
   // Notifikasi
   {
@@ -270,7 +292,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     title: "Notifikasi Order", category: "Notifikasi",
     description: "Alert bunyi & visual saat order baru masuk atau status berubah.",
     longDesc: "Notifikasi audio dan visual untuk semua tipe order (bukan hanya dapur). Kasir tidak melewatkan pesanan yang baru dibuat atau butuh perhatian.",
-    icon: Bell, iconBg: "bg-yellow-100", iconColor: "text-yellow-600", requiredPlan: "growth",
+    icon: Bell, iconBg: "bg-yellow-100", iconColor: "text-yellow-600",
     comingSoon: true,
   },
   // Hardware & Cetak
@@ -279,7 +301,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     title: "Printer Struk", category: "Hardware & Cetak",
     description: "Cetak struk thermal ke pelanggan saat transaksi selesai.",
     longDesc: "Integrasi printer thermal untuk struk pelanggan. Struk mencakup item, harga, diskon, pajak, metode bayar, dan info toko.",
-    icon: Printer, iconBg: "bg-slate-100", iconColor: "text-slate-600", requiredPlan: "free",
+    icon: Printer, iconBg: "bg-slate-100", iconColor: "text-slate-600",
     isCore: true,
   },
   {
@@ -287,7 +309,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     title: "Printer Label", category: "Hardware & Cetak",
     description: "Cetak label harga, barcode, atau stiker pakaian & produk.",
     longDesc: "Cetak label produk dengan barcode, harga, dan nama. Cocok untuk laundry (tag pakaian), retail (label harga), atau usaha dengan banyak SKU.",
-    icon: QrCode, iconBg: "bg-teal-100", iconColor: "text-teal-600", requiredPlan: "growth",
+    icon: QrCode, iconBg: "bg-teal-100", iconColor: "text-teal-600",
     comingSoon: true,
   },
   {
@@ -295,7 +317,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     title: "Scanner Barcode", category: "Hardware & Cetak",
     description: "Scan produk langsung dari kamera atau scanner USB/Bluetooth.",
     longDesc: "Tambahkan produk ke keranjang dengan scan barcode. Mendukung scanner USB, Bluetooth, dan kamera perangkat. Proses checkout retail jadi lebih cepat.",
-    icon: PackageSearch, iconBg: "bg-purple-100", iconColor: "text-purple-600", requiredPlan: "growth",
+    icon: PackageSearch, iconBg: "bg-purple-100", iconColor: "text-purple-600",
     comingSoon: true,
   },
   // Laporan & Analitik
@@ -304,7 +326,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     title: "Laporan Penjualan", category: "Laporan & Analitik",
     description: "Ringkasan omzet harian, mingguan, dan bulanan dengan export.",
     longDesc: "Laporan penjualan lengkap: omzet per periode, produk terlaris, metode pembayaran, dan tren penjualan. Export ke PDF atau Excel.",
-    icon: BarChart3, iconBg: "bg-blue-100", iconColor: "text-blue-600", requiredPlan: "free",
+    icon: BarChart3, iconBg: "bg-blue-100", iconColor: "text-blue-600",
     isCore: true,
   },
   {
@@ -312,7 +334,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     title: "Dashboard Analitik", category: "Laporan & Analitik",
     description: "Grafik real-time, KPI bisnis, & insight penjualan interaktif.",
     longDesc: "Dashboard visual dengan grafik omzet, chart produk terlaris, rata-rata nilai transaksi, dan insight bisnis. Update real-time, bisa filter per periode.",
-    icon: PieChart, iconBg: "bg-violet-100", iconColor: "text-violet-600", requiredPlan: "growth", badge: "Baru",
+    icon: PieChart, iconBg: "bg-violet-100", iconColor: "text-violet-600", badge: "Baru",
   },
   // Integrasi Eksternal
   {
@@ -320,7 +342,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     title: "Payment Gateway", category: "Integrasi Eksternal",
     description: "Terima QRIS, Virtual Account, GoPay, OVO, & kartu kredit.",
     longDesc: "Integrasi payment gateway: QRIS, Virtual Account, GoPay, OVO, ShopeePay, dan kartu kredit. Rekonsiliasi otomatis ke laporan penjualan.",
-    icon: Banknote, iconBg: "bg-green-100", iconColor: "text-green-600", requiredPlan: "pro", badge: "Pro",
+    icon: Banknote, iconBg: "bg-green-100", iconColor: "text-green-600", badge: "Pro",
     comingSoon: true,
   },
   {
@@ -328,7 +350,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     title: "Integrasi API", category: "Integrasi Eksternal",
     description: "Hubungkan AuraPOS ke sistem ERP, marketplace, atau akuntansi.",
     longDesc: "API key & webhook untuk integrasi dengan sistem eksternal (ERP, marketplace, akuntansi). Dokumentasi REST API lengkap tersedia.",
-    icon: Webhook, iconBg: "bg-slate-100", iconColor: "text-slate-600", requiredPlan: "pro", badge: "Pro",
+    icon: Webhook, iconBg: "bg-slate-100", iconColor: "text-slate-600", badge: "Pro",
     comingSoon: true,
   },
   {
@@ -336,7 +358,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     title: "Booking Online", category: "Integrasi Eksternal",
     description: "Halaman booking publik via link atau QR code untuk pelanggan.",
     longDesc: "Halaman booking online yang bisa dibagikan ke pelanggan. Mereka pilih layanan, tanggal, jam — langsung masuk ke kalender appointment toko.",
-    icon: Globe, iconBg: "bg-cyan-100", iconColor: "text-cyan-600", requiredPlan: "pro",
+    icon: Globe, iconBg: "bg-cyan-100", iconColor: "text-cyan-600",
     comingSoon: true,
   },
   {
@@ -344,7 +366,7 @@ const FEATURE_CATALOG: FeatureItem[] = [
     title: "Sinkronisasi Kalender", category: "Integrasi Eksternal",
     description: "Sync appointment ke Google Calendar atau iCal secara otomatis.",
     longDesc: "Appointment otomatis tersync ke Google Calendar atau iCal. Reminder email & WhatsApp ke pelanggan terkirim otomatis.",
-    icon: CalendarClock, iconBg: "bg-indigo-100", iconColor: "text-indigo-600", requiredPlan: "pro",
+    icon: CalendarClock, iconBg: "bg-indigo-100", iconColor: "text-indigo-600",
     comingSoon: true,
   },
   {
@@ -352,26 +374,10 @@ const FEATURE_CATALOG: FeatureItem[] = [
     title: "Sinkronisasi Akuntansi", category: "Integrasi Eksternal",
     description: "Ekspor data transaksi ke Jurnal, Accurate, atau Excel otomatis.",
     longDesc: "Sync data penjualan & pembayaran ke software akuntansi (Jurnal, Accurate) atau ekspor otomatis ke Excel setiap tutup hari. Tidak perlu input manual lagi.",
-    icon: BookOpen, iconBg: "bg-emerald-100", iconColor: "text-emerald-600", requiredPlan: "growth",
+    icon: BookOpen, iconBg: "bg-emerald-100", iconColor: "text-emerald-600",
     comingSoon: true,
   },
-  {
-    type: "feature", featureCode: "dark_mode", price: null,
-    title: "Mode Gelap", category: "Kasir & Transaksi",
-    description: "Tampilan kasir mode gelap — nyaman untuk shift malam.",
-    longDesc: "Aktifkan dark mode di seluruh tampilan POS. Cocok untuk operasional malam hari atau lingkungan dengan pencahayaan rendah.",
-    icon: Moon, iconBg: "bg-slate-100", iconColor: "text-slate-600", requiredPlan: "growth",
-    comingSoon: true,
-  },
-  {
-    type: "feature", featureCode: "custom_branding", price: null,
-    title: "Kustomisasi Merek", category: "Kasir & Transaksi",
-    description: "Logo toko, warna tema, & nama brand di struk dan tampilan.",
-    longDesc: "Pasang logo bisnis, pilih warna tema POS, dan sesuaikan nama brand yang tampil di struk serta layar customer-facing display.",
-    icon: Palette, iconBg: "bg-pink-100", iconColor: "text-pink-600", requiredPlan: "growth",
-    comingSoon: true,
-  },
-];
+] as any[]).map((f) => ({ ...f, requiredPlan: FEATURE_REQUIRED_PLAN[f.featureCode] ?? "free" }));
 
 // ─── Plan config ──────────────────────────────────────────────────────────────
 
@@ -404,7 +410,7 @@ const PLANS = [
   },
 ];
 
-const PLAN_RANK: Record<PlanTier, number> = { free: 0, growth: 1, pro: 2 };
+// PLAN_RANK is imported from @/lib/featureCatalog — do not redefine here.
 
 const MODULE_CATS = ["Semua", "Restoran & Meja", "Pelanggan", "Inventori", "Ekspansi"];
 const FEATURE_CATS = ["Semua", "Kasir & Transaksi", "Notifikasi", "Hardware & Cetak", "Laporan & Analitik", "Integrasi Eksternal"];
