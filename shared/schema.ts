@@ -734,3 +734,123 @@ export const inventorySyncErrors = pgTable("inventory_sync_errors", {
 export const insertInventorySyncErrorSchema = createInsertSchema(inventorySyncErrors).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertInventorySyncError = z.infer<typeof insertInventorySyncErrorSchema>;
 export type InventorySyncError = typeof inventorySyncErrors.$inferSelect;
+
+// ── Payment Engine Phase 1 ────────────────────────────────────────────────────
+
+export const paymentIntents = pgTable("payment_intents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  outletId: uuid("outlet_id").references(() => outlets.id, { onDelete: "set null" }),
+  payableType: varchar("payable_type", { length: 64 }).notNull(),
+  payableId: varchar("payable_id", { length: 128 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("IDR"),
+  amountDue: decimal("amount_due", { precision: 12, scale: 2 }).notNull(),
+  amountPaid: decimal("amount_paid", { precision: 12, scale: 2 }).notNull().default("0"),
+  amountRefunded: decimal("amount_refunded", { precision: 12, scale: 2 }).notNull().default("0"),
+  amountRemaining: decimal("amount_remaining", { precision: 12, scale: 2 }).notNull(),
+  status: varchar("status", { length: 50 }).notNull().default("requires_payment"),
+  allowPartial: boolean("allow_partial").notNull().default(false),
+  expiresAt: timestamp("expires_at"),
+  metadata: jsonb("metadata"),
+  idempotencyKey: varchar("idempotency_key", { length: 128 }),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  tenantIdx: index("payment_intents_tenant_idx").on(table.tenantId),
+  outletIdx: index("payment_intents_outlet_idx").on(table.outletId),
+  payableIdx: index("payment_intents_payable_idx").on(table.tenantId, table.payableType, table.payableId),
+  statusIdx: index("payment_intents_status_idx").on(table.tenantId, table.status),
+  createdAtIdx: index("payment_intents_created_at_idx").on(table.createdAt),
+  tenantIdempotencyUnique: uniqueIndex("payment_intents_tenant_idempotency_unique")
+    .on(table.tenantId, table.idempotencyKey)
+    .where(sql`${table.idempotencyKey} IS NOT NULL`),
+}));
+
+export const insertPaymentIntentSchema = createInsertSchema(paymentIntents).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPaymentIntent = z.infer<typeof insertPaymentIntentSchema>;
+export type PaymentIntent = typeof paymentIntents.$inferSelect;
+
+export const paymentTransactions = pgTable("payment_transactions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  paymentIntentId: uuid("payment_intent_id").notNull().references(() => paymentIntents.id, { onDelete: "cascade" }),
+  direction: varchar("direction", { length: 20 }).notNull().default("incoming"),
+  transactionType: varchar("transaction_type", { length: 50 }).notNull().default("payment"),
+  method: varchar("method", { length: 50 }).notNull(),
+  provider: varchar("provider", { length: 50 }).notNull().default("manual"),
+  status: varchar("status", { length: 50 }).notNull().default("pending"),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  receivedAmount: decimal("received_amount", { precision: 12, scale: 2 }),
+  changeAmount: decimal("change_amount", { precision: 12, scale: 2 }),
+  providerReference: varchar("provider_reference", { length: 255 }),
+  providerPaymentUrl: text("provider_payment_url"),
+  providerQrString: text("provider_qr_string"),
+  failureReason: text("failure_reason"),
+  idempotencyKey: varchar("idempotency_key", { length: 128 }),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  succeededAt: timestamp("succeeded_at"),
+  failedAt: timestamp("failed_at"),
+  cancelledAt: timestamp("cancelled_at"),
+}, (table) => ({
+  tenantIdx: index("payment_transactions_tenant_idx").on(table.tenantId),
+  intentIdx: index("payment_transactions_intent_idx").on(table.paymentIntentId),
+  statusIdx: index("payment_transactions_status_idx").on(table.tenantId, table.status),
+  providerReferenceIdx: index("payment_transactions_provider_reference_idx").on(table.provider, table.providerReference),
+  tenantIdempotencyUnique: uniqueIndex("payment_transactions_tenant_idempotency_unique")
+    .on(table.tenantId, table.idempotencyKey)
+    .where(sql`${table.idempotencyKey} IS NOT NULL`),
+  providerReferenceUnique: uniqueIndex("payment_transactions_provider_reference_unique")
+    .on(table.provider, table.providerReference)
+    .where(sql`${table.providerReference} IS NOT NULL`),
+}));
+
+export const insertPaymentTransactionSchema = createInsertSchema(paymentTransactions).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPaymentTransaction = z.infer<typeof insertPaymentTransactionSchema>;
+export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
+
+export const paymentAllocations = pgTable("payment_allocations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  paymentIntentId: uuid("payment_intent_id").notNull().references(() => paymentIntents.id, { onDelete: "cascade" }),
+  paymentTransactionId: uuid("payment_transaction_id").notNull().references(() => paymentTransactions.id, { onDelete: "cascade" }),
+  targetType: varchar("target_type", { length: 64 }).notNull(),
+  targetId: varchar("target_id", { length: 128 }).notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  tenantIdx: index("payment_allocations_tenant_idx").on(table.tenantId),
+  intentIdx: index("payment_allocations_intent_idx").on(table.paymentIntentId),
+  transactionIdx: index("payment_allocations_transaction_idx").on(table.paymentTransactionId),
+  targetIdx: index("payment_allocations_target_idx").on(table.tenantId, table.targetType, table.targetId),
+}));
+
+export const insertPaymentAllocationSchema = createInsertSchema(paymentAllocations).omit({ id: true, createdAt: true });
+export type InsertPaymentAllocation = z.infer<typeof insertPaymentAllocationSchema>;
+export type PaymentAllocation = typeof paymentAllocations.$inferSelect;
+
+export const paymentProviderEvents = pgTable("payment_provider_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 50 }).notNull(),
+  providerEventId: varchar("provider_event_id", { length: 255 }).notNull(),
+  providerReference: varchar("provider_reference", { length: 255 }),
+  eventType: varchar("event_type", { length: 100 }).notNull(),
+  rawPayload: jsonb("raw_payload").notNull(),
+  signatureValid: boolean("signature_valid").notNull().default(false),
+  processingStatus: varchar("processing_status", { length: 50 }).notNull().default("pending"),
+  processedAt: timestamp("processed_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  providerEventUnique: uniqueIndex("payment_provider_events_provider_event_unique").on(table.provider, table.providerEventId),
+  referenceIdx: index("payment_provider_events_reference_idx").on(table.provider, table.providerReference),
+  statusIdx: index("payment_provider_events_status_idx").on(table.processingStatus),
+  createdAtIdx: index("payment_provider_events_created_at_idx").on(table.createdAt),
+}));
+
+export const insertPaymentProviderEventSchema = createInsertSchema(paymentProviderEvents).omit({ id: true, createdAt: true });
+export type InsertPaymentProviderEvent = z.infer<typeof insertPaymentProviderEventSchema>;
+export type PaymentProviderEvent = typeof paymentProviderEvents.$inferSelect;

@@ -19,6 +19,19 @@ import { TenantRepository } from '@pos/infrastructure/repositories/tenants/Tenan
 import { TenantFeatureRepository } from '@pos/infrastructure/repositories/tenants/TenantFeatureRepository';
 import { TenantModuleConfigRepository } from '@pos/infrastructure/repositories/tenants/TenantModuleConfigRepository';
 
+// Payment Engine Repositories
+import { PaymentIntentRepository } from '@pos/infrastructure/repositories/payments/PaymentIntentRepository';
+import { PaymentTransactionRepository } from '@pos/infrastructure/repositories/payments/PaymentTransactionRepository';
+import { PaymentAllocationRepository } from '@pos/infrastructure/repositories/payments/PaymentAllocationRepository';
+import { PaymentProviderEventRepository } from '@pos/infrastructure/repositories/payments/PaymentProviderEventRepository';
+
+// Payment Engine Use Cases
+import { CreatePaymentIntent } from '@pos/application/payments/CreatePaymentIntent';
+import { GetPaymentIntent } from '@pos/application/payments/GetPaymentIntent';
+import { ListPaymentTransactions } from '@pos/application/payments/ListPaymentTransactions';
+import { RecordManualPayment } from '@pos/application/payments/RecordManualPayment';
+import { RecalculatePaymentIntent } from '@pos/application/payments/RecalculatePaymentIntent';
+
 // Use Cases - Catalog
 import { GetProducts } from '@pos/application/catalog/GetProducts';
 import { GetProductById } from '@pos/application/catalog/GetProductById';
@@ -100,6 +113,19 @@ class Container {
   public readonly checkFeatureAccess: CheckFeatureAccess;
   public readonly createTenant: CreateTenant;
   public readonly getTenantProfile: GetTenantProfile;
+
+  // Payment Engine Repositories
+  public readonly paymentIntentRepository: PaymentIntentRepository;
+  public readonly paymentTransactionRepository: PaymentTransactionRepository;
+  public readonly paymentAllocationRepository: PaymentAllocationRepository;
+  public readonly paymentProviderEventRepository: PaymentProviderEventRepository;
+
+  // Payment Engine Use Cases
+  public readonly createPaymentIntent: CreatePaymentIntent;
+  public readonly getPaymentIntent: GetPaymentIntent;
+  public readonly listPaymentTransactions: ListPaymentTransactions;
+  public readonly recalculatePaymentIntent: RecalculatePaymentIntent;
+  public readonly recordManualPayment: RecordManualPayment;
 
   constructor() {
     // Initialize Repositories
@@ -200,6 +226,29 @@ class Container {
       this.tenantRepository as any,
       this.tenantFeatureRepository as any,
       this.tenantModuleConfigRepository as any
+    );
+
+    // Payment Engine
+    this.paymentIntentRepository = new PaymentIntentRepository(db);
+    this.paymentTransactionRepository = new PaymentTransactionRepository(db);
+    this.paymentAllocationRepository = new PaymentAllocationRepository(db);
+    this.paymentProviderEventRepository = new PaymentProviderEventRepository(db);
+
+    this.recalculatePaymentIntent = new RecalculatePaymentIntent(
+      this.paymentIntentRepository,
+      this.paymentTransactionRepository
+    );
+    this.createPaymentIntent = new CreatePaymentIntent(this.paymentIntentRepository);
+    this.getPaymentIntent = new GetPaymentIntent(this.paymentIntentRepository);
+    this.listPaymentTransactions = new ListPaymentTransactions(
+      this.paymentIntentRepository,
+      this.paymentTransactionRepository
+    );
+    this.recordManualPayment = new RecordManualPayment(
+      db,
+      this.paymentTransactionRepository,
+      this.paymentAllocationRepository,
+      this.recalculatePaymentIntent
     );
   }
 }
