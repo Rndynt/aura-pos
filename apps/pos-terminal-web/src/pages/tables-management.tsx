@@ -172,19 +172,11 @@ export default function TablesManagementPage() {
       <div className="flex-1 flex flex-col min-w-0 h-full relative pb-[60px] md:pb-0 overflow-hidden">
 
         {/* ── HEADER ── */}
-        <div className="flex-shrink-0 bg-white border-b border-slate-100 px-4 md:px-6 py-4 space-y-4">
-          {/* Top row */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-black text-slate-800" data-testid="heading-tables">
-                Denah Meja
-              </h1>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {tables.length} meja terdaftar
-              </p>
-            </div>
-
-            {/* Stats chips */}
+        <PageHeader
+          title="Denah Meja"
+          subtitle={`${tables.length} meja terdaftar`}
+          onBack={() => setLocation("/hub")}
+          actions={
             <div className="flex items-center gap-1.5">
               <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-full">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
@@ -201,10 +193,10 @@ export default function TablesManagementPage() {
                 </div>
               )}
             </div>
-          </div>
+          }
+          bottomContent={
 
-          {/* Search + filter row */}
-          <div className="flex gap-2">
+            <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-3.5 h-3.5" />
               <input
@@ -240,8 +232,9 @@ export default function TablesManagementPage() {
                 );
               })}
             </div>
-          </div>
-        </div>
+            </div>
+          }
+        />
 
         {/* ── TABLE GRID ── */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6">

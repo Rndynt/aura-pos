@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { useOrder, useOrders, useRecordPayment } from "@/lib/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -120,6 +121,7 @@ export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const tenantId = getActiveTenantId();
@@ -302,6 +304,7 @@ export default function OrdersPage() {
         <PageHeader
           title="Pesanan"
           subtitle="Kelola dan pantau semua pesanan"
+          onBack={() => setLocation("/hub")}
           actions={
             <div className="flex gap-2 text-xs font-bold">
               <div className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg" data-testid="badge-confirmed-count">

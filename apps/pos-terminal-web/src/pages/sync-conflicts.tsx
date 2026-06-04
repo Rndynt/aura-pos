@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,7 @@ function formatDate(iso: string) {
 function ConflictCard({ conflict, tenantId }: { conflict: SyncConflict; tenantId: string }) {
   const [expanded, setExpanded] = useState(false);
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const severity = getSeverity(conflict.conflictType);
@@ -214,6 +216,7 @@ export default function SyncConflictsPage() {
       <PageHeader
         title="Konflik Sinkronisasi"
         subtitle="Kelola konflik dari terminal offline"
+        onBack={() => setLocation("/hub")}
         actions={
           <Button
             variant="outline"
