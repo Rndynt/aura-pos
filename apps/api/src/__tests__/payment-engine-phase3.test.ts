@@ -177,6 +177,23 @@ function makeFakeEventRepo() {
       store.push(row);
       return row;
     },
+    /**
+     * Simulates ON CONFLICT DO NOTHING behaviour:
+     * - If a row with (provider, providerEventId) already exists → return it with created=false.
+     * - Otherwise insert a new row → return it with created=true.
+     * Does NOT throw on duplicate — mirrors the production PostgreSQL implementation.
+     */
+    createOrGetByProviderEventId: async (d: any, _tx?: any) => {
+      const existing = store.find(
+        r => r.provider === d.provider && r.providerEventId === d.providerEventId,
+      );
+      if (existing) {
+        return { event: existing, created: false };
+      }
+      const row = { ...d, id: `event-${++eventIdSeq}`, createdAt: new Date() };
+      store.push(row);
+      return { event: row, created: true };
+    },
     findByProviderEventId: async (provider: string, eventId: string, _tx?: any) =>
       store.find(r => r.provider === provider && r.providerEventId === eventId) ?? null,
     markProcessed: async (id: string, data?: any, _tx?: any) => {
@@ -586,13 +603,12 @@ describe('ApplyGatewayTransactionStatus', () => {
   });
 });
 
-// ── Suite 5: HandlePaymentProviderWebhook ─────────────────────────────────────
+// ── Module-level factory shared by Suite 5 and Suite 5b ───────────────────────
 
-describe('HandlePaymentProviderWebhook', () => {
-  function makeWebhookUseCase(
-    intentOverrides: Partial<DomainPaymentIntent> = {},
-    pendingTxOverrides: Partial<any> = {},
-  ) {
+function makeWebhookUseCase(
+  intentOverrides: Partial<DomainPaymentIntent> = {},
+  pendingTxOverrides: Partial<any> = {},
+) {
     const intent = makeIntent({
       id: 'intent-wh-1',
       tenantId: 'tenant-a',
@@ -634,8 +650,11 @@ describe('HandlePaymentProviderWebhook', () => {
     txRepo._store().push(pendingTx);
 
     return { handleWebhook, intentRepo, txRepo, allocationRepo, eventRepo, intent };
-  }
+}
 
+// ── Suite 5: HandlePaymentProviderWebhook ─────────────────────────────────────
+
+describe('HandlePaymentProviderWebhook', () => {
   it('unknown_provider: returns unknown_provider outcome for unregistered provider', async () => {
     const { handleWebhook } = makeWebhookUseCase();
     const { rawBody, signature } = makeSignedWebhookCall(makeWebhookPayload());
@@ -650,8 +669,8 @@ describe('HandlePaymentProviderWebhook', () => {
     assert.strictEqual(result.outcome, 'unknown_provider');
   });
 
-  it('invalid_signature: returns invalid_signature when HMAC does not match', async () => {
-    const { handleWebhook } = makeWebhookUseCase();
+  it('invalid_signature: returns invalid_signature and stores a failed audit event', async () => {
+    const { handleWebhook, eventRepo } = makeWebhookUseCase();
     const rawBody = JSON.stringify(makeWebhookPayload());
 
     const result = await handleWebhook.execute({
@@ -662,6 +681,14 @@ describe('HandlePaymentProviderWebhook', () => {
     });
 
     assert.strictEqual(result.outcome, 'invalid_signature');
+    // Hardening Task 3: audit event must be stored and have a non-null eventId
+    assert.ok(result.eventId !== null, 'Should return a non-null eventId for the audit row');
+    assert.strictEqual(eventRepo._store().length, 1);
+    const auditEvent = eventRepo._store()[0];
+    assert.strictEqual(auditEvent.signatureValid, false);
+    assert.strictEqual(auditEvent.processingStatus, 'failed');
+    assert.strictEqual(auditEvent.errorMessage, 'INVALID_SIGNATURE');
+    assert.ok(auditEvent.providerEventId.startsWith('invalid_sig_'));
   });
 
   it('payment.succeeded: processes transaction to succeeded, marks event processed', async () => {
@@ -826,6 +853,213 @@ describe('HandlePaymentProviderWebhook', () => {
     const stored = eventRepo._store()[0];
     assert.strictEqual(stored.signatureValid, true);
     assert.strictEqual(stored.provider, 'fake_gateway');
+  });
+});
+
+// ── Suite 5b: HandlePaymentProviderWebhook — Phase 3 Hardening ───────────────
+//
+// These tests verify the hardening tasks:
+//  Task 1: Safe event reservation via createOrGetByProviderEventId (no unique violation)
+//  Task 2: Existing pending event → idempotent_replay, no transaction mutation
+//  Task 3: Invalid signature stores deterministic audit event, no tx mutation
+//  Task 4: Processing correctness under idempotency & concurrency scenarios
+
+describe('HandlePaymentProviderWebhook — Phase 3 Hardening', () => {
+  it('Task 3 — repeated invalid signature for same payload reuses the same audit event row', async () => {
+    const { handleWebhook, eventRepo } = makeWebhookUseCase();
+    const rawBody = JSON.stringify(makeWebhookPayload());
+
+    // First invalid attempt
+    const r1 = await handleWebhook.execute({
+      provider: 'fake_gateway',
+      headers: { 'x-fake-gateway-signature': 'bad-sig' },
+      rawBody,
+      tenantId: 'tenant-a',
+    });
+    assert.strictEqual(r1.outcome, 'invalid_signature');
+
+    // Second invalid attempt with identical payload
+    const r2 = await handleWebhook.execute({
+      provider: 'fake_gateway',
+      headers: { 'x-fake-gateway-signature': 'bad-sig' },
+      rawBody,
+      tenantId: 'tenant-a',
+    });
+    assert.strictEqual(r2.outcome, 'invalid_signature');
+
+    // Deterministic id → no duplicate rows in the event store
+    assert.strictEqual(eventRepo._store().length, 1, 'Repeated invalid sig must not create new rows');
+    assert.strictEqual(r1.eventId, r2.eventId, 'Both calls must return the same audit event id');
+  });
+
+  it('Task 3 — invalid signature does not mutate any payment transaction or create allocation', async () => {
+    const { handleWebhook, txRepo, allocationRepo } = makeWebhookUseCase();
+    const rawBody = JSON.stringify(
+      makeWebhookPayload({ provider_reference: 'fake_intent-wh_ref_1' }),
+    );
+
+    const result = await handleWebhook.execute({
+      provider: 'fake_gateway',
+      headers: { 'x-fake-gateway-signature': 'bad-signature' },
+      rawBody,
+      tenantId: 'tenant-a',
+    });
+
+    assert.strictEqual(result.outcome, 'invalid_signature');
+    // Transaction must remain in its original pending state — no mutation
+    const txRow = txRepo._store()[0];
+    assert.strictEqual(txRow.status, 'pending');
+    assert.strictEqual(allocationRepo._store().length, 0);
+  });
+
+  it('Task 2 — existing pending event returns idempotent_replay without mutating the transaction', async () => {
+    const { handleWebhook, eventRepo, txRepo, allocationRepo } = makeWebhookUseCase();
+    const payload = makeWebhookPayload({
+      event_id: 'evt_stale_pending_001',
+      event_type: 'payment.succeeded',
+      provider_reference: 'fake_intent-wh_ref_1',
+    });
+    const { rawBody, signature } = makeSignedWebhookCall(payload);
+
+    // Simulate an orphaned pending event from a previously aborted DB transaction
+    eventRepo._store().push({
+      id: `event-stale-${++eventIdSeq}`,
+      provider: 'fake_gateway',
+      providerEventId: 'evt_stale_pending_001',
+      processingStatus: 'pending',
+      createdAt: new Date(),
+    });
+
+    const result = await handleWebhook.execute({
+      provider: 'fake_gateway',
+      headers: { 'x-fake-gateway-signature': signature },
+      rawBody,
+      tenantId: 'tenant-a',
+    });
+
+    // Must return idempotent_replay — NOT processed — to prevent double-processing
+    assert.strictEqual(result.outcome, 'idempotent_replay');
+    // Transaction must be untouched
+    assert.strictEqual(txRepo._store()[0].status, 'pending');
+    assert.strictEqual(allocationRepo._store().length, 0);
+    // No new event row must be inserted
+    assert.strictEqual(eventRepo._store().length, 1);
+  });
+
+  it('Task 1 — duplicate event id after processing returns safe idempotent_replay without throwing', async () => {
+    const { handleWebhook, allocationRepo, eventRepo } = makeWebhookUseCase();
+    const payload = makeWebhookPayload({
+      event_id: 'evt_dup_safe_001',
+      event_type: 'payment.succeeded',
+      provider_reference: 'fake_intent-wh_ref_1',
+    });
+    const { rawBody, signature } = makeSignedWebhookCall(payload);
+
+    // First call — should process successfully
+    const first = await handleWebhook.execute({
+      provider: 'fake_gateway',
+      headers: { 'x-fake-gateway-signature': signature },
+      rawBody,
+      tenantId: 'tenant-a',
+    });
+    assert.strictEqual(first.outcome, 'processed');
+    assert.strictEqual(allocationRepo._store().length, 1);
+
+    // Second call — same event id — must NOT throw and must return idempotent_replay
+    let threw = false;
+    let second: any;
+    try {
+      second = await handleWebhook.execute({
+        provider: 'fake_gateway',
+        headers: { 'x-fake-gateway-signature': signature },
+        rawBody,
+        tenantId: 'tenant-a',
+      });
+    } catch {
+      threw = true;
+    }
+    assert.strictEqual(threw, false, 'Must not throw on duplicate event id');
+    assert.strictEqual(second.outcome, 'idempotent_replay');
+    // No duplicate allocation
+    assert.strictEqual(allocationRepo._store().length, 1);
+    // No duplicate event row
+    assert.strictEqual(eventRepo._store().length, 1);
+  });
+
+  it('Task 4 — different event id for already-succeeded tx is ignored without creating a duplicate allocation', async () => {
+    const { handleWebhook, allocationRepo, eventRepo } = makeWebhookUseCase(
+      {},
+      { status: 'succeeded' },
+    );
+    const payload = makeWebhookPayload({
+      event_id: 'evt_diff_id_terminal_001',
+      event_type: 'payment.succeeded',
+      provider_reference: 'fake_intent-wh_ref_1',
+    });
+    const { rawBody, signature } = makeSignedWebhookCall(payload);
+
+    const result = await handleWebhook.execute({
+      provider: 'fake_gateway',
+      headers: { 'x-fake-gateway-signature': signature },
+      rawBody,
+      tenantId: 'tenant-a',
+    });
+
+    assert.strictEqual(result.outcome, 'ignored');
+    if (result.outcome === 'ignored') {
+      assert.ok(result.reason.includes('TRANSACTION_ALREADY_TERMINAL'));
+    }
+    // No allocation created for the duplicate
+    assert.strictEqual(allocationRepo._store().length, 0);
+    // Event stored and marked ignored
+    assert.strictEqual(eventRepo._store().length, 1);
+    assert.strictEqual(eventRepo._store()[0].processingStatus, 'ignored');
+  });
+
+  it('Task 4 — payment.failed event does not increase amountPaid on the intent', async () => {
+    const { handleWebhook } = makeWebhookUseCase({ amountPaid: 0, amountRemaining: 100000 });
+    const payload = makeWebhookPayload({
+      event_id: 'evt_fail_nopay_001',
+      event_type: 'payment.failed',
+      provider_reference: 'fake_intent-wh_ref_1',
+      failure_reason: 'Expired',
+    });
+    const { rawBody, signature } = makeSignedWebhookCall(payload);
+
+    const result = await handleWebhook.execute({
+      provider: 'fake_gateway',
+      headers: { 'x-fake-gateway-signature': signature },
+      rawBody,
+      tenantId: 'tenant-a',
+    });
+
+    assert.strictEqual(result.outcome, 'processed');
+    if (result.outcome === 'processed') {
+      assert.strictEqual(result.intent.amountPaid, 0);
+      assert.strictEqual(result.intent.status, 'requires_payment');
+    }
+  });
+
+  it('Task 4 — payment.pending provider event is ignored and does not mutate the transaction', async () => {
+    const { handleWebhook, txRepo, allocationRepo, eventRepo } = makeWebhookUseCase();
+    const payload = makeWebhookPayload({
+      event_id: 'evt_prov_pending_001',
+      event_type: 'payment.pending',
+      provider_reference: 'fake_intent-wh_ref_1',
+    });
+    const { rawBody, signature } = makeSignedWebhookCall(payload);
+
+    const result = await handleWebhook.execute({
+      provider: 'fake_gateway',
+      headers: { 'x-fake-gateway-signature': signature },
+      rawBody,
+      tenantId: 'tenant-a',
+    });
+
+    assert.strictEqual(result.outcome, 'ignored');
+    assert.strictEqual(txRepo._store()[0].status, 'pending');
+    assert.strictEqual(allocationRepo._store().length, 0);
+    assert.strictEqual(eventRepo._store()[0].processingStatus, 'ignored');
   });
 });
 

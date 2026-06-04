@@ -62,9 +62,17 @@ export interface ApplyGatewayTransactionStatusInput {
  *
  * Locking order
  * -------------
- * Transaction row is ALWAYS locked before the intent row to maintain the same
- * ordering used in ConfirmFakeGatewayPayment and CreateGatewayPayment, preventing
- * deadlocks under concurrent calls.
+ * Settlement flows ALWAYS lock payment_transactions BEFORE payment_intents.
+ *
+ * Note: CreateGatewayPayment is NOT a settlement flow — it only creates a
+ * pending transaction and only locks the payment_intent row (no existing
+ * transaction row to lock yet). It does NOT follow the tx-row → intent-row
+ * order because there is no tx row at that point.
+ *
+ * All flows that mutate an existing transaction row (settlement, webhook,
+ * confirmation) MUST acquire locks in this order to prevent deadlocks:
+ *   1. payment_transactions FOR UPDATE (by providerReference + tenantId)
+ *   2. payment_intents FOR UPDATE (by paymentIntentId + tenantId)
  *
  * This helper MUST be called inside an active db.transaction() — the `tx` argument
  * must be the active Drizzle transaction client.  It does NOT create its own
