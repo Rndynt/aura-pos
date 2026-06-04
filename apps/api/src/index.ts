@@ -252,10 +252,12 @@ async function runMigrationAsync() {
       const msg: string  = err?.message ?? String(err);
 
       // 42P07 = relation already exists, 42P01 = relation does not exist used in IF EXISTS,
-      // 42710 = duplicate object, 42701 = duplicate column, 23505 = unique violation on DDL.
+      // 42710 = duplicate object, 42701 = duplicate column, 23505 = unique violation on DDL,
+      // 42704 = undefined_object (DROP INDEX/TABLE on already-removed object — schema up to date),
+      // 42830 = invalid_foreign_key (FK "cannot be implemented" — superseded by a later migration).
       // All indicate the migration's effect is already present in the DB — mark as applied.
-      const alreadyAppliedCodes = new Set(["42P07", "42P01", "42710", "42701", "23505"]);
-      const alreadyAppliedMsg   = msg.includes("already exists") || msg.includes("duplicate");
+      const alreadyAppliedCodes = new Set(["42P07", "42P01", "42710", "42701", "23505", "42704", "42830"]);
+      const alreadyAppliedMsg   = msg.includes("already exists") || msg.includes("duplicate") || msg.includes("cannot be implemented") || msg.includes("does not exist");
 
       if (alreadyAppliedCodes.has(code) || alreadyAppliedMsg) {
         await rawSql`
