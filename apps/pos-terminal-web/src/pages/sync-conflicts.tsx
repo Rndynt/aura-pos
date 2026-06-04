@@ -67,7 +67,6 @@ function formatDate(iso: string) {
 function ConflictCard({ conflict, tenantId }: { conflict: SyncConflict; tenantId: string }) {
   const [expanded, setExpanded] = useState(false);
   const queryClient = useQueryClient();
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const severity = getSeverity(conflict.conflictType);
@@ -181,6 +180,7 @@ type FilterResolution = "all" | "pending" | "auto_resolved" | "resolved" | "igno
 type FilterSeverity   = "all" | "blocking" | "needs_review" | "warning";
 
 export default function SyncConflictsPage() {
+  const [, setLocation] = useLocation();
   const { tenantId, isLoading: tenantLoading } = useTenant();
   const [filterResolution, setFilterResolution] = useState<FilterResolution>("all");
   const [filterSeverity, setFilterSeverity] = useState<FilterSeverity>("all");

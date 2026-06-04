@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { PageHeader } from "@/components/design";
 import { useLocation } from "wouter";
 import { useTables, useOpenOrders } from "@/lib/api/tableHooks";
 import { useCart } from "@/hooks/useCart";
