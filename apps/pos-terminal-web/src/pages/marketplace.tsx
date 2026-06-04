@@ -406,14 +406,6 @@ const PLANS = [
 
 const PLAN_RANK: Record<PlanTier, number> = { free: 0, growth: 1, pro: 2 };
 
-/** Format price for display. null = included in plan (no extra charge). */
-function formatPrice(price?: number | null, requiredPlan?: PlanTier): string {
-  if (price === null || price === undefined) {
-    if (requiredPlan === "free") return "Gratis";
-    return "Termasuk paket";
-  }
-  return `Rp ${price.toLocaleString("id-ID")}/bln`;
-}
 const MODULE_CATS = ["Semua", "Restoran & Meja", "Pelanggan", "Inventori", "Ekspansi"];
 const FEATURE_CATS = ["Semua", "Kasir & Transaksi", "Notifikasi", "Hardware & Cetak", "Laporan & Analitik", "Integrasi Eksternal"];
 
@@ -496,9 +488,11 @@ function ModuleCard({
           }`}>
             {item.requiredPlan === "free" ? "Gratis" : item.requiredPlan === "growth" ? "Growth" : "Pro"}
           </span>
-          <span className="text-[10px] text-slate-400 font-medium px-2">
-            {formatPrice(item.price, item.requiredPlan)}
-          </span>
+          {typeof item.price === "number" && (
+            <span className="text-[10px] text-violet-600 font-bold px-2">
+              +Rp {item.price.toLocaleString("id-ID")}/bln
+            </span>
+          )}
         </div>
         {comingSoon ? (
           <span className="text-[10px] font-bold text-slate-400 italic">Coming soon</span>
@@ -595,9 +589,11 @@ function FeatureCard({
           }`}>
             {item.requiredPlan === "free" ? "Gratis" : item.requiredPlan === "growth" ? "Growth" : "Pro"}
           </span>
-          <span className="text-[10px] text-slate-400 font-medium px-2">
-            {formatPrice(item.price, item.requiredPlan)}
-          </span>
+          {typeof item.price === "number" && (
+            <span className="text-[10px] text-violet-600 font-bold px-2">
+              +Rp {item.price.toLocaleString("id-ID")}/bln
+            </span>
+          )}
         </div>
         {comingSoon ? (
           <span className="text-[10px] font-bold text-slate-400 italic">Coming soon</span>
