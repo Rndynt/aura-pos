@@ -1,11 +1,13 @@
 /**
  * Payment Engine Phase 4 — Refund / Void Base Lifecycle Tests
+ * (updated in Phase 4 Hardening)
  *
  * Covers:
  *  1.  calculateIntentStatus — refund status priority order (Phase 4 spec)
  *  2.  aggregateTransactionTotals — outgoing refund rows included
  *  3.  RefundPaymentTransaction — full refund, partial refund, over-refund guard,
- *      idempotency hit, idempotency conflict, invalid transaction type/direction/status
+ *      idempotency hardening (tenant-wide namespace, inside-tx, replay semantics,
+ *      conflict cases), unique constraint defensive catch
  *  4.  VoidPaymentTransaction — pending void, requires_action void, idempotent void,
  *      succeeded cannot be voided, already-voided with no key, terminal status guard
  *  5.  End-to-end: pay → refund → intent status transitions
@@ -199,16 +201,35 @@ describe('aggregateTransactionTotals — refund rows', () => {
 });
 
 // ── Section 3: RefundPaymentTransaction ───────────────────────────────────────
+//
+// Phase 4 Hardening changes:
+// - Idempotency check is now INSIDE the DB transaction (after locking originalTx).
+// - Idempotency check uses tenant-wide findByIdempotencyKey (not refund-only lookup).
+// - refundableRemaining on replay = originalAmount - sumRefundedForParent (not existingRefund.amount - alreadyRefunded).
+// - Defensive unique constraint catch converts DB 23505 to IDEMPOTENCY_KEY_CONFLICT.
 
 describe('RefundPaymentTransaction', () => {
 
+  /**
+   * Build a mock RefundPaymentTransaction use case.
+   *
+   * opts.existingTxByIdempotencyKey:
+   *   The row returned by txRepo.findByIdempotencyKey(tenantId, key, tx).
+   *   This is the tenant-wide check — can be any transaction type, not just refunds.
+   *
+   * opts.sumRefunded:
+   *   Value returned by txRepo.sumRefundedForParent. Defaults to 0.
+   *
+   * opts.throwOnCreate:
+   *   If set, txRepo.create throws this error (used to test defensive catch).
+   */
   function makeRefundUseCase(opts: {
     originalTx?: any;
-    existingRefunds?: any[];
-    refundByIdempotencyKey?: any;
+    existingTxByIdempotencyKey?: any;
+    sumRefunded?: number;
     intents?: Record<string, any>;
     createdTx?: any;
-    updatedIntent?: any;
+    throwOnCreate?: any;
   }) {
     const originalTxRow = opts.originalTx ?? makeDbTx({
       id: 'tx-orig-1',
@@ -241,74 +262,62 @@ describe('RefundPaymentTransaction', () => {
       ...(opts.intents?.['intent-1'] ?? {}),
     };
 
-    const mockIntentRepo: any = {
-      findById: async (_id: string, _tid: string) => intentRow,
-      lockForUpdate: async (_id: string, _tid: string, _tx: any) => intentRow,
-      update: async (_id: string, _tid: string, data: any) => ({ ...intentRow, ...data }),
-    };
-
-    const refundedAlready = opts.existingRefunds
-      ? opts.existingRefunds.reduce((s, r) => s + parseFloat(r.amount), 0)
-      : 0;
-
     const createdRefundRow = opts.createdTx ?? makeDbTx({
       direction: 'outgoing',
       transactionType: 'refund',
       status: 'succeeded',
       amount: '50000.00',
-      parentTransactionId: 'tx-orig-1',
+      parentTransactionId: originalTxRow.id,
     });
 
+    const mockIntentRepo: any = {
+      findById: async (_id: string, _tid: string, _tx?: any) => intentRow,
+      lockForUpdate: async (_id: string, _tid: string, _tx: any) => intentRow,
+      update: async (_id: string, _tid: string, data: any) => ({ ...intentRow, ...data }),
+    };
+
     const mockTxRepo: any = {
-      lockByIdForUpdate: async (_id: string, _tid: string, _tx: any) => {
-        if (_id === 'tx-orig-1') return originalTxRow;
+      lockByIdForUpdate: async (id: string, tid: string, _tx: any) => {
+        if (id === originalTxRow.id && tid === 'tenant-a') return originalTxRow;
         return null;
       },
-      sumRefundedForParent: async () => refundedAlready,
-      findRefundByIdempotencyKey: async (_tid: string, key: string) => {
-        return opts.refundByIdempotencyKey ?? null;
+      findByIdempotencyKey: async (_tid: string, _key: string, _tx?: any) => {
+        return opts.existingTxByIdempotencyKey ?? null;
       },
+      sumRefundedForParent: async () => opts.sumRefunded ?? 0,
       findByIntentId: async () => [],
-      create: async (data: any) => ({ ...createdRefundRow, ...data }),
+      create: async (data: any, _tx?: any) => {
+        if (opts.throwOnCreate) throw opts.throwOnCreate;
+        return { ...createdRefundRow, ...data };
+      },
     };
 
     const mockRecalc = {
-      execute: async ({ tenantId, intentId }: any) => {
-        return {
-          intent: {
-            id: intentId,
-            tenantId,
-            amountDue: 100_000,
-            amountPaid: 100_000,
-            amountRefunded: 50_000,
-            amountRemaining: 50_000,
-            status: 'partially_refunded',
-            allowPartial: false,
-            payableType: 'order',
-            payableId: 'order-1',
-            currency: 'IDR',
-            outletId: null,
-            expiresAt: null,
-            metadata: null,
-            idempotencyKey: null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-        };
-      },
+      execute: async ({ tenantId, intentId }: any) => ({
+        intent: {
+          id: intentId,
+          tenantId,
+          amountDue: 100_000,
+          amountPaid: 100_000,
+          amountRefunded: 50_000,
+          amountRemaining: 50_000,
+          status: 'partially_refunded',
+          allowPartial: false,
+          payableType: 'order',
+          payableId: 'order-1',
+          currency: 'IDR',
+          outletId: null,
+          expiresAt: null,
+          metadata: null,
+          idempotencyKey: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      }),
     };
 
     const mockDb: any = {
-      transaction: async (fn: Function) => {
-        const mockTx: any = {
-          execute: async () => ({ rows: [] }),
-          select: () => mockTx,
-          from: () => mockTx,
-          where: () => mockTx,
-          limit: () => [originalTxRow],
-        };
-        return fn(mockTx);
-      },
+      transaction: async (fn: Function) => fn({}),
     };
 
     return new RefundPaymentTransaction(
@@ -318,6 +327,8 @@ describe('RefundPaymentTransaction', () => {
       mockRecalc as any,
     );
   }
+
+  // ── Basic validation ─────────────────────────────────────────────────────────
 
   it('rejects amount <= 0', async () => {
     const useCase = makeRefundUseCase({});
@@ -374,9 +385,7 @@ describe('RefundPaymentTransaction', () => {
   });
 
   it('rejects over-refund (amount > refundable remaining)', async () => {
-    const useCase = makeRefundUseCase({
-      existingRefunds: [{ amount: '80000.00' }],
-    });
+    const useCase = makeRefundUseCase({ sumRefunded: 80_000 });
     await assert.rejects(
       () => useCase.execute({ tenantId: 'tenant-a', transactionId: 'tx-orig-1', amount: 50_000 }),
       (err: any) => {
@@ -401,49 +410,156 @@ describe('RefundPaymentTransaction', () => {
     assert.equal(result.refundableRemaining, 50_000);
   });
 
-  it('idempotent replay returns existing refund when key and parent match', async () => {
+  // ── Idempotency hardening (Task 1, 2, 3) ─────────────────────────────────────
+
+  it('H1: idempotent replay — same key + same original tx returns existing refund', async () => {
+    const originalTxRow = makeDbTx({
+      id: 'tx-orig-1',
+      status: 'succeeded',
+      direction: 'incoming',
+      transactionType: 'payment',
+      amount: '100000.00',
+      paymentIntentId: 'intent-1',
+      tenantId: 'tenant-a',
+    });
     const existingRefundRow = makeDbTx({
       id: 'tx-refund-existing',
       direction: 'outgoing',
       transactionType: 'refund',
       status: 'succeeded',
       amount: '30000.00',
-      parentTransactionId: 'tx-orig-1',
+      parentTransactionId: originalTxRow.id,
       paymentIntentId: 'intent-1',
       idempotencyKey: 'my-refund-key',
       tenantId: 'tenant-a',
     });
     const useCase = makeRefundUseCase({
-      refundByIdempotencyKey: existingRefundRow,
-      existingRefunds: [existingRefundRow],
+      originalTx: originalTxRow,
+      existingTxByIdempotencyKey: existingRefundRow,
+      sumRefunded: 30_000,
     });
     const result = await useCase.execute({
       tenantId: 'tenant-a',
-      transactionId: 'tx-orig-1',
+      transactionId: originalTxRow.id,
       amount: 30_000,
       idempotencyKey: 'my-refund-key',
     });
-    assert.equal(result.refundTransaction.id, 'tx-refund-existing');
+    assert.equal(result.refundTransaction.id, existingRefundRow.id);
   });
 
-  it('idempotency conflict: same key, different parent transaction → IDEMPOTENCY_KEY_CONFLICT', async () => {
+  it('H2: idempotent replay — refundableRemaining = originalAmount - totalRefunded (not existingRefund.amount - totalRefunded)', async () => {
+    // Bug in original code: returned existingRefund.amount - totalRefunded = 30k - 30k = 0
+    // Correct: originalAmount - totalRefunded = 100k - 30k = 70k
+    const originalTxRow = makeDbTx({
+      id: 'tx-orig-1',
+      status: 'succeeded',
+      direction: 'incoming',
+      transactionType: 'payment',
+      amount: '100000.00',
+      paymentIntentId: 'intent-1',
+      tenantId: 'tenant-a',
+    });
     const existingRefundRow = makeDbTx({
-      id: 'tx-refund-conflict',
+      id: 'tx-refund-existing',
       direction: 'outgoing',
       transactionType: 'refund',
       status: 'succeeded',
-      parentTransactionId: 'tx-other-parent',
-      idempotencyKey: 'conflict-key',
+      amount: '30000.00',
+      parentTransactionId: originalTxRow.id,
+      paymentIntentId: 'intent-1',
+      idempotencyKey: 'my-refund-key',
       tenantId: 'tenant-a',
     });
     const useCase = makeRefundUseCase({
-      refundByIdempotencyKey: existingRefundRow,
+      originalTx: originalTxRow,
+      existingTxByIdempotencyKey: existingRefundRow,
+      sumRefunded: 30_000,
     });
+    const result = await useCase.execute({
+      tenantId: 'tenant-a',
+      transactionId: originalTxRow.id,
+      amount: 30_000,
+      idempotencyKey: 'my-refund-key',
+    });
+    // NOT 30k - 30k = 0 (buggy). Correct: 100k - 30k = 70k
+    assert.equal(result.refundableRemaining, 70_000);
+  });
+
+  it('H3: idempotent replay after full refund — refundableRemaining = 0', async () => {
+    const originalTxRow = makeDbTx({
+      id: 'tx-orig-1',
+      status: 'succeeded',
+      direction: 'incoming',
+      transactionType: 'payment',
+      amount: '100000.00',
+      paymentIntentId: 'intent-1',
+      tenantId: 'tenant-a',
+    });
+    const existingRefundRow = makeDbTx({
+      id: 'tx-refund-full',
+      direction: 'outgoing',
+      transactionType: 'refund',
+      status: 'succeeded',
+      amount: '100000.00',
+      parentTransactionId: originalTxRow.id,
+      idempotencyKey: 'full-refund-key',
+    });
+    const useCase = makeRefundUseCase({
+      originalTx: originalTxRow,
+      existingTxByIdempotencyKey: existingRefundRow,
+      sumRefunded: 100_000,
+    });
+    const result = await useCase.execute({
+      tenantId: 'tenant-a',
+      transactionId: originalTxRow.id,
+      amount: 100_000,
+      idempotencyKey: 'full-refund-key',
+    });
+    assert.equal(result.refundableRemaining, 0);
+  });
+
+  it('H4: conflict — key already used by incoming payment → IDEMPOTENCY_KEY_CONFLICT (not DB error)', async () => {
+    // Tenant-wide check: findByIdempotencyKey returns an incoming payment tx
+    // (not a refund). Old code using findRefundByIdempotencyKey would miss this
+    // and let it hit DB unique constraint. New code must catch it cleanly.
+    const existingPaymentTx = makeDbTx({
+      id: 'tx-payment-existing',
+      direction: 'incoming',
+      transactionType: 'payment',
+      status: 'succeeded',
+      idempotencyKey: 'already-used-key',
+    });
+    const useCase = makeRefundUseCase({ existingTxByIdempotencyKey: existingPaymentTx });
     await assert.rejects(
       () => useCase.execute({
         tenantId: 'tenant-a',
         transactionId: 'tx-orig-1',
-        amount: 30_000,
+        amount: 50_000,
+        idempotencyKey: 'already-used-key',
+      }),
+      (err: any) => {
+        assert.equal(err instanceof PaymentPolicyError, true);
+        assert.equal(err.code, 'IDEMPOTENCY_KEY_CONFLICT');
+        return true;
+      },
+    );
+  });
+
+  it('H5: conflict — key already used by refund for a DIFFERENT parent tx → IDEMPOTENCY_KEY_CONFLICT', async () => {
+    const existingRefundOtherParent = makeDbTx({
+      id: 'tx-refund-other',
+      direction: 'outgoing',
+      transactionType: 'refund',
+      status: 'succeeded',
+      parentTransactionId: 'tx-completely-different-parent',
+      idempotencyKey: 'conflict-key',
+    });
+    const useCase = makeRefundUseCase({ existingTxByIdempotencyKey: existingRefundOtherParent });
+    await assert.rejects(
+      () => useCase.execute({
+        tenantId: 'tenant-a',
+        transactionId: 'tx-orig-1',
+        amount: 50_000,
         idempotencyKey: 'conflict-key',
       }),
       (err: any) => {
@@ -452,6 +568,221 @@ describe('RefundPaymentTransaction', () => {
         return true;
       },
     );
+  });
+
+  it('H6: conflict — key used by non-refund outgoing tx (e.g. void) → IDEMPOTENCY_KEY_CONFLICT', async () => {
+    const existingVoidTx = makeDbTx({
+      id: 'tx-void-other',
+      direction: 'outgoing',
+      transactionType: 'void',
+      status: 'voided',
+      idempotencyKey: 'void-key',
+    });
+    const useCase = makeRefundUseCase({ existingTxByIdempotencyKey: existingVoidTx });
+    await assert.rejects(
+      () => useCase.execute({
+        tenantId: 'tenant-a',
+        transactionId: 'tx-orig-1',
+        amount: 50_000,
+        idempotencyKey: 'void-key',
+      }),
+      (err: any) => {
+        assert.equal(err instanceof PaymentPolicyError, true);
+        assert.equal(err.code, 'IDEMPOTENCY_KEY_CONFLICT');
+        return true;
+      },
+    );
+  });
+
+  it('H7: idempotency check performed inside transaction (after row lock, using tx parameter)', async () => {
+    // Verify findByIdempotencyKey is called with the transaction context (tx arg is passed),
+    // not outside the db.transaction. We track whether it was called with a tx arg.
+    let idempotencyCalledWithTx = false;
+    let lockCalledFirst = false;
+    let lockCallOrder = 0;
+    let idempotencyCallOrder = 0;
+    let callSeq = 0;
+
+    const originalTxRow = makeDbTx({
+      id: 'tx-orig-1',
+      status: 'succeeded',
+      direction: 'incoming',
+      transactionType: 'payment',
+      amount: '100000.00',
+      paymentIntentId: 'intent-1',
+      tenantId: 'tenant-a',
+    });
+
+    const mockTxRepo: any = {
+      lockByIdForUpdate: async (_id: string, _tid: string, tx: any) => {
+        lockCallOrder = ++callSeq;
+        return originalTxRow;
+      },
+      findByIdempotencyKey: async (_tid: string, _key: string, tx?: any) => {
+        idempotencyCallOrder = ++callSeq;
+        idempotencyCalledWithTx = tx !== undefined;
+        return null;
+      },
+      sumRefundedForParent: async () => 0,
+      create: async (data: any) => ({
+        ...makeDbTx({ direction: 'outgoing', transactionType: 'refund', status: 'succeeded', amount: '30000.00', parentTransactionId: 'tx-orig-1' }),
+        ...data,
+      }),
+    };
+
+    const intentRow = {
+      id: 'intent-1', tenantId: 'tenant-a', amountDue: '100000.00', amountPaid: '100000.00',
+      amountRefunded: '0.00', amountRemaining: '0.00', status: 'paid', allowPartial: false,
+      payableType: 'order', payableId: 'order-1', currency: 'IDR',
+      expiresAt: null, metadata: null, idempotencyKey: null, outletId: null,
+      createdAt: new Date(), updatedAt: new Date(),
+    };
+    const mockIntentRepo: any = {
+      findById: async () => intentRow,
+      lockForUpdate: async () => intentRow,
+      update: async (_id: any, _tid: any, data: any) => ({ ...intentRow, ...data }),
+    };
+    const mockRecalc = {
+      execute: async ({ tenantId, intentId }: any) => ({
+        intent: { id: intentId, tenantId, amountDue: 100_000, amountPaid: 100_000,
+          amountRefunded: 30_000, amountRemaining: 30_000, status: 'partially_refunded',
+          allowPartial: false, payableType: 'order', payableId: 'order-1', currency: 'IDR',
+          outletId: null, expiresAt: null, metadata: null, idempotencyKey: null,
+          createdAt: new Date(), updatedAt: new Date() },
+      }),
+    };
+    const mockDb: any = {
+      transaction: async (fn: Function) => fn({ _isMockTx: true }),
+    };
+
+    const useCase = new RefundPaymentTransaction(mockDb, mockIntentRepo, mockTxRepo as any, mockRecalc as any);
+    await useCase.execute({
+      tenantId: 'tenant-a',
+      transactionId: 'tx-orig-1',
+      amount: 30_000,
+      idempotencyKey: 'some-key',
+    });
+
+    // Lock must happen BEFORE idempotency check
+    assert.equal(lockCallOrder < idempotencyCallOrder, true, 'lockByIdForUpdate should be called before findByIdempotencyKey');
+    // findByIdempotencyKey must be called with the tx context
+    assert.equal(idempotencyCalledWithTx, true, 'findByIdempotencyKey should be called with tx parameter');
+  });
+
+  // ── Defensive unique constraint catch (Task 4) ──────────────────────────────
+
+  it('H8: DB unique constraint violation on create → clean IDEMPOTENCY_KEY_CONFLICT (not raw DB error)', async () => {
+    const dbUniqueError = Object.assign(new Error('duplicate key value violates unique constraint "payment_transactions_tenant_idempotency_unique"'), { code: '23505' });
+    const useCase = makeRefundUseCase({ throwOnCreate: dbUniqueError });
+    await assert.rejects(
+      () => useCase.execute({ tenantId: 'tenant-a', transactionId: 'tx-orig-1', amount: 50_000, idempotencyKey: 'race-key' }),
+      (err: any) => {
+        assert.equal(err instanceof PaymentPolicyError, true);
+        assert.equal(err.code, 'IDEMPOTENCY_KEY_CONFLICT');
+        // Error message must not leak raw SQL error
+        assert.equal(err.message.includes('duplicate key'), false);
+        return true;
+      },
+    );
+  });
+
+  it('H9: non-unique DB error on create is re-thrown unchanged', async () => {
+    const someOtherDbError = new Error('connection reset by peer');
+    const useCase = makeRefundUseCase({ throwOnCreate: someOtherDbError });
+    await assert.rejects(
+      () => useCase.execute({ tenantId: 'tenant-a', transactionId: 'tx-orig-1', amount: 50_000 }),
+      (err: any) => {
+        // Original error must pass through, not be wrapped as PaymentPolicyError
+        assert.equal(err instanceof PaymentPolicyError, false);
+        assert.equal(err.message, 'connection reset by peer');
+        return true;
+      },
+    );
+  });
+
+  it('H10: concurrent refund simulation — second call with same key treated as conflict', async () => {
+    // Simulate: two calls with the same key, both enter the transaction.
+    // First call sees no existing tx → proceeds to create.
+    // Second call sees the row created by first (via findByIdempotencyKey) → conflict/replay.
+    // We test the "second call is a replay for same parent" scenario:
+    const originalTxRow = makeDbTx({
+      id: 'tx-orig-concurrent',
+      status: 'succeeded',
+      direction: 'incoming',
+      transactionType: 'payment',
+      amount: '100000.00',
+      paymentIntentId: 'intent-1',
+      tenantId: 'tenant-a',
+    });
+
+    let callCount = 0;
+    const existingRefundRow = makeDbTx({
+      id: 'tx-refund-concurrent',
+      direction: 'outgoing',
+      transactionType: 'refund',
+      status: 'succeeded',
+      amount: '40000.00',
+      parentTransactionId: originalTxRow.id,
+      idempotencyKey: 'concurrent-key',
+    });
+
+    const mockTxRepo: any = {
+      lockByIdForUpdate: async () => originalTxRow,
+      findByIdempotencyKey: async (_tid: string, _key: string) => {
+        callCount++;
+        // First call: no existing tx; second call: sees the existing refund
+        if (callCount === 1) return null;
+        return existingRefundRow;
+      },
+      sumRefundedForParent: async () => 40_000,
+      create: async (data: any) => ({ ...existingRefundRow, ...data }),
+    };
+
+    const intentRow = {
+      id: 'intent-1', tenantId: 'tenant-a', amountDue: '100000.00', amountPaid: '100000.00',
+      amountRefunded: '40000.00', amountRemaining: '0.00', status: 'paid', allowPartial: false,
+      payableType: 'order', payableId: 'order-1', currency: 'IDR',
+      expiresAt: null, metadata: null, idempotencyKey: null, outletId: null,
+      createdAt: new Date(), updatedAt: new Date(),
+    };
+    const mockIntentRepo: any = {
+      findById: async () => intentRow,
+      lockForUpdate: async () => intentRow,
+      update: async (_id: any, _tid: any, data: any) => ({ ...intentRow, ...data }),
+    };
+    const mockRecalc = {
+      execute: async ({ tenantId, intentId }: any) => ({
+        intent: { id: intentId, tenantId, amountDue: 100_000, amountPaid: 100_000,
+          amountRefunded: 40_000, amountRemaining: 40_000, status: 'partially_refunded',
+          allowPartial: false, payableType: 'order', payableId: 'order-1', currency: 'IDR',
+          outletId: null, expiresAt: null, metadata: null, idempotencyKey: null,
+          createdAt: new Date(), updatedAt: new Date() },
+      }),
+    };
+    const mockDb: any = { transaction: async (fn: Function) => fn({}) };
+
+    const useCase = new RefundPaymentTransaction(mockDb, mockIntentRepo, mockTxRepo as any, mockRecalc as any);
+
+    // First call creates refund
+    const result1 = await useCase.execute({
+      tenantId: 'tenant-a',
+      transactionId: originalTxRow.id,
+      amount: 40_000,
+      idempotencyKey: 'concurrent-key',
+    });
+    assert.equal(result1.refundTransaction.transactionType, 'refund');
+
+    // Second call (simulates concurrent req, sees existing row) → returns replay
+    const result2 = await useCase.execute({
+      tenantId: 'tenant-a',
+      transactionId: originalTxRow.id,
+      amount: 40_000,
+      idempotencyKey: 'concurrent-key',
+    });
+    // Second call should replay — same refund, not a new one
+    assert.equal(result2.refundTransaction.id, existingRefundRow.id);
+    // refundableRemaining: 100k - 40k = 60k
+    assert.equal(result2.refundableRemaining, 60_000);
   });
 });
 
