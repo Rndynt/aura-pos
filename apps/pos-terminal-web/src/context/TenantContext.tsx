@@ -5,6 +5,7 @@ import { clearActiveOutletId } from "@/lib/outlet";
 import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import type { BusinessType } from "@pos/core";
 import type { TenantModuleConfig } from "@pos/domain/tenants/types";
+import { MODULE_REQUIRED_PLAN, PLAN_RANK, type PlanTier } from "@/lib/featureCatalog";
 
 async function syncTenantFromSession(): Promise<string | null> {
   try {
@@ -34,10 +35,13 @@ async function resolveActiveTenant(): Promise<string | null> {
   return syncTenantFromSession();
 }
 
+export type { PlanTier };
+
 export type TenantContextValue = {
   tenantId: string;
   setTenantId: (tenantId: string) => void;
   business_type: BusinessType | null;
+  planTier: PlanTier | null;
   moduleConfig: TenantModuleConfig | null;
   hasModule: (moduleName: keyof TenantModuleConfig) => boolean;
   isLoading: boolean;
@@ -78,18 +82,22 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
   const hasModule = useCallback(
     (moduleName: keyof TenantModuleConfig): boolean => {
-      if (!profile?.moduleConfig) {
-        return false;
-      }
+      if (!profile?.moduleConfig) return false;
+
+      // Plan-tier ceiling derived from MODULE_CATALOG_DATA in featureCatalog.ts.
+      // No hardcoded lists here — add new modules to featureCatalog.ts only.
+      const tenantPlan = normalisePlanTier(profile.tenant.plan_tier);
+      const required = MODULE_REQUIRED_PLAN[moduleName as string];
+      if (required && PLAN_RANK[tenantPlan] < PLAN_RANK[required]) return false;
 
       const value = profile.moduleConfig[moduleName];
-      
-      if (typeof value === "boolean") {
-        return value;
-      }
-
-      return false;
+      return typeof value === "boolean" ? value : false;
     },
+    [profile]
+  );
+
+  const planTier = useMemo(
+    (): PlanTier | null => (profile ? normalisePlanTier(profile.tenant.plan_tier) : null),
     [profile]
   );
 
@@ -98,12 +106,13 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       tenantId,
       setTenantId,
       business_type: profile?.tenant.business_type ?? null,
+      planTier,
       moduleConfig: profile?.moduleConfig ?? null,
       hasModule,
       isLoading,
       error: error as Error | null,
     }),
-    [tenantId, setTenantId, profile, hasModule, isLoading, error]
+    [tenantId, setTenantId, profile, planTier, hasModule, isLoading, error]
   );
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;
@@ -111,10 +120,15 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
 export function useTenant() {
   const context = useContext(TenantContext);
-
-  if (!context) {
-    throw new Error("useTenant must be used within a TenantProvider");
-  }
-
+  if (!context) throw new Error("useTenant must be used within a TenantProvider");
   return context;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function normalisePlanTier(raw: string | null | undefined): PlanTier {
+  if (raw === "free" || raw === "growth" || raw === "pro") return raw;
+  // Legacy seed values
+  if (raw === "premium" || raw === "standard") return "growth";
+  return "free";
 }
