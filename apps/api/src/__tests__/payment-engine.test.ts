@@ -1013,3 +1013,149 @@ describe('requirePaymentOperator — authorization seam', () => {
     assert.equal(statusSent, 401, 'unauthenticated request must be rejected with 401');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 14. requirePaymentOperator — service token bypass (Phase 1.5 Follow-up Task 4)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Inline extraction of the service-token logic so we can unit-test it
+ * without spinning up an Express router. The real implementation lives in
+ * apps/api/src/http/routes/payment-engine.ts.
+ */
+function makeServiceTokenMiddleware(
+  nodeEnv: string,
+  configuredToken: string,
+  fallbackStatus: number = 401,
+) {
+  return function requirePaymentOperator(
+    req: { headers: Record<string, string | string[] | undefined> },
+    res: { status: (c: number) => any; json: (b: any) => any },
+    next: () => void,
+  ): void {
+    const isProduction = nodeEnv === 'production';
+
+    if (!isProduction && configuredToken.length >= 32) {
+      const raw = req.headers['x-payment-engine-service-token'];
+      const provided = Array.isArray(raw) ? raw[0] : (raw ?? '');
+
+      if (provided === configuredToken) {
+        return next();
+      }
+
+      if (provided.length > 0) {
+        res.status(401).json({ success: false, code: 'INVALID_SERVICE_TOKEN' });
+        return;
+      }
+    }
+
+    // Simulated fallback (real impl calls requireCashier — which returns 401 for no session)
+    res.status(fallbackStatus).json({ success: false, code: 'NO_SESSION' });
+  };
+}
+
+describe('requirePaymentOperator — service token bypass', () => {
+  const STRONG_TOKEN = 'a-strong-dev-service-token-with-32chars';
+
+  it('valid token + non-production → request passes through', () => {
+    let nextCalled = false;
+    let statusSent: number | null = null;
+
+    const req = { headers: { 'x-payment-engine-service-token': STRONG_TOKEN } };
+    const res = {
+      status(c: number) { statusSent = c; return this; },
+      json() { return this; },
+    };
+
+    makeServiceTokenMiddleware('development', STRONG_TOKEN)(req, res, () => { nextCalled = true; });
+
+    assert.equal(nextCalled, true, 'valid token must pass through');
+    assert.equal(statusSent, null, 'must not send a status code when passing through');
+  });
+
+  it('valid token in production → falls through to session check (401)', () => {
+    let nextCalled = false;
+    let statusSent: number | null = null;
+
+    const req = { headers: { 'x-payment-engine-service-token': STRONG_TOKEN } };
+    const res = {
+      status(c: number) { statusSent = c; return this; },
+      json() { return this; },
+    };
+
+    makeServiceTokenMiddleware('production', STRONG_TOKEN)(req, res, () => { nextCalled = true; });
+
+    assert.equal(nextCalled, false, 'production must not pass through via service token');
+    assert.equal(statusSent, 401, 'production must fall back to session check (simulated 401)');
+  });
+
+  it('wrong token → 401 INVALID_SERVICE_TOKEN (not silent fallthrough)', () => {
+    let nextCalled = false;
+    let statusSent: number | null = null;
+    let bodySent: any = null;
+
+    const req = { headers: { 'x-payment-engine-service-token': 'wrong-token-is-not-right' } };
+    const res = {
+      status(c: number) { statusSent = c; return this; },
+      json(b: any) { bodySent = b; return this; },
+    };
+
+    makeServiceTokenMiddleware('development', STRONG_TOKEN)(req, res, () => { nextCalled = true; });
+
+    assert.equal(nextCalled, false, 'wrong token must not pass through');
+    assert.equal(statusSent, 401);
+    assert.equal(bodySent?.code, 'INVALID_SERVICE_TOKEN');
+  });
+
+  it('no token provided → falls through to session check (no INVALID_SERVICE_TOKEN)', () => {
+    let statusSent: number | null = null;
+    let bodySent: any = null;
+    let nextCalled = false;
+
+    const req = { headers: {} };
+    const res = {
+      status(c: number) { statusSent = c; return this; },
+      json(b: any) { bodySent = b; return this; },
+    };
+
+    makeServiceTokenMiddleware('development', STRONG_TOKEN)(req, res, () => { nextCalled = true; });
+
+    assert.equal(nextCalled, false, 'no token: session check should run (not next)');
+    assert.equal(statusSent, 401);
+    assert.notEqual(bodySent?.code, 'INVALID_SERVICE_TOKEN', 'must not claim token is invalid when none was provided');
+  });
+
+  it('token shorter than 32 chars → env var ignored, falls to session check', () => {
+    let nextCalled = false;
+    let statusSent: number | null = null;
+
+    const shortToken = 'too-short';
+    const req = { headers: { 'x-payment-engine-service-token': shortToken } };
+    const res = {
+      status(c: number) { statusSent = c; return this; },
+      json() { return this; },
+    };
+
+    makeServiceTokenMiddleware('development', shortToken)(req, res, () => { nextCalled = true; });
+
+    assert.equal(nextCalled, false, 'weak token env var must not enable bypass');
+    assert.equal(statusSent, 401);
+  });
+
+  it('env var not set → token bypass inactive, falls to session check', () => {
+    let nextCalled = false;
+    let statusSent: number | null = null;
+
+    const req = { headers: { 'x-payment-engine-service-token': STRONG_TOKEN } };
+    const res = {
+      status(c: number) { statusSent = c; return this; },
+      json() { return this; },
+    };
+
+    // Simulate env var not configured (empty string)
+    makeServiceTokenMiddleware('development', '')(req, res, () => { nextCalled = true; });
+
+    assert.equal(nextCalled, false, 'missing env var must not enable bypass');
+    assert.equal(statusSent, 401);
+  });
+});

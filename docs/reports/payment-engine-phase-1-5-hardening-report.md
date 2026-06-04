@@ -27,9 +27,23 @@ Legacy order payment flow was **not intentionally changed**.
 | `apps/api/src/http/controllers/PaymentEngineController.ts` | Task 1: HTTP 409 mapping for IDEMPOTENCY_KEY_CONFLICT |
 | `apps/api/src/http/middleware/tenant.ts` | Task 3: UUID validation helpers + UUID-aware DB query |
 | `apps/api/src/http/routes/payment-engine.ts` | Task 4: requirePaymentOperator named seam |
-| `apps/api/src/__tests__/payment-engine.test.ts` | Task 5: 14 new tests (suites 10–13) |
+| `apps/api/src/__tests__/payment-engine.test.ts` | Task 5: 13 new test cases (suites 10–13) |
 | `apps/api/src/__tests__/payment-engine-db-concurrency.test.ts` | Task 2: new file — 3 DB-backed test suites |
 | `docs/reports/payment-engine-phase-1-5-hardening-report.md` | This report |
+
+---
+
+## Scope Drift / Ancillary Type-Fix Changes
+
+Three files outside the payment-engine scope were modified to resolve pre-existing TypeScript type errors that blocked `npm run check`. These changes were **not related to the payment-engine hardening** but were required for the type check to pass. They are documented here to be transparent about the full diff.
+
+| File | Why changed |
+|---|---|
+| `packages/application/tenants/businessTypeTemplates.ts` | The `plan_tier` union type used stale values `'growth' \| 'pro'` that no longer existed in the canonical schema (`'free' \| 'starter' \| 'professional' \| 'enterprise'`). This caused `CreateTenant.ts` to fail type-checking. Fixed by updating the union to match the schema. |
+| `apps/api/src/__tests__/full-journey-registration.test.ts` | After the `businessTypeTemplates.ts` fix, TypeScript couldn't index `BUSINESS_TYPE_TEMPLATES[businessType]` because `businessType` was typed as `any` in the test's for-of loop. Fixed with a `businessType as BusinessType` cast and an inline type import. |
+| `apps/api/src/scripts/fix-plan-tiers.ts` | The migration script imported from `'../lib/db'` which no longer exists (stale path). Fixed to import from `@pos/infrastructure/database`. Also updated the SQL to migrate `'growth'` → `'starter'` to match the current schema tier names. |
+
+**Assessment:** All three changes correct pre-existing bugs and have no behavioral impact on the payment engine. They should have been caught before Phase 1.5 began.
 
 ---
 
@@ -111,9 +125,13 @@ function isValidUuid(value: string): boolean {
 }
 
 function looksLikeUuidAttempt(value: string): boolean {
-  return value.includes('-') && !isValidUuid(value);
+  const hyphenCount = (value.match(/-/g) ?? []).length;
+  return hyphenCount >= 2 && !isValidUuid(value);
 }
 ```
+
+> **Why `hyphenCount >= 2` instead of `value.includes('-')`?**
+> A simple `includes('-')` would flag valid tenant slugs like `demo-tenant` (1 hyphen) as malformed UUID attempts and incorrectly return 400. By requiring ≥ 2 hyphens, common single-hyphen slugs pass through safely to a slug-only DB query, while values like `not-a-uuid` (2 hyphens) or truncated UUIDs like `550e8400-e29b-41d4` (3 hyphens) are correctly rejected with 400. A real UUID has exactly 4 hyphens, so anything with 2–4 hyphens that fails the full UUID pattern is almost certainly a malformed UUID rather than a valid slug.
 
 **Before DB query (fallback section):**
 
@@ -138,15 +156,17 @@ const whereCondition = isValidUuid(tenantId)
 
 ### Behavior table
 
-| Input value | Behavior |
-|---|---|
-| `550e8400-e29b-41d4-a716-446655440000` (valid UUID) | Queries by both `id` and `slug` — unchanged behavior |
-| `demo-tenant` (plain slug) | Queries by `slug` only — unchanged behavior |
-| `not-a-uuid` (malformed UUID-like) | Returns 400 `INVALID_TENANT_ID` **before** querying DB |
-| `bad-format-123` (with hyphens but invalid) | Returns 400 `INVALID_TENANT_ID` |
-| Empty / missing | Returns 400 `Missing tenant` — unchanged behavior |
+| Input value | Hyphens | Behavior |
+|---|---|---|
+| `550e8400-e29b-41d4-a716-446655440000` (valid UUID) | 4 | Queries by both `id` and `slug` — unchanged |
+| `demo-tenant` (plain slug, 1 hyphen) | 1 | Queries by `slug` only — passes through safely |
+| `laundry-indo` (plain slug, 1 hyphen) | 1 | Queries by `slug` only — passes through safely |
+| `not-a-uuid` (2 hyphens, invalid pattern) | 2 | Returns 400 `INVALID_TENANT_ID` before DB query |
+| `bad-format-id` (2 hyphens, invalid pattern) | 2 | Returns 400 `INVALID_TENANT_ID` before DB query |
+| `550e8400-e29b-41d4-XXXX` (3 hyphens, truncated UUID) | 3 | Returns 400 `INVALID_TENANT_ID` before DB query |
+| Empty / missing | — | Returns 400 `Missing tenant` — unchanged |
 
-**Valid tenant behavior is unchanged.** The fix only fires on strings that contain hyphens but fail the full UUID pattern check.
+**Single-hyphen slugs are never rejected.** The guard fires only for values with ≥ 2 hyphens that fail the full UUID pattern.
 
 ---
 
