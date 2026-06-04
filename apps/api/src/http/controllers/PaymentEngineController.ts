@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { container } from '../../container';
+import { PaymentPolicyError } from '@pos/domain/payments';
 
 const createIntentSchema = z.object({
   payable_type: z.string().min(1).max(64),
@@ -56,7 +57,11 @@ export async function createIntent(req: Request, res: Response): Promise<void> {
 
     sendSuccess(res, { ...intent, idempotent_replay: idempotentReplay }, idempotentReplay ? 200 : 201);
   } catch (err: any) {
-    sendError(res, err.message ?? 'Failed to create payment intent', 422);
+    if (err instanceof PaymentPolicyError) {
+      sendError(res, err.message, 422);
+    } else {
+      sendError(res, err.message ?? 'Failed to create payment intent', 422);
+    }
   }
 }
 
@@ -124,13 +129,7 @@ export async function recordManualPayment(req: Request, res: Response): Promise<
   } catch (err: any) {
     if (err.message?.includes('not found')) {
       sendError(res, 'Payment intent not found', 404);
-    } else if (
-      err.message?.includes('terminal state') ||
-      err.message?.includes('not allowed') ||
-      err.message?.includes('exceeds') ||
-      err.message?.includes('overpayment') ||
-      err.message?.includes('Partial payment')
-    ) {
+    } else if (err instanceof PaymentPolicyError) {
       sendError(res, err.message, 422);
     } else {
       sendError(res, err.message ?? 'Internal server error', 500);

@@ -9,10 +9,10 @@ import { and, eq, sql } from 'drizzle-orm';
 
 export interface IPaymentIntentRepository {
   create(data: InsertPaymentIntent): Promise<PaymentIntent>;
-  findById(id: string, tenantId: string): Promise<PaymentIntent | null>;
-  findByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<PaymentIntent | null>;
+  findById(id: string, tenantId: string, tx?: any): Promise<PaymentIntent | null>;
+  findByIdempotencyKey(tenantId: string, idempotencyKey: string, tx?: any): Promise<PaymentIntent | null>;
   lockForUpdate(id: string, tenantId: string, tx: any): Promise<PaymentIntent | null>;
-  update(id: string, tenantId: string, data: Partial<PaymentIntent>): Promise<PaymentIntent>;
+  update(id: string, tenantId: string, data: Partial<PaymentIntent>, tx?: any): Promise<PaymentIntent>;
 }
 
 export class PaymentIntentRepository
@@ -35,9 +35,10 @@ export class PaymentIntentRepository
     }
   }
 
-  async findById(id: string, tenantId: string): Promise<PaymentIntent | null> {
+  async findById(id: string, tenantId: string, tx?: any): Promise<PaymentIntent | null> {
     try {
-      const rows = await this.db
+      const client = tx ?? this.db;
+      const rows = await client
         .select()
         .from(paymentIntents)
         .where(and(eq(paymentIntents.id, id), eq(paymentIntents.tenantId, tenantId)))
@@ -48,9 +49,10 @@ export class PaymentIntentRepository
     }
   }
 
-  async findByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<PaymentIntent | null> {
+  async findByIdempotencyKey(tenantId: string, idempotencyKey: string, tx?: any): Promise<PaymentIntent | null> {
     try {
-      const rows = await this.db
+      const client = tx ?? this.db;
+      const rows = await client
         .select()
         .from(paymentIntents)
         .where(
@@ -67,25 +69,34 @@ export class PaymentIntentRepository
   }
 
   /**
-   * Lock the intent row FOR UPDATE inside a transaction to prevent concurrent payment race.
+   * Acquire a row-level FOR UPDATE lock on the intent row, then return the
+   * fully-typed Drizzle row (still within the same transaction).
+   * The second select is a non-locking read on the already-locked row.
    */
   async lockForUpdate(id: string, tenantId: string, tx: any): Promise<PaymentIntent | null> {
     try {
-      const rows = await tx.execute(sql`
-        SELECT * FROM payment_intents
+      // Acquire the lock
+      await tx.execute(sql`
+        SELECT id FROM payment_intents
         WHERE id = ${id} AND tenant_id = ${tenantId}
         FOR UPDATE
       `);
-      const row = (rows as any).rows?.[0] ?? (rows as any)[0] ?? null;
-      return row ?? null;
+      // Return typed ORM row (still in same transaction — row is already locked)
+      const rows = await tx
+        .select()
+        .from(paymentIntents)
+        .where(and(eq(paymentIntents.id, id), eq(paymentIntents.tenantId, tenantId)))
+        .limit(1);
+      return rows[0] ?? null;
     } catch (error) {
       this.handleError('lock', error);
     }
   }
 
-  async update(id: string, tenantId: string, data: Partial<PaymentIntent>): Promise<PaymentIntent> {
+  async update(id: string, tenantId: string, data: Partial<PaymentIntent>, tx?: any): Promise<PaymentIntent> {
     try {
-      const [result] = await this.db
+      const client = tx ?? this.db;
+      const [result] = await client
         .update(paymentIntents)
         .set({ ...data, updatedAt: new Date() })
         .where(and(eq(paymentIntents.id, id), eq(paymentIntents.tenantId, tenantId)))

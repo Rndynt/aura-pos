@@ -70,13 +70,24 @@ export interface PaymentProvider {
 }
 
 /**
- * ManualProvider — synchronous provider for cash, card, QRIS manual, ewallet manual, etc.
- * Transactions succeed immediately; no external webhook required.
+ * ManualProvider — synchronous provider for cash, card, QRIS manual, e-wallet
+ * manual, bank transfer, and other manual collection methods.
+ *
+ * Transactions succeed immediately — no external gateway or webhook required.
+ *
+ * Phase 1 limitations
+ * -------------------
+ * - `cancelPayment` is NOT supported. Returns success:false with an explicit
+ *   reason. Void/cancel flow will be implemented in Phase 4.
+ * - `refundPayment` is NOT supported. Returns success:false with an explicit
+ *   reason. Refund flow (outgoing transactions + status recalculation) will be
+ *   implemented in Phase 4.
+ * - `verifyWebhook` / `parseWebhook` are unsupported (no external gateway).
  */
 export class ManualProvider implements PaymentProvider {
   public readonly providerCode = 'manual';
 
-  async createPayment(input: CreateProviderPaymentInput): Promise<CreateProviderPaymentResult> {
+  async createPayment(_input: CreateProviderPaymentInput): Promise<CreateProviderPaymentResult> {
     return {
       providerReference: null,
       providerPaymentUrl: null,
@@ -86,12 +97,27 @@ export class ManualProvider implements PaymentProvider {
     };
   }
 
+  /**
+   * Cancel is not implemented for manual payments in Phase 1.
+   * Void/cancel support is planned for Phase 4.
+   */
   async cancelPayment(_input: CancelProviderPaymentInput): Promise<CancelProviderPaymentResult> {
-    return { success: true, failureReason: null };
+    return {
+      success: false,
+      failureReason: 'ManualProvider does not support cancel/void in Phase 1. This will be implemented in Phase 4.',
+    };
   }
 
+  /**
+   * Refund is not implemented for manual payments in Phase 1.
+   * Refund support (outgoing transactions + intent recalculation) is planned for Phase 4.
+   */
   async refundPayment(_input: RefundProviderPaymentInput): Promise<RefundProviderPaymentResult> {
-    return { providerReference: null, success: true, failureReason: null };
+    return {
+      providerReference: null,
+      success: false,
+      failureReason: 'ManualProvider does not support refund in Phase 1. This will be implemented in Phase 4.',
+    };
   }
 
   async verifyWebhook(_input: VerifyWebhookInput): Promise<boolean> {

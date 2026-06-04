@@ -246,6 +246,7 @@ class Container {
     );
     this.recordManualPayment = new RecordManualPayment(
       db,
+      this.paymentIntentRepository,
       this.paymentTransactionRepository,
       this.paymentAllocationRepository,
       this.recalculatePaymentIntent

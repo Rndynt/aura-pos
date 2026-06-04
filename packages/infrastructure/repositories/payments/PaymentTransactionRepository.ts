@@ -8,10 +8,10 @@ import {
 import { and, eq } from 'drizzle-orm';
 
 export interface IPaymentTransactionRepository {
-  create(data: InsertPaymentTransaction): Promise<PaymentTransaction>;
+  create(data: InsertPaymentTransaction, tx?: any): Promise<PaymentTransaction>;
   findById(id: string, tenantId: string): Promise<PaymentTransaction | null>;
-  findByIntentId(paymentIntentId: string, tenantId: string): Promise<PaymentTransaction[]>;
-  findByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<PaymentTransaction | null>;
+  findByIntentId(paymentIntentId: string, tenantId: string, tx?: any): Promise<PaymentTransaction[]>;
+  findByIdempotencyKey(tenantId: string, idempotencyKey: string, tx?: any): Promise<PaymentTransaction | null>;
 }
 
 export class PaymentTransactionRepository
@@ -25,9 +25,10 @@ export class PaymentTransactionRepository
     super(db);
   }
 
-  async create(data: InsertPaymentTransaction): Promise<PaymentTransaction> {
+  async create(data: InsertPaymentTransaction, tx?: any): Promise<PaymentTransaction> {
     try {
-      const [result] = await this.db.insert(paymentTransactions).values(data).returning();
+      const client = tx ?? this.db;
+      const [result] = await client.insert(paymentTransactions).values(data).returning();
       return result;
     } catch (error) {
       this.handleError('create', error);
@@ -47,9 +48,10 @@ export class PaymentTransactionRepository
     }
   }
 
-  async findByIntentId(paymentIntentId: string, tenantId: string): Promise<PaymentTransaction[]> {
+  async findByIntentId(paymentIntentId: string, tenantId: string, tx?: any): Promise<PaymentTransaction[]> {
     try {
-      return await this.db
+      const client = tx ?? this.db;
+      return await client
         .select()
         .from(paymentTransactions)
         .where(
@@ -63,9 +65,10 @@ export class PaymentTransactionRepository
     }
   }
 
-  async findByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<PaymentTransaction | null> {
+  async findByIdempotencyKey(tenantId: string, idempotencyKey: string, tx?: any): Promise<PaymentTransaction | null> {
     try {
-      const rows = await this.db
+      const client = tx ?? this.db;
+      const rows = await client
         .select()
         .from(paymentTransactions)
         .where(

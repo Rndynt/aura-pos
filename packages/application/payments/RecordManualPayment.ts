@@ -1,4 +1,5 @@
 import type { Database } from '@pos/infrastructure/database';
+import type { IPaymentIntentRepository } from '@pos/infrastructure/repositories/payments';
 import type { IPaymentTransactionRepository, IPaymentAllocationRepository } from '@pos/infrastructure/repositories/payments';
 import type { RecordManualPaymentInput, DomainPaymentIntent, DomainPaymentTransaction } from '@pos/domain/payments';
 import {
@@ -9,8 +10,8 @@ import {
 import { RecalculatePaymentIntent } from './RecalculatePaymentIntent';
 import { intentRowToDomain } from './CreatePaymentIntent';
 import { txRowToDomain } from './ListPaymentTransactions';
-import { sql } from 'drizzle-orm';
 import type { InsertPaymentTransaction, InsertPaymentAllocation } from '../../../shared/schema';
+import { paymentTransactions, paymentAllocations } from '../../../shared/schema';
 
 export interface RecordManualPaymentOutput {
   intent: DomainPaymentIntent;
@@ -21,6 +22,7 @@ export interface RecordManualPaymentOutput {
 export class RecordManualPayment {
   constructor(
     private readonly db: Database,
+    private readonly intentRepo: IPaymentIntentRepository,
     private readonly txRepo: IPaymentTransactionRepository,
     private readonly allocationRepo: IPaymentAllocationRepository,
     private readonly recalculate: RecalculatePaymentIntent
@@ -31,63 +33,44 @@ export class RecordManualPayment {
       throw new Error('Payment amount must be greater than zero');
     }
 
-    const result = await this.db.transaction(async (tx) => {
-      // 1. Lock the intent row FOR UPDATE before calculating remaining balance
-      const rows = await tx.execute(sql`
-        SELECT * FROM payment_intents
-        WHERE id = ${input.paymentIntentId} AND tenant_id = ${input.tenantId}
-        FOR UPDATE
-      `);
+    // All operations run inside a single DB transaction.
+    // If any step fails the whole operation rolls back — no orphaned rows.
+    return await this.db.transaction(async (tx) => {
+      // Step 1 — Lock the intent row FOR UPDATE to prevent concurrent overpayment.
+      const intentRow = await this.intentRepo.lockForUpdate(input.paymentIntentId, input.tenantId, tx);
 
-      const lockedRow = (rows as any).rows?.[0] ?? (rows as any)[0] ?? null;
-
-      if (!lockedRow) {
+      if (!intentRow) {
         throw new Error('Payment intent not found or access denied');
       }
 
-      // Map snake_case DB row to camelCase domain intent
-      const intentDomain: DomainPaymentIntent = intentRowToDomain({
-        id: lockedRow.id,
-        tenantId: lockedRow.tenant_id,
-        outletId: lockedRow.outlet_id ?? null,
-        payableType: lockedRow.payable_type,
-        payableId: lockedRow.payable_id,
-        currency: lockedRow.currency,
-        amountDue: lockedRow.amount_due,
-        amountPaid: lockedRow.amount_paid,
-        amountRefunded: lockedRow.amount_refunded,
-        amountRemaining: lockedRow.amount_remaining,
-        status: lockedRow.status,
-        allowPartial: lockedRow.allow_partial,
-        expiresAt: lockedRow.expires_at ?? null,
-        metadata: lockedRow.metadata ?? null,
-        idempotencyKey: lockedRow.idempotency_key ?? null,
-        createdAt: lockedRow.created_at,
-        updatedAt: lockedRow.updated_at,
-      });
+      const intentDomain = intentRowToDomain(intentRow);
 
-      // 2. Validate intent is in a payable state
-      assertIntentAcceptsPayment(intentDomain);
-
-      // 3. Idempotency: replay existing transaction for same tenant + key
+      // Step 2 — Idempotency check (inside transaction, using same tx client).
+      // Must happen BEFORE terminal-state guard: a replayed key should always
+      // succeed even if the intent has since moved to a terminal state.
       if (input.idempotencyKey) {
-        const existingTx = await this.txRepo.findByIdempotencyKey(input.tenantId, input.idempotencyKey);
+        const existingTx = await this.txRepo.findByIdempotencyKey(input.tenantId, input.idempotencyKey, tx);
         if (existingTx) {
+          // Return the current intent state alongside the replayed transaction.
+          // Do NOT re-aggregate — the original payment was already recorded.
           return {
-            intentDomain,
-            txDomain: txRowToDomain(existingTx),
+            intent: intentDomain,
+            transaction: txRowToDomain(existingTx),
             idempotentReplay: true,
           };
         }
       }
 
-      // 4. Validate amount against remaining balance and allow_partial setting
+      // Step 3 — Validate the intent is in a payable state.
+      assertIntentAcceptsPayment(intentDomain);
+
+      // Step 4 — Validate the payment amount against remaining balance + allow_partial.
       assertAmountValid(input.amount, intentDomain.amountRemaining, intentDomain.allowPartial);
 
-      // 5. Cash change calculation / non-cash overpayment guard
+      // Step 5 — Cash change calculation / non-cash overpayment guard.
       const changeAmount = calculateCashChange(input.method, input.amount, input.receivedAmount);
 
-      // 6. Insert the succeeded transaction
+      // Step 6 — Insert the succeeded transaction record (within tx).
       const transactionData: InsertPaymentTransaction = {
         tenantId: input.tenantId,
         paymentIntentId: input.paymentIntentId,
@@ -105,11 +88,9 @@ export class RecordManualPayment {
         succeededAt: new Date(),
       };
 
-      const [createdTx] = await tx.insert(
-        (await import('../../../shared/schema')).paymentTransactions
-      ).values(transactionData).returning();
+      const createdTx = await this.txRepo.create(transactionData, tx);
 
-      // 7. Insert default allocation to the intent payable target
+      // Step 7 — Insert the default allocation (intent payable → transaction, within tx).
       const allocationData: InsertPaymentAllocation = {
         tenantId: input.tenantId,
         paymentIntentId: input.paymentIntentId,
@@ -120,27 +101,21 @@ export class RecordManualPayment {
         metadata: null,
       };
 
-      await tx.insert(
-        (await import('../../../shared/schema')).paymentAllocations
-      ).values(allocationData);
+      await this.allocationRepo.create(allocationData, tx);
+
+      // Step 8 — Recalculate intent totals and update intent row (within tx).
+      // This is now fully atomic: if the update fails the transaction rolls back.
+      const { intent: updatedIntent } = await this.recalculate.execute({
+        tenantId: input.tenantId,
+        intentId: input.paymentIntentId,
+        tx,
+      });
 
       return {
-        intentDomain,
-        txDomain: txRowToDomain(createdTx),
+        intent: updatedIntent,
+        transaction: txRowToDomain(createdTx),
         idempotentReplay: false,
       };
     });
-
-    // 8. Recalculate intent totals after transaction commit
-    const { intent: updatedIntent } = await this.recalculate.execute({
-      tenantId: input.tenantId,
-      intentId: input.paymentIntentId,
-    });
-
-    return {
-      intent: updatedIntent,
-      transaction: result.txDomain,
-      idempotentReplay: result.idempotentReplay,
-    };
   }
 }

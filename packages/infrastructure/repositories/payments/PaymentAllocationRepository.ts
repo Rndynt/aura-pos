@@ -8,7 +8,7 @@ import {
 import { and, eq } from 'drizzle-orm';
 
 export interface IPaymentAllocationRepository {
-  create(data: InsertPaymentAllocation): Promise<PaymentAllocation>;
+  create(data: InsertPaymentAllocation, tx?: any): Promise<PaymentAllocation>;
   findByIntentId(paymentIntentId: string, tenantId: string): Promise<PaymentAllocation[]>;
   findByTransactionId(paymentTransactionId: string, tenantId: string): Promise<PaymentAllocation[]>;
 }
@@ -24,9 +24,10 @@ export class PaymentAllocationRepository
     super(db);
   }
 
-  async create(data: InsertPaymentAllocation): Promise<PaymentAllocation> {
+  async create(data: InsertPaymentAllocation, tx?: any): Promise<PaymentAllocation> {
     try {
-      const [result] = await this.db.insert(paymentAllocations).values(data).returning();
+      const client = tx ?? this.db;
+      const [result] = await client.insert(paymentAllocations).values(data).returning();
       return result;
     } catch (error) {
       this.handleError('create', error);

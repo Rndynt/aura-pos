@@ -8,6 +8,7 @@ import { txRowToDomain } from './ListPaymentTransactions';
 export interface RecalculatePaymentIntentInput {
   tenantId: string;
   intentId: string;
+  /** Optional transaction client — pass when called inside a db.transaction() to keep everything atomic */
   tx?: any;
 }
 
@@ -22,19 +23,22 @@ export class RecalculatePaymentIntent {
   ) {}
 
   async execute(input: RecalculatePaymentIntentInput): Promise<RecalculatePaymentIntentOutput> {
-    const intentRow = await this.intentRepo.findById(input.intentId, input.tenantId);
+    const intentRow = await this.intentRepo.findById(input.intentId, input.tenantId, input.tx);
 
     if (!intentRow) {
       throw new Error('Payment intent not found or access denied');
     }
 
-    const txRows = await this.txRepo.findByIntentId(input.intentId, input.tenantId);
+    const txRows = await this.txRepo.findByIntentId(input.intentId, input.tenantId, input.tx);
     const transactions = txRows.map(txRowToDomain);
 
     const { amountPaid, amountRefunded } = aggregateTransactionTotals(transactions);
     const amountDue = typeof intentRow.amountDue === 'string' ? parseFloat(intentRow.amountDue) : intentRow.amountDue;
 
     const amountRemaining = Math.max(0, amountDue - amountPaid + amountRefunded);
+    // Phase 4 note: calculateIntentStatus does not yet account for void/refund flows.
+    // The 'refunded' and 'partially_refunded' branches are reserved for Phase 4.
+    // Do not add refund/void logic here until Phase 4 is implemented.
     const status = calculateIntentStatus(amountDue, amountPaid, amountRefunded, amountRemaining);
 
     const updated = await this.intentRepo.update(input.intentId, input.tenantId, {
@@ -42,7 +46,7 @@ export class RecalculatePaymentIntent {
       amountRefunded: amountRefunded.toFixed(2) as any,
       amountRemaining: amountRemaining.toFixed(2) as any,
       status,
-    });
+    }, input.tx);
 
     return { intent: intentRowToDomain(updated) };
   }
