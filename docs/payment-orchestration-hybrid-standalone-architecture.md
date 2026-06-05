@@ -500,32 +500,45 @@ Phase 8D upgrades the standalone service from a Phase 8A skeleton (all `/v1/...`
 #### Real Repository Implementations (6 files)
 All 6 `Drizzle*Repository.ts` files now execute real Drizzle ORM queries against `payment_orchestration_*` tables. Uses `as any` cast at mapper call sites to bridge Drizzle's `unknown`-typed jsonb columns.
 
-#### Use Cases (7 files)
+#### Use Cases (9 files — updated Phase 8E)
 | Class | Key rule |
 |-------|----------|
 | `CreateMerchant` | Idempotent: returns existing if `sourceApp+externalRef` match |
 | `CreateProviderAccount` | Verifies merchant exists (404 if not) |
 | `CreatePaymentIntent` | Validates positive integer amountDue; supports idempotency key |
 | `CreateGatewayPayment` | Rejects overpayment (`OVERPAYMENT_REJECTED`); updates intent immediately on `succeeded` |
-| `ConfirmFakeGatewayPayment` | Dev-only (`FORBIDDEN_IN_PRODUCTION` in production); idempotent on already-succeeded |
+| `ConfirmFakeGatewayPayment` | Dev-only (`FORBIDDEN_IN_PRODUCTION` in production); atomic conditional UPDATE (Phase 8D.1) |
 | `GetPaymentIntentStatus` | Returns `isTerminal`, `requiresAction`, `canRetryPayment` computed fields |
 | `GetRefundability` | Sums succeeded incoming txns minus outgoing refund txns by `parentTransactionId` |
+| `HandleProviderWebhook` | Phase 8E: parses FakeGateway webhook, deduplicates by `event_id`, atomically updates TX+intent |
+| `ReconcilePaymentIntentTotals` | Phase 8E: recomputes intent totals from actual TX state; manual crash-recovery safety tool |
 | `intentStatusHelper.ts` | `computeIntentStatus(amountDue, amountPaid)`: 0→requires_payment, partial→partially_paid, equal→paid, over→overpaid |
 
-#### Routes
-| Method | Path | Notes |
-|--------|------|-------|
-| POST | `/v1/merchants` | CreateMerchant |
-| GET | `/v1/merchants/:id` | Direct repo read |
-| POST | `/v1/merchants/:merchantId/provider-accounts` | CreateProviderAccount |
-| GET | `/v1/merchants/:merchantId/provider-accounts/:id` | Direct repo read |
-| POST | `/v1/payment-intents` | CreatePaymentIntent |
-| GET | `/v1/payment-intents/:id/status` | GetPaymentIntentStatus |
-| GET | `/v1/payment-intents/:id/refundability` | GetRefundability |
-| POST | `/v1/payment-intents/:id/gateway-payments` | CreateGatewayPayment |
-| POST | `/v1/dev/fake-gateway/transactions/:id/confirm` | ConfirmFakeGatewayPayment (non-prod only) |
+#### Routes (updated Phase 8E)
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| POST | `/v1/merchants` | service token | CreateMerchant |
+| GET | `/v1/merchants/:id` | service token | Direct repo read |
+| POST | `/v1/merchants/:merchantId/provider-accounts` | service token | CreateProviderAccount |
+| GET | `/v1/merchants/:merchantId/provider-accounts/:id` | service token | Direct repo read |
+| POST | `/v1/payment-intents` | service token | CreatePaymentIntent |
+| GET | `/v1/payment-intents/:id/status` | service token | GetPaymentIntentStatus |
+| GET | `/v1/payment-intents/:id/refundability` | service token | GetRefundability |
+| POST | `/v1/payment-intents/:id/gateway-payments` | service token | CreateGatewayPayment |
+| POST | `/v1/payment-intents/:id/reconcile` | service token | ReconcilePaymentIntentTotals (Phase 8E) |
+| POST | `/v1/webhooks/:provider` | **none** (provider sig) | HandleProviderWebhook — bypasses service-token auth (Phase 8E) |
+| POST | `/v1/dev/fake-gateway/transactions/:id/confirm` | service token | ConfirmFakeGatewayPayment (non-prod only) |
 
-Auth middleware (`createAuthMiddleware`) applied to all `/v1/...` routes. Health + version remain unprotected.
+**Webhook route auth bypass (Phase 8E):**  
+`POST /v1/webhooks/:provider` is registered in `app.ts` **before** `app.use('/v1', auth)` so it does NOT require a service token. Provider identity is verified via payload signature inside each webhook handler (`FakeGatewayWebhookHandler`). This is intentional — payment providers push events server-to-server without knowledge of the service token.
+
+- FakeGateway unsigned webhook is **dev/test convenience only** (no secret configured).
+- Production FakeGateway webhook **requires** `PAYMENT_ORCHESTRATION_FAKEGATEWAY_WEBHOOK_SECRET` env var.
+- Missing header when secret is configured → `WEBHOOK_SIGNATURE_MISSING` (401).
+- Wrong signature → `WEBHOOK_SIGNATURE_INVALID` (401).
+- No secret in production → `WEBHOOK_SECRET_REQUIRED` (403).
+
+All other `/v1/...` routes remain service-token protected.
 
 #### SDK
 `@northflow/payment-orchestration-client-sdk` updated with 5 new methods: `createMerchant`, `getMerchant`, `createProviderAccount`, `getProviderAccount`, `confirmFakeGatewayPayment`. 6 new request/response types exported.
@@ -539,10 +552,41 @@ npx tsx --tsconfig apps/api/tsconfig.node.json --test \
 
 ### What did NOT change in Phase 8D
 - Embedded AuraPoS payment engine (`apps/api/src/payment-engine/`) — still active
-- Xendit/real provider wiring — Phase 8E+
-- Webhook ingestion (`/v1/webhooks/:provider`) — still 501
+- Xendit/real provider wiring — Phase 8F+
 - No Drizzle migrations auto-run at startup; run manually via `psql $DATABASE_URL -f migrations/...`
 - No POS UI changes
+
+---
+
+### Phase 8D.1 + 8E — Atomic Confirm + Webhook Ingestion + Reconciliation
+
+**Phase 8D.1 — Atomic Confirm (TOCTOU fix):**
+- `ConfirmFakeGatewayPayment` now uses `markSucceededIfConfirmable()` — a conditional `UPDATE … WHERE status IN ('requires_action','pending') RETURNING *`.
+- Two concurrent confirms cannot both succeed: the first caller gets `changed=true` and updates intent totals; the second gets `changed=false` and detects the already-confirmed state idempotently.
+- Failed idempotency-key policy: `CreateGatewayPayment` throws `IDEMPOTENCY_PREVIOUSLY_FAILED` (409) when the existing key has `status=failed`; client must supply a new key.
+
+**Phase 8E — Standalone Webhook Ingestion:**
+- `POST /v1/webhooks/fake_gateway` implemented via `HandleProviderWebhook` + `FakeGatewayWebhookHandler`.
+- Webhook route registered **before** service-token auth middleware — no service token required.
+- Provider verification via optional HMAC SHA-256 signature (`x-fakegateway-signature` header); `timingSafeEqual` used for constant-time comparison.
+- Idempotent by `event_id`: duplicate events return `idempotentReplay=true` and do not re-credit the intent.
+- Merchant resolved from `providerReference → TX → intentId → merchantId`; `x-payment-merchant-id` request header is ignored in webhook flow to prevent header-spoofing.
+
+**Phase 8E — Reconciliation Safety:**
+- `ReconcilePaymentIntentTotals` use case recomputes intent totals from actual transaction state.
+- Fixes drift caused by crash between `TX succeeded` and `intent totals/status` update.
+- Not a scheduled worker — called explicitly via `POST /v1/payment-intents/:id/reconcile` (service-token protected) or programmatically after crash recovery.
+- Returns `before`/`after` snapshots and `changed: boolean`.
+- No scheduled reconciliation cron yet (Phase 8F+).
+
+**What did NOT change in Phase 8D.1 + 8E:**
+- Embedded AuraPoS payment engine — unchanged.
+- Legacy order payment flow — unchanged.
+- No AuraPoS SDK consumption yet.
+- No Midtrans/Stripe adapter.
+- No provider-level refund/cancel.
+- No scheduled cron/worker.
+- No live Xendit dependency added.
 
 ---
 
@@ -550,6 +594,7 @@ npx tsx --tsconfig apps/api/tsconfig.node.json --test \
 
 | Phase | Description |
 |-------|-------------|
-| 8D    | ✅ Full use-case wiring in payment-orchestration-service (this phase) |
-| 8E    | AuraPoS consumes client SDK; embedded engine deprecated |
-| 8F    | Remove migration bridge (`createAuraPosPaymentScope`); standalone-only |
+| 8D    | ✅ Full use-case wiring in payment-orchestration-service |
+| 8D.1  | ✅ Atomic confirm (TOCTOU fix) + failed-key policy |
+| 8E    | ✅ Standalone webhook ingestion + reconciliation safety + hardening |
+| 8F    | AuraPoS SDK consumption; remove migration bridge; Xendit sandbox integration |

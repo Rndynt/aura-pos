@@ -5,3 +5,4 @@
 - [Phase 8D standalone wiring](phase-8d-standalone-wiring.md) — Drizzle jsonb columns type as `unknown`; cast to `as any` at mapXxxRow() call sites. Test imports for service use-cases use `../../../payment-orchestration-service/` (3 levels up from apps/api/src/__tests__/).
 - [Payment orchestration atomic confirm](atomic-confirm-pattern.md) — conditional UPDATE WHERE status IN ('requires_action','pending'); IDEMPOTENCY_SCOPE='create_gateway_payment' (not 'gateway_payment'); assert.throws (not assert.rejects) for sync throws.
 - [Webhook auth bypass ordering](webhook-auth-bypass.md) — register app.use('/v1/webhooks', router) BEFORE app.use('/v1', auth); add express.json verify to capture req.rawBody for HMAC.
+- [FakeGateway webhook signature error codes](fakegateway-webhook-sig-codes.md) — missing header → WEBHOOK_SIGNATURE_MISSING (401); wrong sig → WEBHOOK_SIGNATURE_INVALID (401); no secret in production → WEBHOOK_SECRET_REQUIRED (403).

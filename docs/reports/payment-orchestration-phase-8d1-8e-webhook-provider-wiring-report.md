@@ -142,6 +142,27 @@ Updated: `apps/payment-orchestration-service/src/container.ts`
 
 ---
 
+## Commands Run
+
+| Command | Status | Notes |
+|---|:---:|---|
+| `npm run check` | not run | Root turbo type-check; individual package checks run instead (see below) |
+| `pnpm --filter @northflow/payment-orchestration-core type-check` | ✅ pass | 0 errors |
+| `pnpm --filter @northflow/payment-orchestration-service type-check` | ✅ pass | 0 errors |
+| `pnpm --filter @northflow/payment-orchestration-client-sdk type-check` | ✅ pass | 0 errors |
+| atomic confirm test (`payment-orchestration-atomic-confirm.test.ts`) | ✅ pass | 11/11 pass |
+| standalone webhook test (`payment-orchestration-standalone-webhook.test.ts`) | ✅ pass | 13/13 pass |
+| service HTTP/auth test (`payment-orchestration-service-http-auth.test.ts`) | ✅ pass | 13/13 pass |
+| schema mapper test (`payment-orchestration-schema-mappers.test.ts`) | ✅ pass | 56/56 pass |
+| core contract adapter test (`payment-orchestration-core-contract-adapter.test.ts`) | ✅ pass | 14/14 pass |
+| xendit gateway integration test (`payment-xendit-gateway-integration.test.ts`) | ✅ pass | 11/11 pass — no live provider call |
+| reconcile use case test (`payment-orchestration-reconcile.test.ts`) | ✅ pass | 5/5 pass — Phase 8E hardening |
+| webhook route auth bypass HTTP test (`payment-orchestration-webhook-route-auth-bypass.test.ts`) | ✅ pass | 7/7 pass — Phase 8E hardening |
+
+> Note: `npm run check` (Turborepo root) was not run because the full monorepo check includes the Next.js `apps/web` build which is unrelated to this phase. Individual payment-orchestration package type-checks were run and all pass.
+
+---
+
 ## Updated Test Infrastructure
 
 - `payment-orchestration-service-fakegateway-flow.test.ts` — added `markSucceededIfConfirmable` to `InMemoryTransactionRepo`.

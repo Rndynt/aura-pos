@@ -1,7 +1,5 @@
 # Phase 8D Hardening Report
 
-> **Note:** The canonical filename for this report is `payment-orchestration-phase-8d-hardening-report.md` (in this same directory). This file is retained as historical reference.
-
 **Service:** `apps/payment-orchestration-service`  
 **Phase:** 8D — FakeGateway End-to-End Hardening  
 **Status:** ✅ Complete  

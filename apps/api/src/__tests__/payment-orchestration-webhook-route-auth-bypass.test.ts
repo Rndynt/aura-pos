@@ -847,11 +847,11 @@ describe('Phase 8E Hardening — WR06: Webhook secret configured, signature requ
 
   after(() => stopServer(server));
 
-  test('WR06a: missing x-fakegateway-signature header → 401 WEBHOOK_SIGNATURE_INVALID', async () => {
+  test('WR06a: missing x-fakegateway-signature header → 401 WEBHOOK_SIGNATURE_MISSING', async () => {
     const res = await fetch(`${baseUrl}/v1/webhooks/fake_gateway`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      // No signature header
+      // No signature header — handler returns WEBHOOK_SIGNATURE_MISSING (distinct from wrong sig)
       body: JSON.stringify({
         event_id: `evt_wr06a_${randomUUID().slice(0, 8)}`,
         event_type: 'payment.succeeded',
@@ -863,7 +863,7 @@ describe('Phase 8E Hardening — WR06: Webhook secret configured, signature requ
     assert.equal(res.status, 401, `Expected 401, got ${res.status}`);
     const body = await res.json() as any;
     assert.equal(body.ok, false);
-    assert.equal(body.error, 'WEBHOOK_SIGNATURE_INVALID');
+    assert.equal(body.error, 'WEBHOOK_SIGNATURE_MISSING');
   });
 
   test('WR06b: wrong x-fakegateway-signature → 401 WEBHOOK_SIGNATURE_INVALID', async () => {

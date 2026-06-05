@@ -1,6 +1,6 @@
 # Payment Orchestration Service — Smoke Test Guide
 
-**Phase:** 8D Hardening  
+**Phase:** 8E Hardening  
 **Last updated:** 2026-06-05
 
 This guide describes how to manually or programmatically verify the payment-orchestration-service standalone API.
@@ -200,9 +200,115 @@ All routes accept `merchantId` via the `x-payment-merchant-id` header as a fallb
 
 ---
 
-## Phase 8E roadmap
+### 9. Webhook ingestion (Phase 8E — FakeGateway)
 
-- Real provider webhook ingestion (`POST /v1/webhooks/:provider`).
+The webhook route does **not** require a service token — it is registered before the auth middleware. Provider identity is verified via HMAC signature.
+
+**Dev/test mode (no secret configured):**
+```bash
+# Simulate FakeGateway pushing a payment.succeeded event
+curl -s -X POST $BASE/v1/webhooks/fake_gateway \
+  -H "Content-Type: application/json" \
+  -d "{\"event_id\":\"evt_smoke_001\",\"event_type\":\"payment.succeeded\",\"status\":\"succeeded\",\"provider_reference\":\"<TX_PROVIDER_REF>\"}" | jq
+# Expected: { "ok": true, "processingStatus": "processed", "intent": { "status": "paid", ... } }
+```
+
+**With HMAC secret configured** (`PAYMENT_ORCHESTRATION_FAKEGATEWAY_WEBHOOK_SECRET=mysecret`):
+```bash
+BODY='{"event_id":"evt_smoke_002","event_type":"payment.succeeded","status":"succeeded","provider_reference":"<TX_PROVIDER_REF>"}'
+SIG="sha256=$(echo -n "$BODY" | openssl dgst -sha256 -hmac mysecret | awk '{print $2}')"
+curl -s -X POST $BASE/v1/webhooks/fake_gateway \
+  -H "Content-Type: application/json" \
+  -H "x-fakegateway-signature: $SIG" \
+  -d "$BODY" | jq
+```
+
+**Idempotent replay (duplicate event_id):**
+```bash
+# Send same event_id again — returns idempotentReplay: true, amountPaid unchanged
+curl -s -X POST $BASE/v1/webhooks/fake_gateway \
+  -H "Content-Type: application/json" \
+  -d '{"event_id":"evt_smoke_001","event_type":"payment.succeeded","status":"succeeded","provider_reference":"<TX_PROVIDER_REF>"}' | jq
+# Expected: idempotentReplay: true
+```
+
+**Security notes:**
+- Webhook route bypasses service-token auth **intentionally** — payment providers push events without a service token.
+- Merchant is resolved from `providerReference → TX → intent → merchantId`; the `x-payment-merchant-id` header is **ignored** on webhook routes to prevent header-spoofing attacks.
+- Missing signature (when secret configured) → `WEBHOOK_SIGNATURE_MISSING` 401.
+- Wrong signature → `WEBHOOK_SIGNATURE_INVALID` 401.
+- No secret in production → `WEBHOOK_SECRET_REQUIRED` 403.
+- Unsigned webhook in non-production (no secret) → accepted (dev convenience only).
+
+---
+
+### 10. Reconciliation (Phase 8E — crash-recovery safety)
+
+The reconcile endpoint recomputes intent totals from actual transaction state. Protected by service token.
+
+```bash
+# Fix drift after crash: TX succeeded but intent totals not updated
+curl -s -X POST $BASE/v1/payment-intents/$INTENT/reconcile \
+  -H "x-payment-orchestration-service-token: $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"merchantId\":\"$MERCHANT\"}" | jq
+# Expected: { "ok": true, "data": { "changed": false/true, "before": {...}, "after": {...}, "intent": {...} } }
+```
+
+- `changed: false` — totals already correct; no DB update.
+- `changed: true` — drift detected and corrected (e.g., TX was succeeded but intent still showed `requires_payment`).
+
+**Note:** No scheduled reconciliation worker yet. Call this endpoint manually after crash recovery or as part of a maintenance script.
+
+---
+
+## Automated test suites
+
+Run without a running DB or service:
+
+```bash
+# Use-case level (in-memory repos, fast)
+npx tsx --tsconfig apps/api/tsconfig.node.json --test \
+  apps/api/src/__tests__/payment-orchestration-service-fakegateway-flow.test.ts
+
+# HTTP/auth level (real Express, in-memory repos, port 0)
+npx tsx --tsconfig apps/api/tsconfig.node.json --test \
+  apps/api/src/__tests__/payment-orchestration-service-http-auth.test.ts
+
+# Phase 8D.1 — atomic confirm (TOCTOU fix)
+npx tsx --tsconfig apps/api/tsconfig.node.json --test \
+  apps/api/src/__tests__/payment-orchestration-atomic-confirm.test.ts
+
+# Phase 8E — standalone webhook use case
+npx tsx --tsconfig apps/api/tsconfig.node.json --test \
+  apps/api/src/__tests__/payment-orchestration-standalone-webhook.test.ts
+
+# Phase 8E — webhook route auth bypass (Express HTTP layer)
+npx tsx --tsconfig apps/api/tsconfig.node.json --test \
+  apps/api/src/__tests__/payment-orchestration-webhook-route-auth-bypass.test.ts
+
+# Phase 8E — reconciliation use case
+npx tsx --tsconfig apps/api/tsconfig.node.json --test \
+  apps/api/src/__tests__/payment-orchestration-reconcile.test.ts
+```
+
+Expected pass counts (all phases combined):
+
+| Test file | Tests | Pass |
+|---|---:|---:|
+| payment-orchestration-service-fakegateway-flow | 20 | 20 |
+| payment-orchestration-service-http-auth | 13 | 13 |
+| payment-orchestration-atomic-confirm | 11 | 11 |
+| payment-orchestration-standalone-webhook | 13 | 13 |
+| payment-orchestration-webhook-route-auth-bypass | 7 | 7 |
+| payment-orchestration-reconcile | 5 | 5 |
+| payment-orchestration-schema-mappers | 56 | 56 |
+| payment-orchestration-core-contract-adapter | 14 | 14 |
+| payment-xendit-gateway-integration | 11 | 11 |
+
+## Phase 8F roadmap
+
+- AuraPoS SDK consumption by POS terminal.
 - Xendit sandbox integration.
-- Atomic conditional UPDATE for concurrent confirmation.
 - DB-backed idempotency key cleanup (TTL expiry).
+- Scheduled reconciliation worker (Phase 8F+).
