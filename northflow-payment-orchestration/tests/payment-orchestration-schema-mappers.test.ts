@@ -30,7 +30,7 @@ import {
   mapTransactionRow,
   mapProviderEventRow,
   mapIdempotencyKeyRow,
-} from '../../apps/service/src/infrastructure/repositories/mappers.ts';
+} from '../apps/service/src/infrastructure/repositories/mappers.ts';
 
 import type {
   MerchantRow,
@@ -39,7 +39,7 @@ import type {
   TransactionRow,
   ProviderEventRow,
   IdempotencyKeyRow,
-} from '../../apps/service/src/infrastructure/repositories/mappers.ts';
+} from '../apps/service/src/infrastructure/repositories/mappers.ts';
 
 // ── Shared test fixtures ───────────────────────────────────────────────────────
 

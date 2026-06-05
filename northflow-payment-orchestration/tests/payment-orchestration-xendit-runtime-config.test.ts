@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createProviderRegistry } from '../../apps/service/src/infrastructure/providers/providerRegistry.ts';
-import { createXenditSandboxHttpClient, loadXenditRuntimeConfig } from '../../apps/service/src/infrastructure/providers/xenditHttpClient.ts';
+import { createProviderRegistry } from '../apps/service/src/infrastructure/providers/providerRegistry.ts';
+import { createXenditSandboxHttpClient, loadXenditRuntimeConfig } from '../apps/service/src/infrastructure/providers/xenditHttpClient.ts';
 
 describe('xendit runtime HTTP client policy', () => {
   test('loads disabled-by-default env policy without exposing token values', () => {

@@ -1,15 +1,6 @@
 # Northflow Payment Orchestration
 
-Standalone payment orchestration service extracted from the AuraPoS monorepo.
-
-## Overview
-
-A self-contained payment orchestration system providing:
-- Payment intent lifecycle management (requires_payment → partially_paid → paid)
-- Multi-provider architecture (FakeGateway dev/test, Xendit sandbox)
-- Atomic webhook processing with idempotency
-- Background workers for expiry and reconciliation
-- Typed HTTP client SDK (`@northflow/payment-orchestration-client-sdk`)
+Northflow Payment Orchestration is a standalone payment orchestration service for merchant payment intents, provider accounts, webhook processing, reconciliation, worker operations, and typed SDK/API integration.
 
 ## Packages
 
@@ -32,20 +23,34 @@ cp .env.example .env
 # Run database migrations
 pnpm db:migrate
 
-# Start the service
-pnpm dev
+# Start the service (development)
+pnpm dev:service
 ```
+
+## Scripts
+
+| Script | Description |
+|---|---|
+| `pnpm check` | Type-check all packages |
+| `pnpm build` | Build all packages (type-check only — tsx runs TS source directly, no JS emit) |
+| `pnpm dev:service` | Start service in development mode (hot reload via tsx) |
+| `pnpm start:service` | Start service in production mode |
+| `pnpm test` | Run all unit tests |
+| `pnpm db:migrate` | Apply database migrations |
+| `pnpm db:generate` | Generate new migration from schema changes |
+| `pnpm worker` | Run background workers (expiry + reconciliation) |
+| `pnpm extraction-check` | Validate standalone repo structure and boundary purity |
+
+> **Note on build**: The service uses `tsx` to run TypeScript source directly without emitting compiled JS.
+> `pnpm build` runs a full type-check pass (`tsc --noEmit`) as the build validation step.
 
 ## Running Tests
 
 ```bash
-# From repo root (requires DATABASE_URL env var)
+# Run all tests from repo root (requires DATABASE_URL env var for integration tests)
 pnpm test
-```
 
-Or run individual test files:
-
-```bash
+# Run individual test file
 npx tsx --tsconfig tests/tsconfig.json --test tests/payment-orchestration-schema-mappers.test.ts
 ```
 
@@ -76,15 +81,23 @@ x-payment-orchestration-service-token: <your-token>
 
 ## Docker
 
+Build from the repo root (the Dockerfile copies root workspace files):
+
 ```bash
-docker build -t northflow-payment-orchestration .
+docker build -f apps/service/Dockerfile -t northflow-payment-orchestration .
+
 docker run -p 5100:5100 \
   -e PAYMENT_ORCHESTRATION_DATABASE_URL=... \
   -e PAYMENT_ORCHESTRATION_SERVICE_TOKEN=... \
   northflow-payment-orchestration
 ```
 
-## Project Phase
+## Project History
 
-Phase: **8L** — Standalone repo extraction
+This service was extracted from the [AuraPoS](https://github.com/Rndynt/AuraPoS) monorepo (Phase 8L).
+The AuraPoS source areas remain intact as a fallback until the standalone service is fully production-ready.
+
+## Version
+
+Phase: **8L.1** — Standalone repo cleanup
 Config version: `0.3.0` (8K)

@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { XenditSandboxProvider } from '../../apps/service/src/infrastructure/providers/XenditSandboxProvider.ts';
-import { createProviderRegistry } from '../../apps/service/src/infrastructure/providers/providerRegistry.ts';
+import { XenditSandboxProvider } from '../apps/service/src/infrastructure/providers/XenditSandboxProvider.ts';
+import { createProviderRegistry } from '../apps/service/src/infrastructure/providers/providerRegistry.ts';
 import type { PaymentProviderAccount } from '@northflow/payment-orchestration-core';
 
 const providerAccount: PaymentProviderAccount = {

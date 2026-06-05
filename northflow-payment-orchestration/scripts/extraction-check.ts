@@ -1,18 +1,25 @@
 /**
  * extraction-check.ts
  *
- * Phase 8L: Validates that the standalone northflow-payment-orchestration repo
- * is complete and self-contained.
+ * Phase 8L.1: Validates that the standalone northflow-payment-orchestration repo
+ * is complete, self-contained, and ready to push to the standalone payment repo.
  *
  * Checks:
  * 1. Required directories exist.
- * 2. Required package.json / tsconfig.json files present.
- * 3. Key source entry points present.
- * 4. No forbidden AuraPoS import leakage in standalone source.
- * 5. Migrations directory is not empty.
- * 6. Docs are present.
- * 7. .env.example present.
- * 8. Dockerfile present.
+ * 2. Required package.json / tsconfig.json / config files present.
+ * 3. Root package.json has required scripts (check, build, dev:service, start:service).
+ * 4. Service package.json has start and build scripts.
+ * 5. Key source entry points present.
+ * 6. Migrations directory is not empty.
+ * 7. Docs and OpenAPI spec present.
+ * 8. Phase 8L extraction report exists.
+ * 9. .env.example files contain no real-looking secrets.
+ * 10. README opens as standalone product (not as AuraPoS child).
+ * 11. Docker docs use correct -f apps/service/Dockerfile flag.
+ * 12. No forbidden AuraPoS imports in standalone source.
+ * 13. No shared/schema references in standalone source.
+ * 14. Package name consistency.
+ * 15. No random assets/logs/build outputs in repo.
  *
  * Run:
  *   npx tsx --tsconfig tests/tsconfig.json scripts/extraction-check.ts
@@ -39,6 +46,18 @@ function exists(rel: string): boolean {
   return existsSync(join(ROOT, rel));
 }
 
+function readText(rel: string): string {
+  const full = join(ROOT, rel);
+  if (!existsSync(full)) return '';
+  return readFileSync(full, 'utf8');
+}
+
+function readJson(rel: string): Record<string, unknown> {
+  const text = readText(rel);
+  if (!text) return {};
+  return JSON.parse(text) as Record<string, unknown>;
+}
+
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
   if (!existsSync(dir)) return out;
@@ -52,9 +71,9 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
-console.log('\n═══════════════════════════════════════════════════════════════');
-console.log('  Northflow Payment Orchestration — Phase 8L Extraction Check');
-console.log('═══════════════════════════════════════════════════════════════\n');
+console.log('\n═══════════════════════════════════════════════════════════════════');
+console.log('  Northflow Payment Orchestration — Phase 8L.1 Extraction Check');
+console.log('═══════════════════════════════════════════════════════════════════\n');
 
 // ── Section 1: Directory structure ────────────────────────────────────────────
 console.log('Section 1: Directory structure');
@@ -64,6 +83,7 @@ check('apps/service/ exists', exists('apps/service'));
 check('migrations/ exists', exists('migrations'));
 check('tests/ exists', exists('tests'));
 check('docs/ exists', exists('docs'));
+check('docs/reports/ exists', exists('docs/reports'));
 check('scripts/ exists', exists('scripts'));
 
 // ── Section 2: Config files ───────────────────────────────────────────────────
@@ -85,8 +105,35 @@ check('apps/service/.env.example', exists('apps/service/.env.example'));
 check('apps/service/Dockerfile', exists('apps/service/Dockerfile'));
 check('tests/tsconfig.json', exists('tests/tsconfig.json'));
 
-// ── Section 3: Source entry points ───────────────────────────────────────────
-console.log('\nSection 3: Source entry points');
+// ── Section 3: Root package.json required scripts ─────────────────────────────
+console.log('\nSection 3: Root package.json scripts');
+const rootPkg = readJson('package.json');
+const rootScripts = (rootPkg['scripts'] as Record<string, string>) ?? {};
+check('root scripts.check exists', 'check' in rootScripts, `got: ${JSON.stringify(rootScripts['check'])}`);
+check('root scripts.build exists', 'build' in rootScripts, `got: ${JSON.stringify(rootScripts['build'])}`);
+check('root scripts.dev:service exists', 'dev:service' in rootScripts);
+check('root scripts.start:service exists', 'start:service' in rootScripts);
+check('root scripts.dev exists', 'dev' in rootScripts);
+check('root scripts.type-check exists', 'type-check' in rootScripts);
+check('root scripts.test exists', 'test' in rootScripts);
+check('root scripts.db:migrate exists', 'db:migrate' in rootScripts);
+check('root scripts.db:generate exists', 'db:generate' in rootScripts);
+check('root scripts.worker exists', 'worker' in rootScripts);
+check('root scripts.extraction-check exists', 'extraction-check' in rootScripts);
+
+// ── Section 4: Service package.json required scripts ──────────────────────────
+console.log('\nSection 4: Service package.json scripts');
+const servicePkg = readJson('apps/service/package.json');
+const serviceScripts = (servicePkg['scripts'] as Record<string, string>) ?? {};
+check('service scripts.dev exists', 'dev' in serviceScripts);
+check('service scripts.start exists', 'start' in serviceScripts);
+check('service scripts.build exists', 'build' in serviceScripts);
+check('service scripts.type-check exists', 'type-check' in serviceScripts);
+check('service scripts.worker exists', 'worker' in serviceScripts);
+check('service scripts.db:migrate exists', 'db:migrate' in serviceScripts);
+
+// ── Section 5: Source entry points ───────────────────────────────────────────
+console.log('\nSection 5: Source entry points');
 check('packages/core/src/index.ts', exists('packages/core/src/index.ts'));
 check('packages/client-sdk/src/index.ts', exists('packages/client-sdk/src/index.ts'));
 check('packages/client-sdk/src/client.ts', exists('packages/client-sdk/src/client.ts'));
@@ -98,15 +145,15 @@ check('apps/service/src/config/env.ts', exists('apps/service/src/config/env.ts')
 check('apps/service/src/infrastructure/schema.ts', exists('apps/service/src/infrastructure/schema.ts'));
 check('apps/service/src/infrastructure/db.ts', exists('apps/service/src/infrastructure/db.ts'));
 
-// ── Section 4: Migrations not empty ──────────────────────────────────────────
-console.log('\nSection 4: Migrations');
+// ── Section 6: Migrations not empty ──────────────────────────────────────────
+console.log('\nSection 6: Migrations');
 const migrationFiles = exists('migrations')
   ? readdirSync(join(ROOT, 'migrations')).filter((f) => f.endsWith('.sql'))
   : [];
 check('migrations/ contains at least one .sql file', migrationFiles.length > 0, `found: ${migrationFiles.length}`);
 
-// ── Section 5: Docs present ───────────────────────────────────────────────────
-console.log('\nSection 5: Docs');
+// ── Section 7: Docs and OpenAPI spec ─────────────────────────────────────────
+console.log('\nSection 7: Docs');
 check('docs/payment-orchestration-api-contract.md', exists('docs/payment-orchestration-api-contract.md'));
 check('docs/payment-orchestration-sdk-contract.md', exists('docs/payment-orchestration-sdk-contract.md'));
 check('docs/payment-orchestration-error-codes.md', exists('docs/payment-orchestration-error-codes.md'));
@@ -114,45 +161,105 @@ check('docs/payment-orchestration-deployment.md', exists('docs/payment-orchestra
 check('docs/payment-orchestration-worker-operations.md', exists('docs/payment-orchestration-worker-operations.md'));
 check('docs/openapi/payment-orchestration.openapi.json', exists('docs/openapi/payment-orchestration.openapi.json'));
 
-// ── Section 6: Boundary purity (no forbidden AuraPoS imports) ─────────────────
-console.log('\nSection 6: Boundary purity');
+// ── Section 8: Phase 8L extraction report ────────────────────────────────────
+console.log('\nSection 8: Extraction report');
+check(
+  'docs/reports/phase-8l-standalone-repo-extraction-report.md exists',
+  exists('docs/reports/phase-8l-standalone-repo-extraction-report.md'),
+);
 
+// ── Section 9: Env examples — no real-looking secrets ────────────────────────
+console.log('\nSection 9: Env examples clean');
+const FORBIDDEN_ENV_PATTERNS = [
+  'xnd_development_replace_with_real_key',
+  'xnd_production_',
+];
+for (const envFile of ['.env.example', 'apps/service/.env.example']) {
+  const content = readText(envFile);
+  const hasRealSecret = FORBIDDEN_ENV_PATTERNS.some((p) => content.includes(p));
+  check(`${envFile} has no real-looking Xendit key`, !hasRealSecret);
+}
+check('no .env file committed (only .env.example)', !exists('.env'));
+
+// ── Section 10: README opens as standalone product ───────────────────────────
+console.log('\nSection 10: README standalone wording');
+const readmeText = readText('README.md');
+const firstParagraph = readmeText.split('\n').slice(0, 6).join('\n');
+const auraposChildPhrases = [
+  'extracted from the AuraPoS monorepo',
+  'AuraPoS child',
+  'part of AuraPoS',
+];
+const hasAuraposChildWording = auraposChildPhrases.some((p) => firstParagraph.includes(p));
+check('README does not open with AuraPoS-child wording', !hasAuraposChildWording,
+  hasAuraposChildWording ? `Found in first 6 lines: "${firstParagraph.slice(0, 100)}..."` : undefined);
+check('README mentions standalone payment orchestration', readmeText.includes('standalone payment orchestration'));
+
+// ── Section 11: Docker docs use -f flag ──────────────────────────────────────
+console.log('\nSection 11: Docker docs');
+check(
+  'README docker build uses -f apps/service/Dockerfile',
+  readmeText.includes('-f apps/service/Dockerfile'),
+  'Expected: docker build -f apps/service/Dockerfile ...',
+);
+const deploymentDoc = readText('docs/payment-orchestration-deployment.md');
+if (deploymentDoc.includes('docker build')) {
+  const hasWrongDockerBuild = deploymentDoc.includes('docker build -t') &&
+    !deploymentDoc.includes('-f apps/service/Dockerfile') &&
+    !deploymentDoc.includes('-f ');
+  check('deployment doc docker build uses -f flag (if present)', !hasWrongDockerBuild);
+} else {
+  check('deployment doc docker build (not present — skipped)', true);
+}
+
+// ── Section 12: Boundary purity ───────────────────────────────────────────────
+console.log('\nSection 12: Boundary purity');
 const SCOPES = ['packages/core', 'packages/client-sdk', 'apps/service'];
-const FORBIDDEN_PATTERNS = [
+const FORBIDDEN_IMPORT_PATTERNS = [
   /from ['"]@pos\//,
   /from ['"].*apps\/api/,
   /from ['"].*packages\/application\/payments/,
   /from ['"].*packages\/domain\/payments/,
   /from ['"].*packages\/infrastructure\/payments/,
   /from ['"].*pos-terminal-web/,
-  /from ['"].*shared\/schema/,
 ];
+const SHARED_SCHEMA_PATTERN = /from ['"].*shared\/schema/;
 
 const allSourceFiles = SCOPES.flatMap((scope) => sourceFiles(join(ROOT, scope)));
-const violations: string[] = [];
+const importViolations: string[] = [];
+const schemaViolations: string[] = [];
 
 for (const file of allSourceFiles) {
   const source = readFileSync(file, 'utf8');
-  for (const pattern of FORBIDDEN_PATTERNS) {
+  for (const pattern of FORBIDDEN_IMPORT_PATTERNS) {
     if (pattern.test(source)) {
-      violations.push(`${relative(ROOT, file)}: ${pattern}`);
+      importViolations.push(`${relative(ROOT, file)}: ${pattern}`);
     }
+  }
+  if (SHARED_SCHEMA_PATTERN.test(source)) {
+    schemaViolations.push(relative(ROOT, file));
   }
 }
 
-check('No forbidden AuraPoS imports in standalone source', violations.length === 0,
-  violations.length > 0 ? `\n    ${violations.join('\n    ')}` : undefined);
+check('No forbidden @pos/* or AuraPoS imports in standalone source', importViolations.length === 0,
+  importViolations.length > 0 ? `\n    ${importViolations.join('\n    ')}` : undefined);
+check('No shared/schema references in standalone source', schemaViolations.length === 0,
+  schemaViolations.length > 0 ? `\n    ${schemaViolations.join('\n    ')}` : undefined);
 
-// ── Section 7: Package name consistency ───────────────────────────────────────
-console.log('\nSection 7: Package name consistency');
-
-function readPackageName(rel: string): string | null {
-  const full = join(ROOT, rel);
-  if (!existsSync(full)) return null;
-  const pkg = JSON.parse(readFileSync(full, 'utf8')) as { name?: string };
-  return pkg.name ?? null;
+// ── Section 13: No random assets/logs/build outputs ───────────────────────────
+console.log('\nSection 13: No build artifacts');
+const FORBIDDEN_ARTIFACTS = ['dist/', '*.log', '.next/', '.cache/', 'build/', '__pycache__/'];
+for (const artifact of FORBIDDEN_ARTIFACTS) {
+  const clean = artifact.replace(/[*/]/g, '');
+  check(`no ${artifact} in repo root`, !exists(clean));
 }
 
+// ── Section 14: Package name consistency ──────────────────────────────────────
+console.log('\nSection 14: Package name consistency');
+function readPackageName(rel: string): string | null {
+  const pkg = readJson(rel);
+  return typeof pkg['name'] === 'string' ? pkg['name'] : null;
+}
 check('packages/core name = @northflow/payment-orchestration-core',
   readPackageName('packages/core/package.json') === '@northflow/payment-orchestration-core');
 check('packages/client-sdk name = @northflow/payment-orchestration-client-sdk',
@@ -161,9 +268,14 @@ check('apps/service name = @northflow/payment-orchestration-service',
   readPackageName('apps/service/package.json') === '@northflow/payment-orchestration-service');
 
 // ── Summary ───────────────────────────────────────────────────────────────────
-console.log('\n═══════════════════════════════════════════════════════════════');
+console.log('\n═══════════════════════════════════════════════════════════════════');
 console.log(`  Result: ${passed} passed, ${failed} failed`);
-console.log('═══════════════════════════════════════════════════════════════\n');
+if (failed === 0) {
+  console.log('  Final decision: IN_REPO_STANDALONE_FOLDER_READY_TO_PUSH_TO_PAYMENT_REPO');
+} else {
+  console.log('  Final decision: BLOCKED — fix failures above before pushing');
+}
+console.log('═══════════════════════════════════════════════════════════════════\n');
 
 if (failed > 0) {
   process.exit(1);

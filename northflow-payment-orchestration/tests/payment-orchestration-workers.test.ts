@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { executeExpireStaleWorker } from '../../apps/service/src/workers/expireStale.ts';
-import { executeReconcileWorker } from '../../apps/service/src/workers/reconcile.ts';
+import { executeExpireStaleWorker } from '../apps/service/src/workers/expireStale.ts';
+import { executeReconcileWorker } from '../apps/service/src/workers/reconcile.ts';
 
 describe('payment orchestration operations workers', () => {
   test('expire stale worker is callable without Express', async () => {

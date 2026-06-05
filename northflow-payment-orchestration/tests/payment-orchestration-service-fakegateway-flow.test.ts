@@ -457,14 +457,14 @@ class InMemoryIdempotencyRepo implements PaymentIdempotencyRepository {
 
 // ── Use-case imports (from standalone service) ────────────────────────────────
 
-import { CreateMerchant } from '../../apps/service/src/application/use-cases/CreateMerchant.ts';
-import { CreateProviderAccount } from '../../apps/service/src/application/use-cases/CreateProviderAccount.ts';
-import { CreatePaymentIntent } from '../../apps/service/src/application/use-cases/CreatePaymentIntent.ts';
-import { CreateGatewayPayment } from '../../apps/service/src/application/use-cases/CreateGatewayPayment.ts';
-import { ConfirmFakeGatewayPayment } from '../../apps/service/src/application/use-cases/ConfirmFakeGatewayPayment.ts';
-import { GetPaymentIntentStatus } from '../../apps/service/src/application/use-cases/GetPaymentIntentStatus.ts';
-import { GetRefundability } from '../../apps/service/src/application/use-cases/GetRefundability.ts';
-import { StandaloneFakeGatewayProvider } from '../../apps/service/src/infrastructure/providers/StandaloneFakeGatewayProvider.ts';
+import { CreateMerchant } from '../apps/service/src/application/use-cases/CreateMerchant.ts';
+import { CreateProviderAccount } from '../apps/service/src/application/use-cases/CreateProviderAccount.ts';
+import { CreatePaymentIntent } from '../apps/service/src/application/use-cases/CreatePaymentIntent.ts';
+import { CreateGatewayPayment } from '../apps/service/src/application/use-cases/CreateGatewayPayment.ts';
+import { ConfirmFakeGatewayPayment } from '../apps/service/src/application/use-cases/ConfirmFakeGatewayPayment.ts';
+import { GetPaymentIntentStatus } from '../apps/service/src/application/use-cases/GetPaymentIntentStatus.ts';
+import { GetRefundability } from '../apps/service/src/application/use-cases/GetRefundability.ts';
+import { StandaloneFakeGatewayProvider } from '../apps/service/src/infrastructure/providers/StandaloneFakeGatewayProvider.ts';
 
 // ── Shared fixture factory ────────────────────────────────────────────────────
 

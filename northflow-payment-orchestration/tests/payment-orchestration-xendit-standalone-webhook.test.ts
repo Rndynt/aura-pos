@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { XenditSandboxProvider } from '../../apps/service/src/infrastructure/providers/XenditSandboxProvider.ts';
+import { XenditSandboxProvider } from '../apps/service/src/infrastructure/providers/XenditSandboxProvider.ts';
 
 describe('standalone Xendit sandbox webhook parser', () => {
   test('verifies callback token and maps invoice status payload', () => {

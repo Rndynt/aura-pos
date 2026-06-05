@@ -21,7 +21,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'crypto';
 
-import { ReconcilePaymentIntentTotals } from '../../apps/service/src/application/use-cases/ReconcilePaymentIntentTotals.ts';
+import { ReconcilePaymentIntentTotals } from '../apps/service/src/application/use-cases/ReconcilePaymentIntentTotals.ts';
 import type {
   PaymentIntentRepository,
   PaymentTransactionRepository,

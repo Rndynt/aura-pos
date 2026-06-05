@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ReprocessProviderEvents } from '../../apps/service/src/application/use-cases/ReprocessProviderEvents.ts';
+import { ReprocessProviderEvents } from '../apps/service/src/application/use-cases/ReprocessProviderEvents.ts';
 import type { PaymentProviderEventDTO, PaymentProviderEventRepository, PaymentIntentRepository, PaymentTransactionRepository, StandalonePaymentIntentDTO, StandalonePaymentTransactionDTO } from '@northflow/payment-orchestration-core';
 
 function event(overrides: Partial<PaymentProviderEventDTO> = {}): PaymentProviderEventDTO {

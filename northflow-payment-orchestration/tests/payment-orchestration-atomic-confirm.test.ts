@@ -37,11 +37,11 @@ import type {
   PaymentIdempotencyKeyDTO,
 } from '@northflow/payment-orchestration-core';
 
-import { ConfirmFakeGatewayPayment } from '../../apps/service/src/application/use-cases/ConfirmFakeGatewayPayment.ts';
-import { CreateGatewayPayment } from '../../apps/service/src/application/use-cases/CreateGatewayPayment.ts';
-import { CreatePaymentIntent } from '../../apps/service/src/application/use-cases/CreatePaymentIntent.ts';
-import { CreateMerchant } from '../../apps/service/src/application/use-cases/CreateMerchant.ts';
-import { StandaloneFakeGatewayProvider } from '../../apps/service/src/infrastructure/providers/StandaloneFakeGatewayProvider.ts';
+import { ConfirmFakeGatewayPayment } from '../apps/service/src/application/use-cases/ConfirmFakeGatewayPayment.ts';
+import { CreateGatewayPayment } from '../apps/service/src/application/use-cases/CreateGatewayPayment.ts';
+import { CreatePaymentIntent } from '../apps/service/src/application/use-cases/CreatePaymentIntent.ts';
+import { CreateMerchant } from '../apps/service/src/application/use-cases/CreateMerchant.ts';
+import { StandaloneFakeGatewayProvider } from '../apps/service/src/infrastructure/providers/StandaloneFakeGatewayProvider.ts';
 
 // ── In-memory implementations ────────────────────────────────────────────────
 

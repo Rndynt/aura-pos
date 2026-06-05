@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RefreshProviderStatus } from '../../apps/service/src/application/use-cases/RefreshProviderStatus.ts';
-import { StandaloneFakeGatewayProvider } from '../../apps/service/src/infrastructure/providers/StandaloneFakeGatewayProvider.ts';
+import { RefreshProviderStatus } from '../apps/service/src/application/use-cases/RefreshProviderStatus.ts';
+import { StandaloneFakeGatewayProvider } from '../apps/service/src/infrastructure/providers/StandaloneFakeGatewayProvider.ts';
 import type {
   PaymentIntentRepository,
   PaymentProviderAccountRepository,

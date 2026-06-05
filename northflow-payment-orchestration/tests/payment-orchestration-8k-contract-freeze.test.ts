@@ -36,12 +36,12 @@ const root = process.cwd();
 // ── Import service artifacts ─────────────────────────────────────────────────
 
 // Direct path imports — avoids workspace package resolution issues in test runner
-import { apiErrorResponse } from '../../apps/service/src/routes/utils.ts';
-import { errorHandler } from '../../apps/service/src/middleware/errors.ts';
-import { normalizePaymentOrchestrationError, PAYMENT_ORCHESTRATION_ERROR_CODES } from '../../apps/service/src/application/errors.ts';
-import { loadEnv } from '../../apps/service/src/config/env.ts';
-import { PaymentOrchestrationClientError } from '../../packages/client-sdk/src/errors.ts';
-import { PaymentOrchestrationClient } from '../../packages/client-sdk/src/client.ts';
+import { apiErrorResponse } from '../apps/service/src/routes/utils.ts';
+import { errorHandler } from '../apps/service/src/middleware/errors.ts';
+import { normalizePaymentOrchestrationError, PAYMENT_ORCHESTRATION_ERROR_CODES } from '../apps/service/src/application/errors.ts';
+import { loadEnv } from '../apps/service/src/config/env.ts';
+import { PaymentOrchestrationClientError } from '../packages/client-sdk/src/errors.ts';
+import { PaymentOrchestrationClient } from '../packages/client-sdk/src/client.ts';
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
 

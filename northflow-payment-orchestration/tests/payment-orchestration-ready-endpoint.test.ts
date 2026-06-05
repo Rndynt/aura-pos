@@ -2,9 +2,9 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { AddressInfo } from 'node:net';
-import { createApp } from '../../apps/service/src/app.ts';
-import type { ServiceContainer } from '../../apps/service/src/container.ts';
-import { createProviderRegistry } from '../../apps/service/src/infrastructure/providers/providerRegistry.ts';
+import { createApp } from '../apps/service/src/app.ts';
+import type { ServiceContainer } from '../apps/service/src/container.ts';
+import { createProviderRegistry } from '../apps/service/src/infrastructure/providers/providerRegistry.ts';
 
 async function getJson(app: ReturnType<typeof createApp>, path: string) {
   const server = http.createServer(app);

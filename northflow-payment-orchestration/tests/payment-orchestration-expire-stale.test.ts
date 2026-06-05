@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ExpireStalePaymentTransactions } from '../../apps/service/src/application/use-cases/ExpireStalePaymentTransactions.ts';
+import { ExpireStalePaymentTransactions } from '../apps/service/src/application/use-cases/ExpireStalePaymentTransactions.ts';
 import type { PaymentIntentRepository, PaymentTransactionRepository, StandalonePaymentIntentDTO, StandalonePaymentTransactionDTO } from '@northflow/payment-orchestration-core';
 
 function intent(overrides: Partial<StandalonePaymentIntentDTO> = {}): StandalonePaymentIntentDTO {

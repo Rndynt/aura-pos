@@ -43,11 +43,11 @@ import type {
   ReserveProviderEventInput,
 } from '@northflow/payment-orchestration-core';
 
-import { HandleProviderWebhook } from '../../apps/service/src/application/use-cases/HandleProviderWebhook.ts';
-import { CreateGatewayPayment } from '../../apps/service/src/application/use-cases/CreateGatewayPayment.ts';
-import { CreateMerchant } from '../../apps/service/src/application/use-cases/CreateMerchant.ts';
-import { StandaloneFakeGatewayProvider } from '../../apps/service/src/infrastructure/providers/StandaloneFakeGatewayProvider.ts';
-import { FakeGatewayWebhookHandler } from '../../apps/service/src/infrastructure/providers/FakeGatewayWebhookHandler.ts';
+import { HandleProviderWebhook } from '../apps/service/src/application/use-cases/HandleProviderWebhook.ts';
+import { CreateGatewayPayment } from '../apps/service/src/application/use-cases/CreateGatewayPayment.ts';
+import { CreateMerchant } from '../apps/service/src/application/use-cases/CreateMerchant.ts';
+import { StandaloneFakeGatewayProvider } from '../apps/service/src/infrastructure/providers/StandaloneFakeGatewayProvider.ts';
+import { FakeGatewayWebhookHandler } from '../apps/service/src/infrastructure/providers/FakeGatewayWebhookHandler.ts';
 
 // ── In-memory implementations ─────────────────────────────────────────────────
 

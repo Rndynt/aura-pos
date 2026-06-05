@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PaymentOrchestrationClient } from '../../packages/client-sdk/src/client.ts';
+import { PaymentOrchestrationClient } from '../packages/client-sdk/src/client.ts';
 
 test('PaymentOrchestrationClient.reconcilePaymentIntentTotals posts to reconcile route and injects merchantId', async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
