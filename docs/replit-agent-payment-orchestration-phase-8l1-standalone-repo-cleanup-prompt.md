@@ -1,28 +1,33 @@
-# Replit Agent Prompt — Payment Orchestration Phase 8L.1: Standalone Repo Cleanup Before AuraPoS Cleanup
+# Replit Agent Prompt — Payment Orchestration Phase 8L.1: In-Repo Standalone Folder Cleanup Before AuraPoS Payment Cleanup
 
 Use this prompt in Replit Agent.
 
-## Repositories
+## Repository
 
-Source/reference repo:
+Work inside the AuraPoS repository.
 
-- `https://github.com/Rndynt/AuraPoS.git`
-- Latest extracted baseline reviewed in source: `18858bd405cadc5cb3aabfb526bd2bf0a9d31d24`
+- Source repo: `https://github.com/Rndynt/AuraPoS.git`
+- Current AuraPoS baseline that contains the extracted folder: `96d77ad7f412ff220be90995183d223cc32449c9`
 
-Target repo to fix:
+Important folder to fix:
+
+- `northflow-payment-orchestration/`
+
+This folder is the extracted standalone payment orchestration workspace inside AuraPoS. It will be used as the source for pushing/updating the real standalone repo later:
 
 - `https://github.com/Rndynt/northflow-payment-orchestration.git`
-- Current standalone extraction commit reviewed: `42980b12a120596d3ca98bfb99ec440952e5ac7a`
 
 ## Goal
 
-Clean up the standalone `northflow-payment-orchestration` repo so it is safe to use as the canonical standalone source before cleaning duplicate payment-orchestration code from AuraPoS.
+Clean up the in-repo standalone folder `northflow-payment-orchestration/` so it contains the latest complete payment orchestration work and is safe to push to the standalone payment repository.
 
-This is a small but required cleanup phase after initial extraction.
+Do not clean or delete AuraPoS payment files yet.
+
+Do not integrate AuraPoS with the standalone service.
 
 Final decision must be one of:
 
-- `STANDALONE_REPO_READY_FOR_AURAPOS_CLEANUP`
+- `IN_REPO_STANDALONE_FOLDER_READY_TO_PUSH_TO_PAYMENT_REPO`
 - `NOT_READY_MISSING_EXTRACTION_REPORT`
 - `NOT_READY_PACKAGE_SCRIPT_BLOCKER`
 - `NOT_READY_ENV_DOCS_BLOCKER`
@@ -32,27 +37,86 @@ Final decision must be one of:
 
 Do not implement app integration.
 
-Do not modify AuraPoS runtime code.
+Do not delete anything from AuraPoS yet.
 
-Do not delete anything from AuraPoS in this phase.
+Do not remove these AuraPoS source/fallback areas in this phase:
+
+- `apps/payment-orchestration-service/`
+- `packages/payment-orchestration-core/`
+- `packages/payment-orchestration-client-sdk/`
+- `apps/api/src/http/routes/payment-engine.ts`
+- `packages/application/payments/*`
+- `packages/domain/payments/*`
+- `packages/infrastructure/payments/providers/*`
+- `packages/application/orders/*`
+- `apps/api/src/http/routes/orders.ts`
+- `shared/schema.ts`
 
 Do not add provider features.
 
 Do not add POS UI, order adapter, settlement, or production secret manager.
 
-Work only in `northflow-payment-orchestration`, except if you need to read AuraPoS as reference.
+Work only inside:
 
-## Task 1 — Add missing Phase 8L extraction report
+- `northflow-payment-orchestration/`
 
-Create in the standalone repo:
+except for adding/updating a report pointer in AuraPoS docs if absolutely needed.
 
-- `docs/reports/phase-8l-standalone-repo-extraction-report.md`
+## Task 1 — Verify the extracted folder contains the latest payment orchestration work
+
+Compare the in-repo extracted folder against the current AuraPoS payment orchestration source areas.
+
+Source areas in AuraPoS:
+
+- `packages/payment-orchestration-core/`
+- `packages/payment-orchestration-client-sdk/`
+- `apps/payment-orchestration-service/`
+- `apps/payment-orchestration-service/migrations/`
+- `docs/openapi/payment-orchestration.openapi.json`
+- `docs/payment-orchestration-api-contract.md`
+- `docs/payment-orchestration-sdk-contract.md`
+- `docs/payment-orchestration-error-codes.md`
+- `docs/payment-orchestration-deployment.md`
+- `docs/payment-orchestration-worker-operations.md`
+- `docs/payment-orchestration-service-smoke-test.md`
+- `scripts/payment-orchestration-extraction-check.ts`
+- relevant `apps/api/src/__tests__/payment-orchestration-*.test.ts`
+
+Target folder areas:
+
+- `northflow-payment-orchestration/packages/core/`
+- `northflow-payment-orchestration/packages/client-sdk/`
+- `northflow-payment-orchestration/apps/service/`
+- `northflow-payment-orchestration/migrations/`
+- `northflow-payment-orchestration/docs/`
+- `northflow-payment-orchestration/scripts/`
+- `northflow-payment-orchestration/tests/`
+
+If any latest payment-orchestration source file from AuraPoS is missing from the folder, copy/adapt it into `northflow-payment-orchestration/`.
+
+Keep standalone path conventions:
+
+- `packages/payment-orchestration-core` becomes `packages/core`
+- `packages/payment-orchestration-client-sdk` becomes `packages/client-sdk`
+- `apps/payment-orchestration-service` becomes `apps/service`
+- `apps/api/src/__tests__/payment-orchestration-*.test.ts` becomes `tests/*.test.ts`
+
+Do not bring AuraPoS-only adapters/tests that import embedded payment engine or `@pos/*`.
+
+## Task 2 — Add or move Phase 8L extraction report into the standalone folder
+
+Create inside the extracted folder:
+
+- `northflow-payment-orchestration/docs/reports/phase-8l-standalone-repo-extraction-report.md`
+
+If a report already exists at AuraPoS root docs, copy/adapt it into the folder.
 
 The report must include:
 
 - summary
 - source repo and source commit
-- target repo and target commit
+- extracted folder path
+- intended standalone target repo
 - extracted layout
 - files copied/adapted
 - package/config changes
@@ -61,20 +125,26 @@ The report must include:
 - extraction-check result
 - known limitations
 - final decision
-- next step: AuraPoS duplicate cleanup after this repo passes validation
+- next step: push this folder to the standalone payment repo, then run AuraPoS cleanup
 
-The report must explicitly state whether the final decision is:
+The report must explicitly state one final decision:
 
-- `STANDALONE_REPO_READY_FOR_AURAPOS_CLEANUP`
+- `IN_REPO_STANDALONE_FOLDER_READY_TO_PUSH_TO_PAYMENT_REPO`
 
 or a blocker state.
 
-## Task 2 — Fix root scripts
+## Task 3 — Fix root scripts inside the extracted folder
 
-Update standalone root `package.json`.
+Update:
 
-Current root scripts include:
+- `northflow-payment-orchestration/package.json`
 
+Ensure scripts include:
+
+- `check`
+- `build`
+- `dev:service`
+- `start:service`
 - `dev`
 - `type-check`
 - `test`
@@ -83,46 +153,41 @@ Current root scripts include:
 - `worker`
 - `extraction-check`
 
-Add or fix:
-
-- `check`: alias to `pnpm type-check`
-- `build`: `turbo run build`
-- `dev:service`: start service in dev mode
-- `start:service`: start service in production-style mode
-
-Suggested root scripts:
+Suggested script values:
 
 - `check`: `pnpm type-check`
 - `build`: `turbo run build`
 - `dev:service`: `pnpm --filter @northflow/payment-orchestration-service dev`
 - `start:service`: `pnpm --filter @northflow/payment-orchestration-service start`
 
-Update docs if commands differ.
+Update README/deployment docs if command names differ.
 
-## Task 3 — Add service start/build scripts
+## Task 4 — Add service start/build scripts
 
-Update `apps/service/package.json`.
+Update:
 
-Add:
+- `northflow-payment-orchestration/apps/service/package.json`
+
+Ensure scripts include:
 
 - `start`
-- `build` if practical
+- `build`
 
 Suggested:
 
 - `start`: `NODE_ENV=production tsx --tsconfig tsconfig.json src/index.ts`
 - `build`: `tsc -p tsconfig.json --noEmit`
 
-If no transpile output is produced and runtime uses `tsx`, document that clearly.
+If runtime uses `tsx` and does not emit compiled JS, document that clearly.
 
-## Task 4 — Clean env placeholders
+## Task 5 — Clean env placeholders inside the extracted folder
 
-Update both env examples if present:
+Update env examples inside:
 
-- `.env.example`
-- `apps/service/.env.example`
+- `northflow-payment-orchestration/.env.example`
+- `northflow-payment-orchestration/apps/service/.env.example`
 
-Replace placeholder that looks too much like a real key:
+Replace any placeholder that looks like a real key:
 
 - from: `xnd_development_replace_with_real_key`
 - to: `replace-with-xendit-sandbox-secret-key`
@@ -131,59 +196,64 @@ No `.env` file should be committed.
 
 No real secret should appear anywhere.
 
-## Task 5 — Clean standalone README wording
+## Task 6 — Clean README and docs wording inside the extracted folder
 
-Update `README.md` so it does not present the standalone product as merely an AuraPoS child.
+Update:
 
-Allowed historical wording:
+- `northflow-payment-orchestration/README.md`
+- relevant docs inside `northflow-payment-orchestration/docs/`
 
-- mention extraction in a short migration/history section only.
+The README should open as a standalone product, not as an AuraPoS child.
 
 Preferred opening description:
 
 - `Northflow Payment Orchestration is a standalone payment orchestration service for merchant payment intents, provider accounts, webhook processing, reconciliation, worker operations, and typed SDK/API integration.`
 
-Do not make the repo look AuraPoS-specific.
+Allowed:
 
-## Task 6 — Fix Docker docs if needed
+- mention AuraPoS extraction only in a short history/migration note, not in the opening product description.
+
+## Task 7 — Fix Docker docs inside the extracted folder
 
 Current Dockerfile is at:
 
-- `apps/service/Dockerfile`
+- `northflow-payment-orchestration/apps/service/Dockerfile`
 
-Make sure docs use the correct build context.
-
-Because Dockerfile copies root workspace files, the build command should be documented from repo root using:
+Because Dockerfile copies root workspace files, document build from the extracted folder root using:
 
 - `docker build -f apps/service/Dockerfile -t northflow-payment-orchestration .`
 
-If README or deployment docs use `docker build -t northflow-payment-orchestration .`, correct them.
+Fix any README or deployment docs that still say:
 
-## Task 7 — Strengthen extraction check
+- `docker build -t northflow-payment-orchestration .`
 
-Update `scripts/extraction-check.ts` if needed to verify:
+## Task 8 — Strengthen extraction check inside the extracted folder
+
+Update:
+
+- `northflow-payment-orchestration/scripts/extraction-check.ts`
+
+It must verify:
 
 - `docs/reports/phase-8l-standalone-repo-extraction-report.md` exists
 - root `package.json` has `check`, `build`, `dev:service`, `start:service`
-- service `package.json` has `start`
+- service `package.json` has `start` and `build`
 - env examples do not contain `xnd_development_replace_with_real_key`
 - README does not open with AuraPoS-child wording
 - Docker docs reference `-f apps/service/Dockerfile`
-
-Keep existing checks for:
-
-- forbidden AuraPoS imports
+- no forbidden AuraPoS imports
 - no `shared/schema` references
-- required packages
-- required service files
-- migrations
-- OpenAPI docs
+- required packages exist
+- required service files exist
+- migrations exist
+- OpenAPI docs exist
 - no random assets/logs/build outputs
 
-## Task 8 — Validation
+## Task 9 — Validation
 
-Run in `northflow-payment-orchestration`:
+Run from inside the extracted folder:
 
+- `cd northflow-payment-orchestration`
 - `pnpm install`
 - `pnpm check`
 - `pnpm build`
@@ -201,38 +271,44 @@ If any command fails, fix it or set final decision to a blocker state.
 
 Accepted only if:
 
-1. Phase 8L extraction report exists.
-2. Root scripts include `check`, `build`, `dev:service`, `start:service`.
-3. Service package includes `start`.
-4. Env examples contain no real-looking Xendit placeholder.
-5. README opens as standalone product, not as AuraPoS child.
-6. Docker docs use correct `-f apps/service/Dockerfile` build command.
-7. Extraction check validates these cleanup requirements.
-8. Type-check, tests, and extraction-check pass or final decision is blocker.
-9. No AuraPoS cleanup/deletion is performed in this phase.
+1. `northflow-payment-orchestration/` contains the latest complete payment orchestration work from AuraPoS.
+2. Phase 8L extraction report exists inside `northflow-payment-orchestration/docs/reports/`.
+3. Root scripts include `check`, `build`, `dev:service`, `start:service`.
+4. Service package includes `start` and `build`.
+5. Env examples contain no real-looking Xendit placeholder.
+6. README opens as standalone product, not as AuraPoS child.
+7. Docker docs use correct `-f apps/service/Dockerfile` build command.
+8. Extraction check validates these cleanup requirements.
+9. Type-check, tests, and extraction-check pass or final decision is blocker.
+10. No AuraPoS cleanup/deletion is performed in this phase.
+11. No app integration is implemented.
 
 ## Commit and push
 
-Commit in `northflow-payment-orchestration` with:
+Commit changes in AuraPoS with:
 
-- `chore: finalize standalone extraction cleanup`
+- `chore(payment-orchestration): finalize in-repo standalone folder cleanup`
 
-Push to:
+After that, you may push the contents of `northflow-payment-orchestration/` to:
 
 - `https://github.com/Rndynt/northflow-payment-orchestration.git`
 
-Do not commit to AuraPoS unless you are only adding a pointer/report there. Prefer no AuraPoS changes in this phase.
+using a separate commit in the standalone repo:
+
+- `chore: sync standalone extraction cleanup from AuraPoS folder`
+
+Do not delete AuraPoS source/fallback payment orchestration files yet.
 
 ## Final response required
 
 Final Replit response must include:
 
-- target repo URL
-- commit SHA in `northflow-payment-orchestration`
-- files changed
+- AuraPoS commit SHA
+- standalone payment repo commit SHA if pushed
+- files changed inside `northflow-payment-orchestration/`
 - scripts added/fixed
 - validation commands and results
 - extraction-check result
 - final decision
-- confirmation that AuraPoS was not cleaned/deleted yet
+- confirmation that AuraPoS payment source/fallback files were not deleted yet
 - confirmation that no app integration was implemented
