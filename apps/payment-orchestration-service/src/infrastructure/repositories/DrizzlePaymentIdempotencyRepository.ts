@@ -20,7 +20,7 @@ import type {
   MarkIdempotencyFailedInput,
 } from '@northflow/payment-orchestration-core';
 import type { PoDb } from '../db.ts';
-import { paymentOrchestrationIdempotencyKeys as t } from '../../../../../shared/schema.ts';
+import { paymentOrchestrationIdempotencyKeys as t } from '../schema.ts';
 import { mapIdempotencyKeyRow } from './mappers.ts';
 
 export class DrizzlePaymentIdempotencyRepository

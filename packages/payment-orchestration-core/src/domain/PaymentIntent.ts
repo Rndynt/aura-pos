@@ -5,8 +5,8 @@
  * Tracks the external payable reference via `externalPayableType` / `externalPayableId`
  * instead of coupling to AuraPoS order domain.
  *
- * Phase 8A: contract-only. Embedded AuraPoS continues using DomainPaymentIntent.
- * Migration path: Phase 8E AuraPoS consumes client SDK → these DTOs flow through.
+ * Standalone extraction first. Source applications integrate only after service/package
+ * boundary, provider runtime, operations, and extraction simulation are stable.
  */
 
 /**

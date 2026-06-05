@@ -43,7 +43,7 @@ export function createApp(container: ServiceContainer): express.Application {
   );
 
   // ── Unprotected: health + version ─────────────────────────────────────────
-  app.use(createHealthRouter(container.config));
+  app.use(createHealthRouter(container.config, container.providerRegistry));
 
   // ── Webhooks bypass service-token auth ────────────────────────────────────
   // IMPORTANT: must be registered BEFORE app.use('/v1', auth) so that

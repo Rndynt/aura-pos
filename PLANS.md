@@ -4114,3 +4114,179 @@ Advance Northflow Payment Orchestration toward standalone extraction readiness b
 ### Continuation Notes
 
 Continue with Phase 8I operations layer/worker readiness. Do not integrate AuraPoS SDK until standalone extraction readiness phases complete.
+
+## Plan: Payment Orchestration Phase 8G/8H Hardening + 8I Runtime Readiness
+
+### Source
+
+- Tasklist: `docs/replit-agent-payment-orchestration-phase-8g8h-hardening-8i-standalone-runtime-readiness-prompt.md`
+- User request: "Check dan eksekusi docs/replit-agent-payment-orchestration-phase-8g8h-hardening-8i-standalone-runtime-readiness-prompt.md"
+- Date started: 2026-06-05
+- Current status: Completed for current batch; ready for extraction-simulation preparation.
+
+### Goal
+
+Harden standalone payment orchestration boundaries, add explicit Xendit runtime configuration policy, introduce operations use cases/workers, add a non-secret readiness endpoint, test runtime readiness foundations, and publish an honest report without implementing AuraPoS SDK consumption or changing embedded payment/order flows.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs/reports listed by the task prompt
+- [x] Relevant standalone source files
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: Standalone service use cases, routes, container wiring.
+- Files inspected: `apps/payment-orchestration-service/src/app.ts`, `container.ts`, `routes/health.ts`, existing use cases.
+- Findings: Added `/ready`, stale expiration, provider-event reprocess, worker entry points, and error normalization.
+- Tasks: Completed.
+- Risks: Provider-event replay remains safe-skip until adapter design.
+- Validation: Service type-check, root check, focused tests.
+
+#### Database/Schema Workstream
+
+- Scope: Low-risk schema ownership bridge and repository import paths.
+- Files inspected: `shared/schema.ts`, standalone Drizzle repositories and mappers.
+- Findings: Repositories now import through `apps/payment-orchestration-service/src/infrastructure/schema.ts`.
+- Tasks: Completed as re-export bridge; full relocation deferred.
+- Risks: Extraction simulation must replace bridge with standalone schema/migrations.
+- Validation: Schema boundary test.
+
+#### Frontend/UI Workstream
+
+- Scope: None.
+- Files inspected: Not applicable.
+- Findings: Prompt forbids POS UI changes.
+- Tasks: No UI work.
+- Risks: None.
+- Validation: Not applicable.
+
+#### Tests/Validation Workstream
+
+- Scope: New focused node:test files plus required command list.
+- Files inspected: existing `apps/api/src/__tests__/payment-orchestration*.test.ts` patterns.
+- Findings: Added six focused tests and updated one existing test for expanded optional repository contracts.
+- Tasks: Completed.
+- Risks: None remaining in current batch.
+- Validation: Required package type-checks, `npm run check`, existing regression tests, new tests all passed.
+
+#### Documentation Workstream
+
+- Scope: Architecture, smoke test, final report, PLANS.
+- Files inspected: listed docs and prior phase reports.
+- Findings: Roadmap updated to standalone-first 8I→8M path and report created.
+- Tasks: Completed.
+- Risks: Docs honestly retain schema relocation/reprocess limitations.
+- Validation: Manual review plus line citations available.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Merchant isolation, credentialsRef policy, webhook/event safety, non-secret readiness.
+- Files inspected: Xendit provider, provider account model, routes/auth.
+- Findings: Xendit credentials remain env-var-name refs; `/ready` exposes only booleans/configured status.
+- Tasks: Completed.
+- Risks: Live provider HTTP disabled unless env-enabled.
+- Validation: Xendit runtime config and ready endpoint tests.
+
+### Execution Order
+
+1. Safety/security/data-integrity/tenant-isolation blockers — completed.
+2. Build/type/test blockers — completed.
+3. Dependency prerequisites — no new dependencies added.
+4. Highest priority actionable tasks — completed.
+5. Lower priority actionable tasks — completed for current batch.
+6. Documentation sync — completed.
+7. Validation — completed.
+8. Final checklist/report update — completed.
+
+### Progress
+
+#### Completed
+
+- [x] Task: A1 stale standalone-first comment/docs cleanup.
+  - Files changed: `PaymentIntent.ts`, `providerRegistry.ts`, architecture docs.
+  - Validation: Type-check and tests.
+  - Docs updated: Architecture report/docs.
+- [x] Task: A2 Xendit sandbox runtime HTTP client policy.
+  - Files changed: `xenditHttpClient.ts`, `providerRegistry.ts`, `env.ts`.
+  - Validation: Xendit runtime config test, package/root type-checks.
+  - Docs updated: Architecture, smoke test, final report.
+- [x] Task: A3 standalone schema boundary module foundation.
+  - Files changed: `infrastructure/schema.ts`, Drizzle repositories.
+  - Validation: Schema boundary test, root check.
+  - Docs updated: Architecture, report.
+- [x] Task: B1 expire stale transactions use case.
+  - Files changed: `ExpireStalePaymentTransactions.ts`, repository contracts/implementation.
+  - Validation: Expire stale test.
+  - Docs updated: Report.
+- [x] Task: B2 workers/runners.
+  - Files changed: `workers/reconcile.ts`, `workers/expireStale.ts`.
+  - Validation: Workers test.
+  - Docs updated: Smoke test, report.
+- [x] Task: B3 provider event reprocess foundation.
+  - Files changed: `ReprocessProviderEvents.ts`, provider event repository query.
+  - Validation: Provider event reprocess test.
+  - Docs updated: Architecture, report.
+- [x] Task: B4 error normalization/logging.
+  - Files changed: `application/errors.ts`, `middleware/errors.ts`.
+  - Validation: Type-check/root check.
+  - Docs updated: Report.
+- [x] Task: B5 readiness endpoint.
+  - Files changed: `routes/health.ts`, `app.ts`.
+  - Validation: Ready endpoint test.
+  - Docs updated: Architecture, smoke test, report.
+- [x] Task: B6 tests/checks.
+  - Files changed: six new focused tests and one updated existing test.
+  - Validation: All required commands passed.
+  - Docs updated: Report command table.
+
+#### Partially Completed
+
+- [ ] Task: Full schema relocation.
+  - Completed: Service-local re-export bridge and repository boundary.
+  - Remaining: Move definitions/migrations out of `shared/schema.ts` during extraction simulation.
+  - Reason: Prompt requested low-risk foundation, not risky full migration.
+- [ ] Task: Provider event replay.
+  - Completed: Safe skip/summary foundation.
+  - Remaining: Provider-specific replay adapters if needed.
+  - Reason: Raw body/signature reconstruction is unsafe in this phase.
+
+#### Blocked
+
+- [ ] Task: None.
+  - Blocker: None.
+  - Required next step: Proceed to 8J/8K planning.
+
+#### Not Attempted
+
+- [ ] Task: AuraPoS SDK integration, embedded route deletion, legacy order payment migration, POS UI changes.
+  - Reason: Explicitly forbidden by prompt.
+
+### Validation Log
+
+- Command: `pnpm --filter @northflow/payment-orchestration-core type-check`; `pnpm --filter @northflow/payment-orchestration-service type-check`; `pnpm --filter @northflow/payment-orchestration-client-sdk type-check`; `npm run check`; required existing tests; all new tests.
+- Result: Passed.
+- Notes: `npm` emitted a non-blocking `Unknown env config "http-proxy"` warning during `npx`/`npm` commands.
+
+### Documentation Updates
+
+- File: `docs/payment-orchestration-hybrid-standalone-architecture.md`
+- Change: Added Phase 8I runtime readiness, schema bridge, Xendit policy, workers, readiness, roadmap.
+- File: `docs/payment-orchestration-service-smoke-test.md`
+- Change: Added `/ready`, Xendit env policy, worker entry points, focused tests.
+- File: `docs/reports/payment-orchestration-phase-8g8h-hardening-8i-runtime-readiness-report.md`
+- Change: Final implementation report with decision and guardrails.
+
+### Checklist Updates
+
+- File: `docs/replit-agent-payment-orchestration-phase-8g8h-hardening-8i-standalone-runtime-readiness-prompt.md`
+- Change: Source prompt left unchanged; implementation status captured in this plan and final report.
+
+### Continuation Notes
+
+Next recommended phase: `8J — SDK/API Contract Freeze + Deployment Readiness`, then `8K — Extraction Simulation`. Keep AuraPoS integration deferred until extraction simulation is stable.

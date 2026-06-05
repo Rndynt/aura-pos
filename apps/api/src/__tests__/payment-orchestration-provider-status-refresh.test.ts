@@ -76,6 +76,7 @@ describe('provider status refresh foundation', () => {
         tx = { ...tx, status: 'succeeded' };
         return { transaction: tx, changed: true };
       },
+      findStalePendingTransactions: async () => [tx],
     };
 
     const intentRepo: PaymentIntentRepository = {
@@ -90,6 +91,7 @@ describe('provider status refresh foundation', () => {
         intent = { ...intent, status: input.status };
         return intent;
       },
+      findExpiredActive: async () => [intent],
     };
 
     const providerAccountRepo: PaymentProviderAccountRepository = {

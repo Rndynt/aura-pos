@@ -312,3 +312,67 @@ Expected pass counts (all phases combined):
 - Xendit sandbox integration.
 - DB-backed idempotency key cleanup (TTL expiry).
 - Scheduled reconciliation worker (Phase 8F+).
+
+## Phase 8I runtime readiness smoke checks
+
+### Readiness endpoint
+
+```bash
+curl -s $BASE/ready | jq
+```
+
+Expected shape (values depend on env):
+
+```json
+{
+  "ok": true,
+  "service": "payment-orchestration-service",
+  "providers": {
+    "fake_gateway": { "registered": true },
+    "xendit_sandbox": { "registered": true, "configured": false }
+  },
+  "database": "configured"
+}
+```
+
+The endpoint must not expose `PAYMENT_ORCHESTRATION_SERVICE_TOKEN`, database credentials, Xendit callback tokens, or raw provider secrets.
+
+### Xendit sandbox runtime env
+
+Xendit sandbox HTTP remains disabled unless explicitly enabled:
+
+```bash
+PAYMENT_ORCHESTRATION_XENDIT_SANDBOX_ENABLED=false
+PAYMENT_ORCHESTRATION_XENDIT_BASE_URL=https://api.xendit.co
+PAYMENT_ORCHESTRATION_XENDIT_CALLBACK_TOKEN=replace-with-sandbox-callback-token
+```
+
+Provider-account `credentialsRef` values must be environment variable names only, for example:
+
+```text
+PAYMENT_ORCHESTRATION_XENDIT_SANDBOX_SECRET_KEY
+```
+
+Do not store the raw secret key in `payment_orchestration_provider_accounts.credentials_ref`.
+
+### Operations workers
+
+Phase 8I adds callable worker entry points but no scheduler:
+
+```text
+apps/payment-orchestration-service/src/workers/reconcile.ts
+apps/payment-orchestration-service/src/workers/expireStale.ts
+```
+
+Run these from a platform cron, queue worker, or maintenance script only after configuring the standalone service environment. The workers construct the standalone container and do not start Express.
+
+### Additional focused tests
+
+```bash
+npx tsx --tsconfig apps/api/tsconfig.node.json --test apps/api/src/__tests__/payment-orchestration-schema-boundary.test.ts
+npx tsx --tsconfig apps/api/tsconfig.node.json --test apps/api/src/__tests__/payment-orchestration-xendit-runtime-config.test.ts
+npx tsx --tsconfig apps/api/tsconfig.node.json --test apps/api/src/__tests__/payment-orchestration-expire-stale.test.ts
+npx tsx --tsconfig apps/api/tsconfig.node.json --test apps/api/src/__tests__/payment-orchestration-workers.test.ts
+npx tsx --tsconfig apps/api/tsconfig.node.json --test apps/api/src/__tests__/payment-orchestration-provider-event-reprocess.test.ts
+npx tsx --tsconfig apps/api/tsconfig.node.json --test apps/api/src/__tests__/payment-orchestration-ready-endpoint.test.ts
+```

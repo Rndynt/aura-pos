@@ -37,6 +37,8 @@ import { GetRefundability } from './application/use-cases/GetRefundability.ts';
 import { HandleProviderWebhook } from './application/use-cases/HandleProviderWebhook.ts';
 import { ReconcilePaymentIntentTotals } from './application/use-cases/ReconcilePaymentIntentTotals.ts';
 import { RefreshProviderStatus } from './application/use-cases/RefreshProviderStatus.ts';
+import { ExpireStalePaymentTransactions } from './application/use-cases/ExpireStalePaymentTransactions.ts';
+import { ReprocessProviderEvents } from './application/use-cases/ReprocessProviderEvents.ts';
 
 import type { PaymentMerchantRepository } from '@northflow/payment-orchestration-core';
 import type { PaymentProviderAccountRepository } from '@northflow/payment-orchestration-core';
@@ -65,6 +67,8 @@ export interface ServiceUseCases {
   handleProviderWebhook: HandleProviderWebhook;
   reconcilePaymentIntentTotals: ReconcilePaymentIntentTotals;
   refreshProviderStatus: RefreshProviderStatus;
+  expireStalePaymentTransactions?: ExpireStalePaymentTransactions;
+  reprocessProviderEvents?: ReprocessProviderEvents;
 }
 
 export interface ServiceContainer {
@@ -77,7 +81,10 @@ export interface ServiceContainer {
 
 export function createContainer(config: PaymentOrchestrationServiceConfig): ServiceContainer {
   const db = createPoDb(config.dbUrl);
-  const providerRegistry = createProviderRegistry(config.nodeEnv);
+  const providerRegistry = createProviderRegistry(config.nodeEnv, {
+    xenditSandboxEnabled: config.xenditSandboxEnabled,
+    xenditBaseUrl: config.xenditBaseUrl,
+  });
 
   const merchantRepo = new DrizzlePaymentMerchantRepository(db);
   const providerAccountRepo = new DrizzlePaymentProviderAccountRepository(db);
@@ -138,6 +145,11 @@ export function createContainer(config: PaymentOrchestrationServiceConfig): Serv
       providerAccountRepo,
       providerRegistry,
     ),
+    expireStalePaymentTransactions: new ExpireStalePaymentTransactions(
+      intentRepo,
+      transactionRepo,
+    ),
+    reprocessProviderEvents: new ReprocessProviderEvents(providerEventRepo),
   };
 
   return { config, db, repos, providerRegistry, useCases };

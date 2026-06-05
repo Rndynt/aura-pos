@@ -127,6 +127,11 @@ export interface FindByExternalPayableInput {
   sourceApp?: string | null;
 }
 
+export interface FindExpiredActiveIntentsInput {
+  now: Date;
+  limit: number;
+}
+
 export interface PaymentIntentRepository {
   findById(id: string, merchantId: string): Promise<StandalonePaymentIntentDTO | null>;
   findByExternalPayable(
@@ -135,6 +140,7 @@ export interface PaymentIntentRepository {
   create(input: CreatePaymentIntentDbInput): Promise<StandalonePaymentIntentDTO>;
   updateTotals(input: UpdateIntentTotalsInput): Promise<StandalonePaymentIntentDTO>;
   updateStatus(input: UpdateIntentStatusInput): Promise<StandalonePaymentIntentDTO>;
+  findExpiredActive?(input: FindExpiredActiveIntentsInput): Promise<StandalonePaymentIntentDTO[]>;
 }
 
 // ── Payment Transaction ───────────────────────────────────────────────────────
@@ -190,6 +196,11 @@ export interface MarkSucceededIfConfirmableResult {
   changed: boolean;
 }
 
+export interface FindStalePendingTransactionsInput {
+  now: Date;
+  limit: number;
+}
+
 export interface PaymentTransactionRepository {
   findById(id: string, merchantId: string): Promise<StandalonePaymentTransactionDTO | null>;
   findByIntentId(
@@ -220,6 +231,9 @@ export interface PaymentTransactionRepository {
   markSucceededIfConfirmable(
     input: MarkSucceededIfConfirmableInput,
   ): Promise<MarkSucceededIfConfirmableResult>;
+  findStalePendingTransactions?(
+    input: FindStalePendingTransactionsInput,
+  ): Promise<StandalonePaymentTransactionDTO[]>;
 }
 
 // ── Provider Event ────────────────────────────────────────────────────────────

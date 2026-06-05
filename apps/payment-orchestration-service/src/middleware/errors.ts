@@ -6,6 +6,7 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
+import { normalizePaymentOrchestrationError } from '../application/errors.ts';
 
 export interface ApiError extends Error {
   statusCode?: number;
@@ -18,11 +19,12 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
-  const statusCode = err.statusCode ?? 500;
-  const code = err.code ?? 'INTERNAL_ERROR';
+  const normalized = normalizePaymentOrchestrationError(err);
+  const statusCode = normalized.statusCode;
+  const code = normalized.code;
   const message =
     statusCode < 500
-      ? err.message
+      ? normalized.message
       : 'An internal error occurred. Please try again later.';
 
   if (statusCode >= 500) {

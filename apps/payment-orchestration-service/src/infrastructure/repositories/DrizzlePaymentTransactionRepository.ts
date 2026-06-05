@@ -15,7 +15,7 @@ import type {
 } from '@northflow/payment-orchestration-core';
 import type { StandalonePaymentTransactionDTO } from '@northflow/payment-orchestration-core';
 import type { PoDb } from '../db.ts';
-import { paymentOrchestrationTransactions as t } from '../../../../../shared/schema.ts';
+import { paymentOrchestrationTransactions as t } from '../schema.ts';
 import { mapTransactionRow } from './mappers.ts';
 
 export class DrizzlePaymentTransactionRepository
@@ -45,6 +45,15 @@ export class DrizzlePaymentTransactionRepository
       .select()
       .from(t)
       .where(and(eq(t.intentId, intentId), eq(t.merchantId, merchantId)));
+    return rows.map((r) => mapTransactionRow(r as any));
+  }
+
+  async findStalePendingTransactions(input: { now: Date; limit: number }): Promise<StandalonePaymentTransactionDTO[]> {
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(inArray(t.status, ['pending', 'requires_action']))
+      .limit(input.limit);
     return rows.map((r) => mapTransactionRow(r as any));
   }
 

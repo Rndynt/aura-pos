@@ -8,7 +8,7 @@
  * Webhook processing use case NOT yet wired in Phase 8D.
  */
 
-import { eq, and, lt, sql } from 'drizzle-orm';
+import { eq, and, lt, sql, inArray } from 'drizzle-orm';
 import type {
   PaymentProviderEventRepository,
   FindStalePendingInput,
@@ -18,7 +18,7 @@ import type {
   ReserveProviderEventInput,
 } from '@northflow/payment-orchestration-core';
 import type { PoDb } from '../db.ts';
-import { paymentOrchestrationProviderEvents as t } from '../../../../../shared/schema.ts';
+import { paymentOrchestrationProviderEvents as t } from '../schema.ts';
 import { mapProviderEventRow } from './mappers.ts';
 
 export class DrizzlePaymentProviderEventRepository
@@ -113,7 +113,7 @@ export class DrizzlePaymentProviderEventRepository
       .from(t)
       .where(
         and(
-          eq(t.processingStatus, 'pending'),
+          inArray(t.processingStatus, ['pending', 'failed']),
           lt(t.createdAt, cutoff),
         ),
       )

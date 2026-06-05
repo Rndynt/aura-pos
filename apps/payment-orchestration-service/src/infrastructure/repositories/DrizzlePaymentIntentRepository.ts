@@ -5,7 +5,7 @@
  * the payment_orchestration_intents table.
  */
 
-import { eq, and } from 'drizzle-orm';
+import { eq, and, lte, inArray } from 'drizzle-orm';
 import type {
   PaymentIntentRepository,
   CreatePaymentIntentDbInput,
@@ -15,7 +15,7 @@ import type {
 } from '@northflow/payment-orchestration-core';
 import type { StandalonePaymentIntentDTO } from '@northflow/payment-orchestration-core';
 import type { PoDb } from '../db.ts';
-import { paymentOrchestrationIntents as t } from '../../../../../shared/schema.ts';
+import { paymentOrchestrationIntents as t } from '../schema.ts';
 import { mapIntentRow } from './mappers.ts';
 
 export class DrizzlePaymentIntentRepository implements PaymentIntentRepository {
@@ -112,6 +112,20 @@ export class DrizzlePaymentIntentRepository implements PaymentIntentRepository {
     const row = rows[0];
     if (!row) throw new Error(`Payment intent not found: ${input.id}`);
     return mapIntentRow(row as any);
+  }
+
+  async findExpiredActive(input: { now: Date; limit: number }): Promise<StandalonePaymentIntentDTO[]> {
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(
+        and(
+          lte(t.expiresAt, input.now),
+          inArray(t.status, ['requires_payment', 'partially_paid']),
+        ),
+      )
+      .limit(input.limit);
+    return rows.map((r) => mapIntentRow(r as any));
   }
 
   async updateStatus(

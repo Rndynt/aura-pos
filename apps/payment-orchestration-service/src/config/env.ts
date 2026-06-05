@@ -13,6 +13,11 @@
  *
  * DB URL resolution order:
  *   PAYMENT_ORCHESTRATION_DATABASE_URL → DATABASE_URL
+ *
+ * Xendit sandbox runtime policy:
+ *   PAYMENT_ORCHESTRATION_XENDIT_SANDBOX_ENABLED must be 'true' to allow HTTP.
+ *   PAYMENT_ORCHESTRATION_XENDIT_BASE_URL defaults to https://api.xendit.co.
+ *   PAYMENT_ORCHESTRATION_XENDIT_CALLBACK_TOKEN is reported only as configured/unconfigured.
  */
 
 export interface PaymentOrchestrationServiceConfig {
@@ -22,6 +27,9 @@ export interface PaymentOrchestrationServiceConfig {
   dbUrl: string;
   version: string;
   phase: string;
+  xenditSandboxEnabled?: boolean;
+  xenditBaseUrl?: string;
+  xenditCallbackTokenConfigured?: boolean;
 }
 
 export function loadEnv(): PaymentOrchestrationServiceConfig {
@@ -43,7 +51,20 @@ export function loadEnv(): PaymentOrchestrationServiceConfig {
     ''
   ).trim();
   const version = '0.2.0';
-  const phase = '8D';
+  const phase = '8I';
+  const xenditSandboxEnabled = process.env['PAYMENT_ORCHESTRATION_XENDIT_SANDBOX_ENABLED'] === 'true';
+  const xenditBaseUrl = (process.env['PAYMENT_ORCHESTRATION_XENDIT_BASE_URL'] ?? 'https://api.xendit.co').trim();
+  const xenditCallbackTokenConfigured = Boolean(process.env['PAYMENT_ORCHESTRATION_XENDIT_CALLBACK_TOKEN']?.trim());
 
-  return { port, nodeEnv, serviceToken, dbUrl, version, phase };
+  return {
+    port,
+    nodeEnv,
+    serviceToken,
+    dbUrl,
+    version,
+    phase,
+    xenditSandboxEnabled,
+    xenditBaseUrl,
+    xenditCallbackTokenConfigured,
+  };
 }

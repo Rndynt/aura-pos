@@ -1,14 +1,20 @@
 /**
- * health — /health and /version endpoints for payment-orchestration-service.
+ * health — /health, /version, and /ready endpoints for payment-orchestration-service.
  *
  * No authentication required on health checks.
- * Returns minimal operational metadata — no secrets, no internal paths.
+ * Returns minimal operational metadata — no secrets, no internal paths, no raw env values.
  */
 
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+import type { PaymentOrchestrationServiceConfig } from '../config/env.ts';
+import type { ProviderRegistry } from '../infrastructure/providers/providerRegistry.ts';
+import { getProviderRuntimeReadiness } from '../infrastructure/providers/providerRegistry.ts';
 
-export function createHealthRouter(config: { version: string; phase: string }): Router {
+export function createHealthRouter(
+  config: PaymentOrchestrationServiceConfig,
+  providerRegistry?: ProviderRegistry,
+): Router {
   const router = Router();
 
   /**
@@ -24,6 +30,30 @@ export function createHealthRouter(config: { version: string; phase: string }): 
   });
 
   /**
+   * GET /ready
+   * Returns non-secret runtime readiness for DB configuration and provider registration.
+   */
+  router.get('/ready', (_req: Request, res: Response) => {
+    const providers = providerRegistry
+      ? getProviderRuntimeReadiness(providerRegistry, {
+          xenditSandboxEnabled: config.xenditSandboxEnabled,
+          xenditBaseUrl: config.xenditBaseUrl,
+        })
+      : {};
+
+    res.json({
+      ok: Boolean(config.dbUrl),
+      service: 'payment-orchestration-service',
+      providers,
+      database: config.dbUrl ? 'configured' : 'unconfigured',
+      xenditSandbox: {
+        enabled: Boolean(config.xenditSandboxEnabled),
+        callbackTokenConfigured: Boolean(config.xenditCallbackTokenConfigured),
+      },
+    });
+  });
+
+  /**
    * GET /version
    * Returns service metadata for debugging and deployment verification.
    */
@@ -33,7 +63,7 @@ export function createHealthRouter(config: { version: string; phase: string }): 
       version: config.version,
       phase: config.phase,
       description: 'Payment Orchestration Standalone Service — hybrid extraction scaffold',
-      status: 'skeleton',
+      status: 'runtime-readiness-foundation',
     });
   });
 

@@ -608,37 +608,39 @@ Phase 8F audits embedded AuraPoS payment-engine capabilities against the standal
 - Standalone FakeGateway development flow: merchant, provider account, intent, gateway payment, dev confirm, webhook, status, refundability, and reconciliation.
 - Service-token auth for `/v1` routes, with webhook auth bypass only for provider-signed webhook routes.
 - Merchant-scoped standalone data model using `merchantId` plus `sourceApp`/`externalTenantId`/external payable references.
-- SDK coverage for existing FakeGateway/dev service routes needed for future feature-flag integration, including the Phase 8F-added `reconcilePaymentIntentTotals()` SDK method.
+- SDK coverage for existing FakeGateway/dev service routes remains useful, but source-application integration is deferred until standalone extraction readiness is proven.
 - Smoke and report documentation sufficient for a controlled FakeGateway/dev integration phase.
 
 ### What Is Not Ready
 
 - Production provider migration is not ready.
-- Standalone Xendit create-payment and webhook runtime are not implemented.
 - Provider-level refund/cancel is not implemented in standalone.
-- Scheduled stale expiration/reconciliation worker is not implemented.
+- Full schema relocation out of `shared/schema.ts` is not complete; Phase 8I adds a service-local bridge only.
+- Provider-event replay adapters are not implemented; Phase 8I safely skips unsafe reprocess attempts.
 - API/error contract freeze and deployment readiness still need hardening.
 
 ### Deferred Phases
 
 | Phase | Deferred Work |
 |---|---|
-| 8G | Provider Runtime Completion: Xendit standalone create-payment/webhook and provider refund/cancel contracts. |
-| 8H | SDK/API Freeze + Deployment Readiness: response/error contract freeze, deployment docs, stale/reconcile worker strategy. |
-| 8I | AuraPoS Integration Behind Feature Flag: consume SDK from AuraPoS behind a feature flag. |
-| 8J | Embedded Engine Deprecation after feature-flag validation. |
+| 8G+8H | Boundary Purity + Provider Runtime Completion. |
+| 8I | Operations Layer + Runtime Readiness. |
+| 8J | SDK/API Contract Freeze + Deployment Readiness. |
+| 8K | Extraction Simulation. |
+| 8L | Extract to Standalone Repo/Package. |
+| 8M | Integrate AuraPoS/Other Apps after extraction simulation is stable. |
 
 ### Explicit Integration Warning
 
-AuraPoS SDK integration is **not performed in Phase 8F**. Phase 8F only decides readiness and closes small standalone parity gaps. The embedded payment runtime and legacy order payment flow remain intentionally unchanged.
+AuraPoS SDK integration is **not performed before extraction readiness**. Phase 8F and later 8G/8H/8I work close standalone parity, provider runtime, and operations gaps first. The embedded payment runtime and legacy order payment flow remain intentionally unchanged.
 
 ### Phase 8F Readiness Decision
 
 ```text
-READY_FOR_AURAPOS_FAKEGATEWAY_INTEGRATION
+READY_FOR_STANDALONE_EXTRACTION_PREPARATION
 ```
 
-This means ready only for FakeGateway/dev feature-flag integration work in Phase 8I. It does **not** mean production real-provider readiness; Xendit/provider runtime completion remains Phase 8G.
+This historical Phase 8F decision has been superseded by the standalone-first roadmap. Source applications integrate only after service/package boundary, provider runtime, operations, and extraction simulation are stable.
 
 ---
 
@@ -650,10 +652,12 @@ This means ready only for FakeGateway/dev feature-flag integration work in Phase
 | 8D.1  | ✅ Atomic confirm (TOCTOU fix) + failed-key policy |
 | 8E    | ✅ Standalone webhook ingestion + reconciliation safety + hardening |
 | 8F    | ✅ Standalone Readiness + Parity Closure |
-| 8G    | Provider Runtime Completion |
-| 8H    | SDK/API Freeze + Deployment Readiness |
-| 8I    | AuraPoS Integration Behind Feature Flag |
-| 8J    | Embedded Engine Deprecation |
+| 8G+8H | ✅ Boundary Purity + Provider Runtime Completion |
+| 8I    | ✅ Operations Layer + Runtime Readiness |
+| 8J    | SDK/API Contract Freeze + Deployment Readiness |
+| 8K    | Extraction Simulation |
+| 8L    | Extract to Standalone Repo/Package |
+| 8M    | Integrate AuraPoS/Other Apps |
 
 ---
 
@@ -672,7 +676,7 @@ NOT_READY_RUNTIME_TEST_FAILURES
 
 - `packages/payment-orchestration-core`, `packages/payment-orchestration-client-sdk`, and `apps/payment-orchestration-service` were audited for forbidden AuraPoS runtime coupling.
 - Runtime source has no `@pos/*`, `apps/api`, embedded payment-provider, order, session, or frontend imports.
-- The known extraction blocker is schema ownership: repositories still import `payment_orchestration_*` Drizzle tables from `shared/schema.ts` while the service remains inside the AuraPoS monorepo.
+- The known extraction blocker is schema ownership: the service-local schema bridge still re-exports `payment_orchestration_*` Drizzle tables from `shared/schema.ts` while the service remains inside the AuraPoS monorepo.
 - The schema extraction plan is documented in `docs/reports/payment-orchestration-schema-extraction-plan.md`.
 
 ### Provider Runtime Updates
@@ -695,3 +699,90 @@ NOT_READY_RUNTIME_TEST_FAILURES
 | 8M | Integrate AuraPoS/Other Apps |
 
 AuraPoS SDK consumption and embedded runtime deprecation are explicitly deferred until after standalone extraction readiness is proven.
+
+## Phase 8I Update — Standalone Runtime Readiness + Operations Layer
+
+Phase 8I keeps the roadmap standalone-first:
+
+| Phase | Focus |
+|---|---|
+| 8I | Operations Layer + Runtime Readiness |
+| 8J | SDK/API Contract Freeze + Deployment Readiness |
+| 8K | Extraction Simulation |
+| 8L | Extract to Standalone Repo/Package |
+| 8M | Integrate AuraPoS/Other Apps |
+
+Standalone extraction comes first. Source applications integrate only after the service/package boundary, provider runtime, operations, and extraction simulation are stable.
+
+### Runtime readiness endpoint
+
+The standalone service now exposes:
+
+```text
+GET /ready
+```
+
+The response contains non-secret readiness metadata only:
+
+```json
+{
+  "ok": true,
+  "service": "payment-orchestration-service",
+  "providers": {
+    "fake_gateway": { "registered": true, "configured": true, "enabled": true },
+    "xendit_sandbox": { "registered": true, "configured": false, "enabled": false }
+  },
+  "database": "configured",
+  "xenditSandbox": {
+    "enabled": false,
+    "callbackTokenConfigured": true
+  }
+}
+```
+
+No service token, database URL, callback token, provider secret, or raw environment value is returned.
+
+### Xendit sandbox runtime policy
+
+Xendit sandbox HTTP is disabled unless explicitly enabled by environment:
+
+| Environment variable | Purpose |
+|---|---|
+| `PAYMENT_ORCHESTRATION_XENDIT_SANDBOX_ENABLED` | Must be `true` before the standalone runtime uses native `fetch` for Xendit sandbox HTTP. Any other value keeps HTTP disabled. |
+| `PAYMENT_ORCHESTRATION_XENDIT_BASE_URL` | Optional base URL. Defaults to `https://api.xendit.co`. |
+| `PAYMENT_ORCHESTRATION_XENDIT_CALLBACK_TOKEN` | Optional webhook callback token. Read only for verification/configured status; never returned by `/ready`. |
+
+`credentialsRef` continues to be an opaque environment variable name stored in provider-account rows. The provider resolves `process.env[credentialsRef]` at runtime and does not persist raw credentials.
+
+When Xendit sandbox HTTP is disabled, provider create/status calls fail with stable code:
+
+```text
+PROVIDER_HTTP_CLIENT_UNCONFIGURED
+```
+
+Tests inject mock HTTP clients and do not call live Xendit endpoints.
+
+### Schema boundary module
+
+The service now owns a local schema import boundary at:
+
+```text
+apps/payment-orchestration-service/src/infrastructure/schema.ts
+```
+
+For Phase 8I this is a low-risk re-export bridge from `shared/schema.ts`, not a full schema relocation. Standalone repositories import payment-orchestration tables through this service-local module so extraction simulation has one boundary to replace later.
+
+### Operations use cases and workers
+
+Phase 8I adds operations foundations callable without starting Express:
+
+```text
+apps/payment-orchestration-service/src/application/use-cases/ExpireStalePaymentTransactions.ts
+apps/payment-orchestration-service/src/application/use-cases/ReprocessProviderEvents.ts
+apps/payment-orchestration-service/src/workers/reconcile.ts
+apps/payment-orchestration-service/src/workers/expireStale.ts
+```
+
+No cron scheduler is registered in this phase. Future deployments may schedule these worker modules via platform cron, queue workers, or a process supervisor after extraction simulation validates runtime packaging.
+
+Known limitation: provider-event reprocess does not reconstruct signed provider raw bodies or double-apply provider mutations. It safely skips events without replayable parsed payload or without a provider-specific replay adapter and returns summary counts/reasons.
