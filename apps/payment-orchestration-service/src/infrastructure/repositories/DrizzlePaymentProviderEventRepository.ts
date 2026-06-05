@@ -44,7 +44,7 @@ export class DrizzlePaymentProviderEventRepository
         lastError: null,
         rawHeaders: (input.rawHeaders ?? {}) as Record<string, unknown>,
         rawBody: (input.rawBody ?? null) as Record<string, unknown> | null,
-        parsedPayload: null,
+        parsedPayload: (input.parsedPayload ?? null) as Record<string, unknown> | null,
         receivedAt: now,
         processedAt: null,
         createdAt: now,

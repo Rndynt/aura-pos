@@ -1,9 +1,9 @@
 /**
  * ExpireStalePaymentTransactions — operations use case for stale standalone payments.
  *
- * Finds expired active intents via `expiresAt`, marks non-terminal pending/requires_action
- * transactions as expired, and then expires the intent when it still has an amount remaining.
- * Merchant safety is preserved by updating each transaction using its own merchantId.
+ * Transaction-level `expiresAt` is the primary expiration policy. Intent-level
+ * `expiresAt` remains a fallback for intents that do not have individually
+ * expired pending/requires_action transactions.
  */
 
 import type {
@@ -25,6 +25,7 @@ const TERMINAL_TRANSACTION_STATUSES = new Set([
 ]);
 
 const EXPIRABLE_TRANSACTION_STATUSES = new Set(['pending', 'requires_action']);
+const EXPIRABLE_INTENT_STATUSES = new Set(['requires_payment', 'partially_paid']);
 
 export interface ExpireStalePaymentTransactionsInput {
   now?: Date;
@@ -55,65 +56,100 @@ export class ExpireStalePaymentTransactions {
   async execute(input: ExpireStalePaymentTransactionsInput = {}): Promise<ExpireStalePaymentTransactionsResult> {
     const now = input.now ?? new Date();
     const limit = input.limit ?? 100;
+
+    if (!this.transactionRepo.findStalePendingTransactions) {
+      throw Object.assign(new Error('Payment transaction repository does not support transaction expiration queries.'), {
+        statusCode: 501,
+        code: 'OPERATIONS_REPOSITORY_UNSUPPORTED',
+      });
+    }
     if (!this.intentRepo.findExpiredActive) {
       throw Object.assign(new Error('Payment intent repository does not support stale expiration queries.'), {
         statusCode: 501,
         code: 'OPERATIONS_REPOSITORY_UNSUPPORTED',
       });
     }
-    const staleIntents = await this.intentRepo.findExpiredActive({ now, limit });
 
+    const summariesByIntent = new Map<string, ExpiredIntentSummary>();
     let expiredTransactions = 0;
     let skippedTransactions = 0;
-    const summaries: ExpiredIntentSummary[] = [];
 
-    for (const intent of staleIntents) {
-      const transactions = await this.transactionRepo.findByIntentId(intent.id, intent.merchantId);
-      const expiredTransactionIds: string[] = [];
-      const skippedTransactionIds: string[] = [];
+    const ensureSummary = async (intentId: string, merchantId: string): Promise<ExpiredIntentSummary> => {
+      const key = `${merchantId}:${intentId}`;
+      const existing = summariesByIntent.get(key);
+      if (existing) return existing;
+      const intent = await this.intentRepo.findById(intentId, merchantId);
+      const summary: ExpiredIntentSummary = {
+        intentId,
+        merchantId,
+        expiredTransactionIds: [],
+        skippedTransactionIds: [],
+        intentStatus: intent?.status ?? 'requires_payment',
+      };
+      summariesByIntent.set(key, summary);
+      return summary;
+    };
 
-      for (const transaction of transactions) {
-        if (TERMINAL_TRANSACTION_STATUSES.has(transaction.status)) {
-          skippedTransactions += 1;
-          skippedTransactionIds.push(transaction.id);
-          continue;
-        }
-        if (!EXPIRABLE_TRANSACTION_STATUSES.has(transaction.status)) {
-          skippedTransactions += 1;
-          skippedTransactionIds.push(transaction.id);
-          continue;
-        }
-        const updated = await this.transactionRepo.updateStatus({
-          id: transaction.id,
-          merchantId: transaction.merchantId,
-          status: 'expired',
-          failureReason: 'Payment transaction expired by standalone operations runner.',
-        });
-        if (updated.status === 'expired') {
-          expiredTransactions += 1;
-          expiredTransactionIds.push(updated.id);
-        }
+    const expireTransaction = async (transaction: StandalonePaymentTransactionDTO): Promise<void> => {
+      const summary = await ensureSummary(transaction.intentId, transaction.merchantId);
+      if (TERMINAL_TRANSACTION_STATUSES.has(transaction.status) || !EXPIRABLE_TRANSACTION_STATUSES.has(transaction.status)) {
+        skippedTransactions += 1;
+        summary.skippedTransactionIds.push(transaction.id);
+        return;
       }
 
-      const updatedIntent = intent.status === 'expired'
-        ? intent
-        : await this.intentRepo.updateStatus({
-            id: intent.id,
-            merchantId: intent.merchantId,
-            status: 'expired',
-          });
-
-      summaries.push({
-        intentId: intent.id,
-        merchantId: intent.merchantId,
-        expiredTransactionIds,
-        skippedTransactionIds,
-        intentStatus: updatedIntent.status,
+      const updated = await this.transactionRepo.updateStatus({
+        id: transaction.id,
+        merchantId: transaction.merchantId,
+        status: 'expired',
+        failureReason: 'Payment transaction expired by standalone operations runner.',
       });
+      if (updated.status === 'expired') {
+        expiredTransactions += 1;
+        summary.expiredTransactionIds.push(updated.id);
+      }
+    };
+
+    // Primary policy: expire individual pending/requires_action transactions by tx.expiresAt.
+    const staleTransactions = await this.transactionRepo.findStalePendingTransactions({ now, limit });
+    for (const transaction of staleTransactions) {
+      await expireTransaction(transaction);
     }
 
+    // Fallback policy: expire active intents by intent.expiresAt and expire their pending txs.
+    const remainingLimit = Math.max(0, limit - staleTransactions.length);
+    const staleIntents = remainingLimit > 0
+      ? await this.intentRepo.findExpiredActive({ now, limit: remainingLimit })
+      : [];
+
+    for (const intent of staleIntents) {
+      const summary = await ensureSummary(intent.id, intent.merchantId);
+      const transactions = await this.transactionRepo.findByIntentId(intent.id, intent.merchantId);
+      for (const transaction of transactions) {
+        await expireTransaction(transaction);
+      }
+      summary.intentStatus = intent.status;
+    }
+
+    // Recompute/update affected intent status safely after transaction mutations.
+    for (const summary of summariesByIntent.values()) {
+      const freshIntent = await this.intentRepo.findById(summary.intentId, summary.merchantId);
+      if (!freshIntent) continue;
+      if (EXPIRABLE_INTENT_STATUSES.has(freshIntent.status) && freshIntent.amountRemaining > 0) {
+        const updatedIntent = await this.intentRepo.updateStatus({
+          id: freshIntent.id,
+          merchantId: freshIntent.merchantId,
+          status: 'expired',
+        });
+        summary.intentStatus = updatedIntent.status;
+      } else {
+        summary.intentStatus = freshIntent.status;
+      }
+    }
+
+    const summaries = Array.from(summariesByIntent.values());
     return {
-      expiredIntents: summaries.length,
+      expiredIntents: summaries.filter((summary) => summary.intentStatus === 'expired').length,
       expiredTransactions,
       skippedTransactions,
       summaries,

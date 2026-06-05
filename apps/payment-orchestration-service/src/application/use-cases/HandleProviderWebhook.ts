@@ -136,6 +136,7 @@ export class HandleProviderWebhook {
         rawBody: Buffer.isBuffer(input.rawBody)
           ? ({ _raw: true } as Record<string, unknown>)
           : rawPayload,
+        parsedPayload: rawPayload,
       });
     }
 

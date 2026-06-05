@@ -50,6 +50,7 @@ export interface StandalonePaymentTransactionDTO {
   providerQrString: string | null;
   failureReason: string | null;
   idempotencyKey: string | null;
+  expiresAt: Date | null;
   metadata: Record<string, unknown> | null;
   rawProviderResponse: Record<string, unknown> | null;
   createdAt: Date;

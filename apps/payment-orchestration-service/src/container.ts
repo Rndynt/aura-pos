@@ -149,7 +149,7 @@ export function createContainer(config: PaymentOrchestrationServiceConfig): Serv
       intentRepo,
       transactionRepo,
     ),
-    reprocessProviderEvents: new ReprocessProviderEvents(providerEventRepo),
+    reprocessProviderEvents: new ReprocessProviderEvents(providerEventRepo, transactionRepo, intentRepo),
   };
 
   return { config, db, repos, providerRegistry, useCases };

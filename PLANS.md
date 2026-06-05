@@ -4290,3 +4290,181 @@ Harden standalone payment orchestration boundaries, add explicit Xendit runtime 
 ### Continuation Notes
 
 Next recommended phase: `8J — SDK/API Contract Freeze + Deployment Readiness`, then `8K — Extraction Simulation`. Keep AuraPoS integration deferred until extraction simulation is stable.
+
+## Plan: Payment Orchestration Phase 8J — Standalone Extraction Completion
+
+### Source
+
+- Tasklist: `docs/replit-agent-payment-orchestration-phase-8j-standalone-extraction-completion-prompt.md`
+- User request: `Check dan eksekusi docs/replit-agent-payment-orchestration-phase-8j-standalone-extraction-completion-prompt.md`
+- Date started: 2026-06-05
+- Current status: Completed; final decision `READY_TO_EXTRACT_TO_STANDALONE_REPO`.
+
+### Goal
+
+Close standalone extraction blockers for payment orchestration without implementing AuraPoS app integration, embedded payment runtime deletion, POS UI changes, or legacy order payment migration.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: standalone payment orchestration use cases, repositories, workers.
+- Files inspected: service use cases, repositories, provider contracts, worker files, tests.
+- Findings: schema bridge, missing tx expiry persistence, reprocess skip-only behavior, and no unified runner were extraction blockers.
+- Tasks: implemented tx expiry, parsed payload persistence, safe reprocess, and worker runner.
+- Risks: reprocess remains provider-specific and must stay limited to verified stored parsed payloads.
+- Validation: package type-checks, root check, all payment-orchestration tests.
+
+#### Database/Schema Workstream
+
+- Scope: service-owned schema, standalone/root compatibility migrations.
+- Files inspected: service schema, root shared schema, root migration 0022.
+- Findings: service schema re-exported root shared schema.
+- Tasks: created service-local Drizzle schema, standalone migration, drizzle config, root compatibility expiry migration.
+- Risks: root shared schema remains compatibility until physical extraction.
+- Validation: schema boundary test and extraction simulation check.
+
+#### Frontend/UI Workstream
+
+- Scope: confirm no UI changes required.
+- Files inspected: active prompt guardrails.
+- Findings: POS UI changes explicitly disallowed.
+- Tasks: none.
+- Risks: none.
+- Validation: no frontend files intentionally touched.
+
+#### Tests/Validation Workstream
+
+- Scope: focused Phase 8J tests and existing payment-orchestration suite.
+- Files inspected: payment-orchestration tests.
+- Findings: existing fixtures needed transaction `expiresAt` field.
+- Tasks: expanded expire-stale/reprocess/schema tests and updated fixtures.
+- Risks: none after `npm run check` passed.
+- Validation: all commands listed in report passed.
+
+#### Documentation Workstream
+
+- Scope: architecture doc, smoke doc, final report, PLANS.
+- Files inspected: existing payment orchestration architecture/smoke docs and reports.
+- Findings: docs needed Phase 8J completion status and runner commands.
+- Tasks: added Phase 8J architecture notes, worker/extraction smoke commands, final report.
+- Risks: docs should be revised again in 8K after API/SDK contract freeze.
+- Validation: docs align with code and validation output.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: guardrails, provider webhook verification/reprocess safety, tenant/merchant isolation.
+- Files inspected: webhook handler, reprocess use case, extraction checker.
+- Findings: reprocess must not reverify signatures or double-apply events; merchant resolution stays providerReference → transaction → intent.
+- Tasks: safe stored parsedPayload replay, processed-event skip, forbidden import extraction check.
+- Risks: adding more providers requires explicit adapter support and tests.
+- Validation: reprocess tests and all payment-orchestration tests passed.
+
+### Execution Order
+
+1. Replace schema bridge with service-local schema ownership.
+2. Add transaction-level expiry support and operations policy.
+3. Persist parsed webhook payload and implement supported reprocess adapters.
+4. Add no-Express worker runner.
+5. Add extraction simulation check.
+6. Sync docs/report/PLANS.
+7. Run validation.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Replace schema bridge with standalone schema ownership
+  - Files changed: service schema/db, drizzle config, standalone migration, root compatibility schema/migration, schema boundary test.
+  - Validation: type-check, schema boundary test, extraction check.
+  - Docs updated: architecture doc and Phase 8J report.
+- [x] Task: Add transaction expiry policy end-to-end
+  - Files changed: core transaction/repository contracts, repository, mapper, provider payment create use case, expire worker use case, tests.
+  - Validation: focused expire-stale tests and all payment-orchestration tests.
+  - Docs updated: architecture doc and Phase 8J report.
+- [x] Task: Store parsed webhook payload for reprocess
+  - Files changed: provider event contract/repository, webhook handler, tests.
+  - Validation: all payment-orchestration tests.
+  - Docs updated: Phase 8J report.
+- [x] Task: Implement provider-specific event reprocess adapters
+  - Files changed: ReprocessProviderEvents, container wiring, tests.
+  - Validation: provider-event reprocess tests and all payment-orchestration tests.
+  - Docs updated: Phase 8J report.
+- [x] Task: Make worker runner operational
+  - Files changed: worker runner and service package script.
+  - Validation: service type-check and existing worker tests.
+  - Docs updated: smoke doc and Phase 8J report.
+- [x] Task: Add extraction simulation check
+  - Files changed: extraction check script and root package script.
+  - Validation: `pnpm payment-orchestration:extraction-check` passed.
+  - Docs updated: smoke doc and Phase 8J report.
+- [x] Task: Documentation and final report
+  - Files changed: architecture doc, smoke doc, Phase 8J report, PLANS.md.
+  - Validation: documentation synced with implemented code and validation results.
+  - Docs updated: listed files.
+
+#### Partially Completed
+
+- [ ] Task: None.
+  - Completed: N/A
+  - Remaining: N/A
+  - Reason: N/A
+
+#### Blocked
+
+- [ ] Task: None.
+  - Blocker: N/A
+  - Required next step: N/A
+
+#### Not Attempted
+
+- [ ] Task: 8K SDK/API Contract Freeze + Deployment Readiness
+  - Reason: Next phase only after 8J decision; outside current prompt scope.
+
+### Validation Log
+
+- Command: `pnpm --filter @northflow/payment-orchestration-core type-check`
+- Result: Passed
+- Notes: Core contracts compile.
+- Command: `pnpm --filter @northflow/payment-orchestration-service type-check`
+- Result: Passed
+- Notes: Standalone service compiles.
+- Command: `pnpm --filter @northflow/payment-orchestration-client-sdk type-check`
+- Result: Passed
+- Notes: SDK compiles.
+- Command: `npm run check`
+- Result: Passed
+- Notes: Turbo type-check across workspace passed.
+- Command: `npx tsx --tsconfig apps/api/tsconfig.node.json --test apps/api/src/__tests__/payment-orchestration-*.test.ts`
+- Result: Passed
+- Notes: 159 payment-orchestration tests passed.
+- Command: `pnpm payment-orchestration:extraction-check`
+- Result: Passed
+- Notes: Extraction simulation passed.
+
+### Documentation Updates
+
+- File: `docs/payment-orchestration-hybrid-standalone-architecture.md`
+- Change: Added Phase 8J standalone extraction completion notes and final decision.
+- File: `docs/payment-orchestration-service-smoke-test.md`
+- Change: Added worker runner and extraction-check commands.
+- File: `docs/reports/payment-orchestration-phase-8j-standalone-extraction-completion-report.md`
+- Change: Added final Phase 8J report.
+
+### Checklist Updates
+
+- File: `docs/replit-agent-payment-orchestration-phase-8j-standalone-extraction-completion-prompt.md`
+- Change: Source prompt had no markdown checkbox statuses; implementation status is recorded in this PLANS.md entry and the Phase 8J report.
+
+### Continuation Notes
+
+Phase 8J is complete and ready for standalone repo extraction planning. Continue with `8K — SDK/API Contract Freeze + Deployment Readiness`, focusing on freezing API/SDK contracts, deployment manifests, CI packaging, and any extraction repository bootstrap.

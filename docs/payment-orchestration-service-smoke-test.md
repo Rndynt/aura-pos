@@ -376,3 +376,30 @@ npx tsx --tsconfig apps/api/tsconfig.node.json --test apps/api/src/__tests__/pay
 npx tsx --tsconfig apps/api/tsconfig.node.json --test apps/api/src/__tests__/payment-orchestration-provider-event-reprocess.test.ts
 npx tsx --tsconfig apps/api/tsconfig.node.json --test apps/api/src/__tests__/payment-orchestration-ready-endpoint.test.ts
 ```
+
+---
+
+## Phase 8J standalone worker and extraction checks
+
+### Worker runner
+
+The standalone service can run operational workers without starting Express:
+
+```bash
+pnpm --filter @northflow/payment-orchestration-service worker -- expire-stale --limit 100
+pnpm --filter @northflow/payment-orchestration-service worker -- reprocess-provider-events --older-than-minutes 5 --limit 100
+pnpm --filter @northflow/payment-orchestration-service worker -- reconcile-intent --merchant-id <MERCHANT_ID> --intent-id <INTENT_ID>
+pnpm --filter @northflow/payment-orchestration-service worker -- all-safe --limit 100
+```
+
+Each command prints a JSON summary and exits non-zero on invalid arguments or operational errors. `all-safe` intentionally runs only local-safe operations (`expire-stale` and `reprocess-provider-events`) and does not require provider network calls.
+
+### Extraction simulation
+
+Run the extraction guardrail check from the repository root:
+
+```bash
+pnpm payment-orchestration:extraction-check
+```
+
+The check verifies service-local schema ownership, repository schema imports, standalone migrations, worker entry points, the ready endpoint, required package files, forbidden embedded runtime imports, and absence of random build/log/asset output in the extraction set.

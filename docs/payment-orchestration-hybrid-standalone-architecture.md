@@ -786,3 +786,17 @@ apps/payment-orchestration-service/src/workers/expireStale.ts
 No cron scheduler is registered in this phase. Future deployments may schedule these worker modules via platform cron, queue workers, or a process supervisor after extraction simulation validates runtime packaging.
 
 Known limitation: provider-event reprocess does not reconstruct signed provider raw bodies or double-apply provider mutations. It safely skips events without replayable parsed payload or without a provider-specific replay adapter and returns summary counts/reasons.
+
+## Phase 8J standalone extraction completion
+
+Phase 8J promotes the standalone service schema from a re-export bridge to service-local ownership:
+
+- `apps/payment-orchestration-service/src/infrastructure/schema.ts` is now the source of truth for `payment_orchestration_*` Drizzle table definitions.
+- Root `shared/schema.ts` retains compatibility definitions for current monorepo type-checks and existing root migrations, but standalone repositories import the service-local schema module.
+- Standalone migration ownership starts at `apps/payment-orchestration-service/migrations/0001_payment_orchestration_initial.sql`; the root migration `migrations/0023_payment_orchestration_transaction_expires_at.sql` is compatibility-only.
+- Payment transactions now have transaction-level `expiresAt`; operations expire pending/requires_action transactions by transaction expiry first, then fall back to intent-level expiry.
+- Verified webhook payloads are persisted as `parsedPayload` for safe reprocess. Reprocess supports stored `fake_gateway` and `xendit_sandbox` payloads without re-verifying signatures and skips already processed events to avoid double credit.
+- `apps/payment-orchestration-service/src/workers/run.ts` provides a no-Express JSON worker runner for `expire-stale`, `reconcile-intent`, `reprocess-provider-events`, and `all-safe`.
+- `scripts/payment-orchestration-extraction-check.ts` simulates extraction guardrails for forbidden imports, schema ownership, migrations, worker entry points, ready endpoint, package files, and unwanted build/log/assets.
+
+Final Phase 8J decision: `READY_TO_EXTRACT_TO_STANDALONE_REPO`. Next phase: `8K — SDK/API Contract Freeze + Deployment Readiness`.

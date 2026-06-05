@@ -34,6 +34,13 @@ import { computeIntentStatus } from './intentStatusHelper.ts';
 
 const IDEMPOTENCY_SCOPE = 'create_gateway_payment';
 
+function parseProviderExpiresAt(rawProviderResponse: Record<string, unknown> | null | undefined): Date | null {
+  const raw = rawProviderResponse?.['expires_at'];
+  if (typeof raw !== 'string' && typeof raw !== 'number') return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function computeRequestHash(input: CreateGatewayPaymentInput): string {
   const canonical = JSON.stringify({
     merchantId: input.merchantId,
@@ -280,6 +287,7 @@ export class CreateGatewayPayment {
       failureReason: providerResult.failureReason,
       idempotencyKey: input.idempotencyKey ?? null,
       rawProviderResponse: providerResult.rawProviderResponse,
+      expiresAt: providerResult.expiresAt ?? parseProviderExpiresAt(providerResult.rawProviderResponse),
       metadata: input.metadata ?? null,
     });
 

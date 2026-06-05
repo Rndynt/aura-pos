@@ -60,4 +60,6 @@ export interface ReserveProviderEventInput {
   eventType: string;
   rawHeaders: Record<string, unknown>;
   rawBody: Record<string, unknown> | null;
+  /** Parsed provider payload, stored only after provider verification/parsing succeeds. */
+  parsedPayload?: Record<string, unknown> | null;
 }

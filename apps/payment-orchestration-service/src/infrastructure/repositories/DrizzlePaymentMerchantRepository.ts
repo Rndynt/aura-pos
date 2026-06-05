@@ -2,7 +2,7 @@
  * DrizzlePaymentMerchantRepository — Phase 8D real implementation.
  *
  * Implements PaymentMerchantRepository using Drizzle ORM against
- * the payment_orchestration_merchants table in shared/schema.ts.
+ * the payment_orchestration_merchants table in service-local schema.ts.
  */
 
 import { eq, and } from 'drizzle-orm';

@@ -171,7 +171,7 @@ class InMemoryIntentRepo implements PaymentIntentRepository {
       externalPayableType: input.externalPayableType, externalPayableId: input.externalPayableId,
       amountDue: input.amountDue, amountPaid: 0, amountRefunded: 0, amountRemaining: input.amountDue,
       currency: input.currency ?? 'IDR', status: 'requires_payment', allowPartial: input.allowPartial ?? false,
-      expiresAt: input.expiresAt ?? null, metadata: input.metadata ?? {}, createdAt: now, updatedAt: now,
+      expiresAt: null, metadata: input.metadata ?? {}, createdAt: now, updatedAt: now,
     };
     this.store.set(intent.id, intent);
     return intent;
@@ -225,7 +225,7 @@ class InMemoryTransactionRepo implements PaymentTransactionRepository {
       parentTransactionId: input.parentTransactionId ?? null, providerReference: input.providerReference ?? null,
       providerEventId: input.providerEventId ?? null, providerPaymentUrl: input.providerPaymentUrl ?? null,
       providerQrString: input.providerQrString ?? null, failureReason: input.failureReason ?? null,
-      idempotencyKey: input.idempotencyKey ?? null, metadata: input.metadata ?? {},
+      idempotencyKey: input.idempotencyKey ?? null, expiresAt: null, metadata: input.metadata ?? {},
       rawProviderResponse: input.rawProviderResponse ?? null, createdAt: now, updatedAt: now,
     };
     this.store.set(tx.id, tx);

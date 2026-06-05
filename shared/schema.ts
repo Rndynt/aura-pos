@@ -992,6 +992,7 @@ export const paymentOrchestrationTransactions = pgTable("payment_orchestration_t
   providerQrString: text("provider_qr_string"),
   failureReason: text("failure_reason"),
   idempotencyKey: text("idempotency_key"),
+  expiresAt: timestamp("expires_at"),
   metadata: jsonb("metadata").notNull().default({}),
   rawProviderResponse: jsonb("raw_provider_response"),
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
@@ -1000,6 +1001,7 @@ export const paymentOrchestrationTransactions = pgTable("payment_orchestration_t
   merchantIdx: index("po_transactions_merchant_idx").on(table.merchantId),
   intentIdx: index("po_transactions_intent_idx").on(table.intentId),
   providerReferenceIdx: index("po_transactions_provider_reference_idx").on(table.provider, table.providerReference),
+  expiresAtIdx: index("po_transactions_expires_at_idx").on(table.expiresAt),
   // Prevents duplicate idempotent payment submissions per merchant.
   merchantIdempotencyUnique: uniqueIndex("po_transactions_merchant_idempotency_unique")
     .on(table.merchantId, table.idempotencyKey)

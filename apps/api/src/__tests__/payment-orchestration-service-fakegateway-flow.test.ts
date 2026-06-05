@@ -219,7 +219,7 @@ class InMemoryIntentRepo implements PaymentIntentRepository {
       currency: input.currency ?? 'IDR',
       status: 'requires_payment',
       allowPartial: input.allowPartial ?? false,
-      expiresAt: input.expiresAt ?? null,
+      expiresAt: null,
       metadata: input.metadata ?? {},
       createdAt: now,
       updatedAt: now,
@@ -319,6 +319,7 @@ class InMemoryTransactionRepo implements PaymentTransactionRepository {
       providerQrString: input.providerQrString ?? null,
       failureReason: input.failureReason ?? null,
       idempotencyKey: input.idempotencyKey ?? null,
+      expiresAt: null,
       metadata: input.metadata ?? {},
       rawProviderResponse: input.rawProviderResponse ?? null,
       createdAt: now,
@@ -406,7 +407,7 @@ class InMemoryIdempotencyRepo implements PaymentIdempotencyRepository {
       status: 'processing',
       createdAt: now,
       updatedAt: now,
-      expiresAt: input.expiresAt ?? null,
+      expiresAt: null,
     };
     this.store.set(`${input.merchantId}:${input.scope}:${input.idempotencyKey}`, record);
     return record;

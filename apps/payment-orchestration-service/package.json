@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx --tsconfig tsconfig.json src/index.ts",
-    "type-check": "tsc -p tsconfig.json --noEmit"
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "worker": "tsx --tsconfig tsconfig.json src/workers/run.ts"
   },
   "dependencies": {
     "@northflow/payment-orchestration-core": "workspace:*",
@@ -16,6 +17,10 @@
     "@types/node": "20.16.11",
     "tsx": "^4.21.0"
   },
-  "keywords": ["payment-orchestration", "service", "northflow"],
+  "keywords": [
+    "payment-orchestration",
+    "service",
+    "northflow"
+  ],
   "license": "ISC"
 }

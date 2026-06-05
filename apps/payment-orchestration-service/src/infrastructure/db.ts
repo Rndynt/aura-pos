@@ -11,10 +11,10 @@
  * - prepare: false  (NeonDB/PgBouncer-compatible — same as apps/api pattern)
  * - max: 3          (standalone service keeps a small pool)
  * - No AuraPoS session/tenant middleware imported here.
- * - Schema imported from shared/schema.ts (only payment_orchestration_* tables used at runtime).
+ * - Schema imported from service-local schema.ts (standalone payment_orchestration_* ownership).
  *
  * Migrations:
- *   Run manually: psql $DATABASE_URL -f migrations/0022_payment_orchestration_standalone.sql
+ *   Run manually: psql $DATABASE_URL -f apps/payment-orchestration-service/migrations/0001_payment_orchestration_initial.sql
  *   Do NOT auto-run migrations at startup.
  */
 
@@ -27,7 +27,7 @@ import {
   paymentOrchestrationTransactions,
   paymentOrchestrationProviderEvents,
   paymentOrchestrationIdempotencyKeys,
-} from '../../../../shared/schema.ts';
+} from './schema.ts';
 
 export const poSchema = {
   paymentOrchestrationMerchants,

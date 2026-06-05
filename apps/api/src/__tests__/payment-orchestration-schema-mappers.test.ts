@@ -113,6 +113,7 @@ const BASE_TRANSACTION_ROW: TransactionRow = {
   providerQrString: 'qr://xnd-abc',
   failureReason: null,
   idempotencyKey: 'idem-key-001',
+  expiresAt: null,
   metadata: {},
   rawProviderResponse: { id: 'xnd-ewc-abc123', status: 'ACTIVE' },
   createdAt: NOW,

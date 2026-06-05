@@ -166,6 +166,7 @@ export interface CreatePaymentTransactionInput {
   idempotencyKey?: string | null;
   metadata?: Record<string, unknown> | null;
   rawProviderResponse?: Record<string, unknown> | null;
+  expiresAt?: Date | null;
 }
 
 export interface UpdateTransactionStatusInput {

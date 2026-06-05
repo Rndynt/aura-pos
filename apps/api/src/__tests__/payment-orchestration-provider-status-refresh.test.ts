@@ -53,6 +53,7 @@ describe('provider status refresh foundation', () => {
       providerQrString: 'FAKE_QR',
       failureReason: null,
       idempotencyKey: null,
+      expiresAt: null,
       metadata: {},
       rawProviderResponse: { scenario: 'immediate_success' },
       createdAt: new Date(),

@@ -3,7 +3,7 @@
  *
  * Pure functions. No DB calls. No side effects.
  * Input types mirror what Drizzle `$inferSelect` produces from the
- * `payment_orchestration_*` tables in shared/schema.ts.
+ * `payment_orchestration_*` tables in service-local schema.ts.
  *
  * Phase 8C: mappers defined for boundary verification and testing.
  * Phase 8D: repository implementations call these after Drizzle queries.
@@ -27,7 +27,7 @@ import type {
 } from '@northflow/payment-orchestration-core';
 
 // ── Local row types ────────────────────────────────────────────────────────────
-// These mirror the Drizzle $inferSelect shape from shared/schema.ts.
+// These mirror the Drizzle $inferSelect shape from the service-local schema module.
 // The actual Drizzle query results will structurally match these types.
 
 export interface MerchantRow {
@@ -98,6 +98,7 @@ export interface TransactionRow {
   providerQrString: string | null;
   failureReason: string | null;
   idempotencyKey: string | null;
+  expiresAt: Date | null;
   metadata: Record<string, unknown> | null;
   rawProviderResponse: Record<string, unknown> | null;
   createdAt: Date;
@@ -235,6 +236,7 @@ export function mapTransactionRow(row: TransactionRow): StandalonePaymentTransac
     providerQrString: row.providerQrString ?? null,
     failureReason: row.failureReason ?? null,
     idempotencyKey: row.idempotencyKey ?? null,
+    expiresAt: row.expiresAt ?? null,
     metadata: (row.metadata as Record<string, unknown>) ?? {},
     rawProviderResponse: (row.rawProviderResponse as Record<string, unknown>) ?? null,
     createdAt: row.createdAt,

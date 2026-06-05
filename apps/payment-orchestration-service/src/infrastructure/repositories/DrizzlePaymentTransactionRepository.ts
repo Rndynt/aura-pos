@@ -5,7 +5,7 @@
  * the payment_orchestration_transactions table.
  */
 
-import { eq, and, sum, inArray } from 'drizzle-orm';
+import { eq, and, sum, inArray, lte, isNotNull } from 'drizzle-orm';
 import type {
   PaymentTransactionRepository,
   CreatePaymentTransactionInput,
@@ -52,7 +52,13 @@ export class DrizzlePaymentTransactionRepository
     const rows = await this.db
       .select()
       .from(t)
-      .where(inArray(t.status, ['pending', 'requires_action']))
+      .where(
+        and(
+          inArray(t.status, ['pending', 'requires_action']),
+          isNotNull(t.expiresAt),
+          lte(t.expiresAt, input.now),
+        ),
+      )
       .limit(input.limit);
     return rows.map((r) => mapTransactionRow(r as any));
   }
@@ -101,6 +107,7 @@ export class DrizzlePaymentTransactionRepository
         providerQrString: input.providerQrString ?? null,
         failureReason: input.failureReason ?? null,
         idempotencyKey: input.idempotencyKey ?? null,
+        expiresAt: input.expiresAt ?? null,
         metadata: (input.metadata ?? {}) as Record<string, unknown>,
         rawProviderResponse: (input.rawProviderResponse ?? {}) as Record<string, unknown>,
         createdAt: now,
