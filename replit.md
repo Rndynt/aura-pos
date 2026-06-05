@@ -1,5 +1,54 @@
 # AuraPoS - Multi-Tenant Point of Sale System
 
+## ⚡ Quick Start for New Agent Sessions
+
+**READ THIS FIRST — skip exploration, go straight here:**
+
+### Workflow
+- Command: `npm run dev` (Turborepo — starts API + frontend together)
+- Workflow name: `Start application`
+- If startup fails, check `BETTER_AUTH_SECRET` env var is set (64-char string)
+
+### Key directories
+```
+apps/
+  api/                          — Express backend (main AuraPoS API)
+  pos-terminal-web/             — React 19 + Vite frontend (main POS UI)
+  payment-orchestration-service/— Standalone payment microservice (Phase 8D+)
+packages/
+  core/                         — Shared utilities, tenant.ts (CURRENT_TENANT_ID here)
+  payment-orchestration-core/   — Payment domain types/interfaces (published package)
+shared/
+  schema.ts                     — Drizzle ORM schema (source of truth for DB types)
+docs/
+  reports/                      — Implementation reports per phase
+  *.md                          — Phase prompt specs (e.g. phase-8d1-8e-*.md)
+```
+
+### Tenant switching (no login)
+Edit `packages/core/tenant.ts` line 1: `export const CURRENT_TENANT_ID = "demo-tenant"`
+Available: `demo-tenant` (cafe/restaurant), `laundry-indo` (laundry), `minimarket-demo` (retail)
+
+### Test command (payment orchestration)
+```
+npx tsx --tsconfig apps/api/tsconfig.node.json --test apps/api/src/__tests__/<file>.test.ts
+```
+
+### Type-check commands
+```
+pnpm --filter @northflow/payment-orchestration-core type-check
+pnpm --filter @northflow/payment-orchestration-service type-check
+```
+
+### Critical constraints
+- `tenants.id` is a slug string (e.g. `"demo-tenant"`), NOT uuid
+- No changes to `apps/api/src/payment-engine/` (legacy) or embedded FakeGateway/Xendit in main API
+- `IDEMPOTENCY_SCOPE = 'create_gateway_payment'` in CreateGatewayPayment (not 'gateway_payment')
+- Webhook route registered BEFORE auth middleware in `app.ts`
+- Memory: `.agents/memory/MEMORY.md` — read this for cross-session decisions
+
+---
+
 ## Overview
 AuraPoS is a modern, multi-tenant Point of Sale (POS) management system designed for cafés, restaurants, and retail businesses, supporting dine-in, takeaway, and delivery orders. Its primary purpose is to provide a robust and flexible solution for order and payment processing with a focus on real-time operations and data isolation.
 
