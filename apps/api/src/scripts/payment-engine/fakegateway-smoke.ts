@@ -71,10 +71,15 @@ if (!SERVICE_TOKEN || SERVICE_TOKEN.length < 32) {
 }
 
 // ── DB setup: find or create a fakegateway-smoke tenant ──────────────────────
+// Dynamic imports are used here instead of static top-level imports so that
+// DB modules are never loaded when the safety guards above exit early.
+// In ESM/TypeScript, static imports are evaluated before the module body runs,
+// meaning the DB connection would be initialized even if NODE_ENV=production
+// or PAYMENT_ENGINE_SMOKE_TEST is not set — defeating the safety guards.
 
-import { db } from '@pos/infrastructure/database';
-import { tenants } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+const { db } = await import('@pos/infrastructure/database');
+const { tenants } = await import('@shared/schema');
+const { eq } = await import('drizzle-orm');
 
 const existing = await db
   .select({ id: tenants.id })
@@ -364,7 +369,7 @@ await run('refund succeeded tx: refund tx created, intent status updated', async
   const r = await api('POST', `/api/payment-engine/transactions/${txId}/refund`, {
     amount: 100_000,
   });
-  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.status, 201, JSON.stringify(r.body));
   assert.equal(r.body.data.refundTransaction.status, 'succeeded');
   assert.equal(r.body.data.refundTransaction.direction, 'outgoing');
   assert.ok(
@@ -384,7 +389,7 @@ await run('reconciliation/stale-transactions: returns 200', async () => {
 await run('reconciliation/reprocess-stale-events (dry_run=true): returns 200', async () => {
   const r = await api('POST', '/api/payment-engine/reconciliation/reprocess-stale-events', {
     dry_run: true,
-    age_minutes: 30,
+    cutoff_minutes: 30,
   });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.success, true);
@@ -393,8 +398,8 @@ await run('reconciliation/reprocess-stale-events (dry_run=true): returns 200', a
 await run('reconciliation/expire-stale-transactions (dry_run=true): returns 200', async () => {
   const r = await api('POST', '/api/payment-engine/reconciliation/expire-stale-transactions', {
     dry_run: true,
-    age_minutes: 60,
-    providers: ['fake_gateway'],
+    cutoff_minutes: 60,
+    provider: 'fake_gateway',
   });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.success, true);

@@ -538,7 +538,7 @@ curl -s -X POST "$BASE_URL/api/payment-engine/transactions/<TRANSACTION_ID>/refu
   }' | python3 -m json.tool
 ```
 
-**Expected response (200):**
+**Expected response (201):**
 ```json
 {
   "success": true,
@@ -595,13 +595,13 @@ curl -s -X POST "$BASE_URL/api/payment-engine/reconciliation/reprocess-stale-eve
   -H "Content-Type: application/json" \
   -H "x-tenant-id: $TENANT_ID" \
   -H "x-payment-engine-service-token: $PAYMENT_ENGINE_SERVICE_TOKEN" \
-  -d '{ "dry_run": true, "age_minutes": 30 }' | python3 -m json.tool
+  -d '{ "dry_run": true, "cutoff_minutes": 30 }' | python3 -m json.tool
 ```
 
 #### 15b — List Stale Transactions
 
 ```bash
-curl -s "$BASE_URL/api/payment-engine/reconciliation/stale-transactions?age_minutes=30" \
+curl -s "$BASE_URL/api/payment-engine/reconciliation/stale-transactions?cutoff_minutes=30" \
   -H "x-tenant-id: $TENANT_ID" \
   -H "x-payment-engine-service-token: $PAYMENT_ENGINE_SERVICE_TOKEN" \
   | python3 -m json.tool
@@ -614,7 +614,7 @@ curl -s -X POST "$BASE_URL/api/payment-engine/reconciliation/expire-stale-transa
   -H "Content-Type: application/json" \
   -H "x-tenant-id: $TENANT_ID" \
   -H "x-payment-engine-service-token: $PAYMENT_ENGINE_SERVICE_TOKEN" \
-  -d '{ "dry_run": true, "age_minutes": 60, "providers": ["fake_gateway"] }' | python3 -m json.tool
+  -d '{ "dry_run": true, "cutoff_minutes": 60, "provider": "fake_gateway" }' | python3 -m json.tool
 ```
 
 #### 15d — Reconcile Intent Totals (dry-run)
