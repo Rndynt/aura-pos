@@ -1,61 +1,86 @@
+import type { ProviderCapabilities } from './provider';
+
 /**
  * providerAccount.ts — Provider account/configuration abstraction.
  *
- * Phase 6 introduction: separates per-tenant gateway credentials from the
- * provider implementation class.  This allows a single FakeGatewayProvider
- * (or future MidtransProvider) to serve multiple tenants, each with their own
- * credentials, without duplicating the adapter logic.
+ * Phase 6 introduction: separates per-tenant gateway configuration from the
+ * provider implementation class.
+ *
+ * Phase 6 Hardening change: raw `credentials` removed from domain type.
+ * The domain descriptor now uses `credentialsRef` (a string handle pointing to
+ * a secret stored outside the domain, e.g. in an env-var manager or vault).
+ * Infrastructure adapters resolve the reference at runtime — the domain type
+ * never holds a raw API key or secret.
  *
  * ┌─────────────────────────────────────────────────────────────────────────┐
  * │  No database table backs this type in Phase 6.                         │
- * │  Credentials are supplied to use-cases via constructor injection or     │
- * │  loaded from environment variables inside the provider adapter.        │
- * │  A future phase will introduce a `provider_accounts` table for         │
- * │  multi-tenant credential storage with encryption-at-rest.              │
+ * │  A future phase will introduce a `provider_accounts` table for          │
+ * │  multi-tenant configuration with credentialsRef stored encrypted-at-rest.│
  * └─────────────────────────────────────────────────────────────────────────┘
  */
 
 /**
- * ProviderAccountConfig — the configuration a gateway adapter needs to
- * initialise a connection to the provider for a specific tenant.
+ * ProviderAccountConfig — the configuration descriptor for a gateway account.
+ *
+ * This type is intentionally free of raw secrets.  Actual credentials are
+ * referenced by `credentialsRef` and resolved by infrastructure code that
+ * has access to the vault / environment variable store.
  *
  * Fields
  * ------
- * - `tenantId`      — which tenant owns this account config.
- * - `providerCode`  — matches `PaymentProvider.providerCode` (e.g. `'fake_gateway'`).
- * - `accountId`     — provider-assigned merchant/account identifier (e.g. merchant ID).
- * - `credentials`   — arbitrary key→value bag of secrets (API keys, client IDs, etc.).
- *                     Content is provider-specific; caller must know the shape.
- * - `sandboxMode`   — true when this account targets the provider's sandbox/test environment.
- * - `metadata`      — optional additional config values (timeouts, webhook URL overrides, etc.).
- *
- * Security note: `credentials` values are secrets.  Never log, serialise to JSON responses,
- * or store unencrypted.  The field is typed as `Record<string, string>` to prevent
- * accidental nesting of structured objects that could mask credential values.
+ * - `provider`              — matches `PaymentProvider.providerCode`.
+ * - `tenantId`              — which tenant owns this account (optional for global configs).
+ * - `merchantId`            — provider-assigned merchant/account identifier.
+ * - `environment`           — which environment this config targets.
+ * - `credentialsRef`        — opaque reference to a secret bundle (env-var name, vault path, etc.).
+ *                             Infrastructure resolves this to actual API keys at runtime.
+ *                             NEVER put a raw secret here.
+ * - `publicConfig`          — non-secret configuration (client-key prefix, webhook URL, etc.).
+ * - `capabilitiesOverride`  — optional per-account capability overrides (e.g. disable partial refund
+ *                             for a specific merchant agreement).
+ * - `metadata`              — optional miscellaneous config (timeouts, retry policy, etc.).
  */
 export interface ProviderAccountConfig {
-  /** Tenant that owns this provider account. */
-  tenantId: string;
   /** Matches the `providerCode` of the PaymentProvider adapter this config targets. */
-  providerCode: string;
+  provider: string;
+  /** Tenant that owns this provider account. Undefined for platform-level configs. */
+  tenantId?: string;
   /**
-   * Provider-assigned account/merchant identifier.
+   * Provider-assigned merchant/account identifier.
    * Examples: Midtrans merchant ID, Xendit account ID, Stripe account ID.
    */
-  accountId: string;
+  merchantId?: string;
   /**
-   * Secret credentials required to authenticate with the provider.
-   * Key names are provider-specific (e.g. `{ serverKey: '...', clientKey: '...' }`).
-   * Must be treated as secrets — never log or expose in API responses.
+   * Which environment this account config targets.
+   * - `sandbox`    — provider's sandbox/test environment (fake money).
+   * - `production` — provider's live environment (real money).
+   * - `test`       — local unit-test environment (FakeGateway, no HTTP calls).
    */
-  credentials: Record<string, string>;
+  environment: 'sandbox' | 'production' | 'test';
   /**
-   * When true, the adapter must target the provider's sandbox/test environment.
-   * When false (or undefined), the adapter targets the provider's production environment.
+   * Opaque reference to the secret credentials bundle for this account.
+   * Infrastructure code resolves this reference to actual API keys at runtime.
+   * Examples: `'MIDTRANS_TENANT_A_CREDENTIALS'` (env var name), `/secrets/midtrans/tenant-a` (vault path).
+   *
+   * NEVER store raw API keys, passwords, or tokens here.
+   * This field is intentionally a string reference, not the secret itself.
    */
-  sandboxMode?: boolean;
+  credentialsRef?: string;
   /**
-   * Optional provider-specific configuration (webhook URL override, timeout ms, etc.).
+   * Non-secret provider configuration.
+   * Examples: client-side publishable key prefix, webhook endpoint URL, timeout ms.
+   * Must not contain API keys, private keys, or any other secrets.
+   */
+  publicConfig?: Record<string, unknown>;
+  /**
+   * Per-account capability overrides.
+   * Use to restrict or extend the base provider capabilities for a specific merchant agreement.
+   * Example: `{ supportsPartialRefund: false }` to disable partial refunds for a merchant
+   * that has a non-standard refund agreement with the provider.
+   */
+  capabilitiesOverride?: Partial<ProviderCapabilities>;
+  /**
+   * Optional miscellaneous configuration (retry policy, rate limits, etc.).
    * Does not contain secrets.
    */
   metadata?: Record<string, unknown>;

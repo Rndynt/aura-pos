@@ -2,9 +2,9 @@ import { randomBytes, createHmac } from 'crypto';
 import type {
   PaymentProvider,
   ProviderCapabilities,
+  ProviderAction,
   CreateProviderPaymentInput,
   CreateProviderPaymentResult,
-  ProviderAction,
   CancelProviderPaymentInput,
   CancelProviderPaymentResult,
   RefundProviderPaymentInput,
@@ -27,18 +27,16 @@ const DEFAULT_NON_PROD_SECRET = 'fake-gateway-test-secret-default-dev-only-NOT-f
  *
  * Pass `metadata.scenario` in `createPayment()` input to select a scenario:
  *
- * | scenario           | status          | customer action        | notes                            |
- * |--------------------|-----------------|------------------------|----------------------------------|
- * | `redirect`         | requires_action | Redirect to URL        | Browser / webview redirect       |
- * | `qris`             | requires_action | Scan QR code           | QRIS / static QR payment         |
- * | `va`               | requires_action | Display VA number      | Bank virtual account              |
- * | `payment_code`     | requires_action | Display payment code   | Indomaret / Alfamart codes        |
- * | `immediate_success`| succeeded       | None                   | Settled immediately (no webhook) |
- * | `immediate_failure`| failed          | None                   | Rejected immediately (no webhook)|
- * | `pending_expiry`   | requires_action | Redirect to URL        | Expires in 15 minutes             |
- * | `default` (any)    | pending         | URL + QR (compat)      | Backward-compatible behavior      |
- *
- * @see CreateGatewayPayment for how each status value is handled.
+ * | scenario           | status          | action descriptor | notes                              |
+ * |--------------------|-----------------|-------------------|------------------------------------|
+ * | `redirect`         | requires_action | WEB_URL           | Browser / webview redirect         |
+ * | `qris`             | requires_action | QR_STRING         | QRIS / static QR payment           |
+ * | `va`               | requires_action | VA_NUMBER         | Bank virtual account               |
+ * | `payment_code`     | requires_action | PAYMENT_CODE      | Indomaret / Alfamart codes         |
+ * | `immediate_success`| succeeded       | NONE (no action)  | Settled immediately (no webhook)   |
+ * | `immediate_failure`| failed          | NONE (no action)  | Rejected immediately (no webhook)  |
+ * | `pending_expiry`   | requires_action | WEB_URL + expiry  | Expires in 15 minutes              |
+ * | `default` (any)    | pending         | NONE (no action)  | Backward-compatible behavior        |
  */
 export type FakeGatewayScenario =
   | 'redirect'
@@ -55,78 +53,60 @@ export type FakeGatewayScenario =
  *
  * ┌─────────────────────────────────────────────────────────────────────────┐
  * │  DO NOT use in production.  This provider has no real money movement.  │
+ * │  It is NOT a Midtrans, Xendit, or Stripe emulator.                     │
  * │  It exists solely for local development and automated tests.           │
  * └─────────────────────────────────────────────────────────────────────────┘
  *
- * Phase 6 Scenario Support
- * ------------------------
- * `createPayment()` now dispatches on `input.metadata?.scenario` to simulate
- * various real-world gateway behaviors.  Pass the scenario name from the test
- * or dev UI; any unrecognised value (including omitted) falls through to the
- * `default` scenario for full backward compatibility with Phase 2 callers.
- *
- * Scenario details
- * ----------------
- * - `redirect`         — status: requires_action; action: redirect to fake payment URL.
- * - `qris`             — status: requires_action; action: present_qr with QR string.
- * - `va`               — status: requires_action; action: display_code (virtual account number).
- * - `payment_code`     — status: requires_action; action: display_code (retail payment code).
- * - `immediate_success`— status: succeeded; no customer action.
- *                        CreateGatewayPayment applies allocation in same DB tx.
- * - `immediate_failure`— status: failed; no customer action; failureReason set.
- * - `pending_expiry`   — status: requires_action; action: redirect; expiresAt = +15 min.
- * - `default` (any)    — status: pending; providerPaymentUrl + providerQrString set
- *                        (backward-compatible; settles via ConfirmFakeGatewayPayment
- *                        or webhook).
+ * Phase 6 Hardening additions
+ * ---------------------------
+ * 1. All actions now include `descriptor` (WEB_URL, QR_STRING, VA_NUMBER,
+ *    PAYMENT_CODE, NONE) for machine-readable dispatch in UI/adapters.
+ * 2. Action `type` uses canonical `redirect_customer` (was `redirect`).
+ * 3. Expanded `capabilities` matrix (supportsRedirect, supportsQr, supportsVa,
+ *    supportsPaymentCode, canReturnImmediateSuccess, canReturnImmediateFailure, etc.)
+ * 4. cancel/refund messages updated: Phase 4 internal lifecycle exists;
+ *    provider-level API will be in a future real-provider adapter phase.
  *
  * Backward Compatibility
  * ----------------------
- * All Phase 2 / Phase 3 callers that do NOT pass `metadata.scenario` continue
- * to receive the `default` behavior:
+ * Callers that do NOT pass `metadata.scenario` receive the `default` behavior:
  *   - `status: 'pending'`
  *   - `providerPaymentUrl` and `providerQrString` both populated
- *   - `succeededImmediately: false`
- *   - `actions: []` (empty — callers who read providerPaymentUrl/providerQrString
- *     directly are not affected)
+ *   - `actions: []` (empty — legacy callers read legacy fields directly)
  *
  * Webhook signature
  * -----------------
- * The provider signs the raw request body with HMAC-SHA256.
- * Secret resolution order:
- *   1. FAKE_GATEWAY_WEBHOOK_SECRET env var (all environments)
- *   2. DEFAULT_NON_PROD_SECRET constant (non-production only)
- *   3. No valid secret → signature verification fails
- *
- * Use `FakeGatewayProvider.computeSignature(rawBody)` in tests to generate
- * a valid signature for a given payload.
- *
- * Webhook payload shape (JSON)
- * ----------------------------
- * {
- *   "event_id":          "evt_fake_<random>",   // unique event identifier
- *   "event_type":        "payment.succeeded",   // | "payment.failed" | "payment.pending" | other
- *   "provider_reference": "fake_<intent>_<hex>", // matches tx.providerReference
- *   "status":            "succeeded",           // | "failed" | "pending"
- *   "failure_reason":    null,                  // string or null
- *   "metadata":          {}                     // any extra fields
- * }
+ * HMAC-SHA256 via `x-fake-gateway-signature` header.
+ * Secret: FAKE_GATEWAY_WEBHOOK_SECRET env var, or DEFAULT_NON_PROD_SECRET in non-prod.
+ * Use `FakeGatewayProvider.computeSignature(rawBody)` in tests.
  */
 export class FakeGatewayProvider implements PaymentProvider {
   public readonly providerCode = 'fake_gateway';
 
   /**
-   * Phase 6: FakeGatewayProvider capabilities.
+   * Phase 6 Hardening: expanded capability matrix.
    *
-   * - canCancel / canRefund: false — Phase 4 stubs remain unchanged.
-   * - supportsWebhook: true — HMAC-signed webhook events are supported.
-   * - supportsPolling: false — no polling endpoint in FakeGateway.
-   * - supportedScenarios: all 8 scenario names (for dev/test tooling).
+   * FakeGateway supports all action types and both immediate outcomes
+   * (for scenario-driven testing). Cancel/refund provider API is not supported —
+   * internal void/refund lifecycle exists via Phase 4 use cases.
    */
   public readonly capabilities: ProviderCapabilities = {
+    // ── Gateway action capabilities ───────────────────────────────────────
+    supportsRedirect: true,
+    supportsQr: true,
+    supportsVa: true,
+    supportsPaymentCode: true,
+    canReturnImmediateSuccess: true,
+    canReturnImmediateFailure: true,
+    // ── Refund/cancel API (provider-level) ────────────────────────────────
     canCancel: false,
     canRefund: false,
+    supportsPartialRefund: false,
+    supportsMultiplePartialRefund: false,
+    // ── Communication model ───────────────────────────────────────────────
     supportsWebhook: true,
     supportsPolling: false,
+    // ── Dev/test scenario list ────────────────────────────────────────────
     supportedScenarios: [
       'redirect',
       'qris',
@@ -153,13 +133,12 @@ export class FakeGatewayProvider implements PaymentProvider {
   /**
    * createPayment — generate a fake payment with scenario-driven behavior.
    *
-   * Scenario dispatch order:
-   *   1. Read `input.metadata?.scenario` (string | undefined).
+   * Dispatch order:
+   *   1. Read `input.metadata?.scenario`.
    *   2. Match against known scenario names.
-   *   3. Any unrecognised value → `default` behavior (backward compat).
+   *   3. Any unrecognised value (including omitted) → `default` behavior.
    *
-   * Each scenario returns a fully-typed `CreateProviderPaymentResult` with
-   * both Phase 6 fields (`status`, `actions`) and legacy fields populated.
+   * All actions include the `descriptor` field for machine-readable dispatch.
    */
   async createPayment(input: CreateProviderPaymentInput): Promise<CreateProviderPaymentResult> {
     const scenario = (input.metadata?.['scenario'] as string | undefined) ?? 'default';
@@ -171,7 +150,8 @@ export class FakeGatewayProvider implements PaymentProvider {
       case 'redirect': {
         const url = `https://fake-gateway.local/pay/${providerReference}`;
         const action: ProviderAction = {
-          type: 'redirect',
+          type: 'redirect_customer',
+          descriptor: 'WEB_URL',
           label: 'Complete payment',
           value: url,
           expiresAt: null,
@@ -194,6 +174,7 @@ export class FakeGatewayProvider implements PaymentProvider {
         const qrString = `FAKE_QR:${providerReference}:${input.amount}:${input.currency}`;
         const action: ProviderAction = {
           type: 'present_qr',
+          descriptor: 'QR_STRING',
           label: 'Scan QR code',
           value: qrString,
           expiresAt: null,
@@ -213,10 +194,10 @@ export class FakeGatewayProvider implements PaymentProvider {
 
       // ── va (virtual account) ─────────────────────────────────────────────
       case 'va': {
-        // Deterministic-looking VA number: 10-digit numeric string
         const vaNumber = `8800${input.amount.toString().slice(-6).padStart(6, '0')}`;
         const action: ProviderAction = {
           type: 'display_code',
+          descriptor: 'VA_NUMBER',
           label: 'Virtual Account Number',
           value: vaNumber,
           expiresAt: null,
@@ -236,10 +217,10 @@ export class FakeGatewayProvider implements PaymentProvider {
 
       // ── payment_code (retail counter) ────────────────────────────────────
       case 'payment_code': {
-        // Alphanumeric payment code for retail payment counters (Indomaret / Alfamart)
         const code = `FAKE${suffix.toUpperCase()}`;
         const action: ProviderAction = {
           type: 'display_code',
+          descriptor: 'PAYMENT_CODE',
           label: 'Payment Code',
           value: code,
           expiresAt: null,
@@ -260,8 +241,8 @@ export class FakeGatewayProvider implements PaymentProvider {
       // ── immediate_success ────────────────────────────────────────────────
       case 'immediate_success': {
         // Payment settles immediately — no customer action required.
-        // CreateGatewayPayment is expected to apply the allocation in the same
-        // DB transaction when it receives status: 'succeeded'.
+        // CreateGatewayPayment handles allocation inline without calling
+        // ApplyGatewayTransactionStatus (no reversed lock ordering).
         return {
           status: 'succeeded',
           actions: [],
@@ -277,8 +258,7 @@ export class FakeGatewayProvider implements PaymentProvider {
 
       // ── immediate_failure ────────────────────────────────────────────────
       case 'immediate_failure': {
-        // Payment is rejected immediately — no customer action.
-        // CreateGatewayPayment records a failed transaction.
+        // Payment rejected immediately — no customer action.
         return {
           status: 'failed',
           actions: [],
@@ -294,11 +274,11 @@ export class FakeGatewayProvider implements PaymentProvider {
 
       // ── pending_expiry ───────────────────────────────────────────────────
       case 'pending_expiry': {
-        // Redirect payment with a short expiry (15 minutes from now).
         const url = `https://fake-gateway.local/pay/${providerReference}`;
         const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
         const action: ProviderAction = {
-          type: 'redirect',
+          type: 'redirect_customer',
+          descriptor: 'WEB_URL',
           label: 'Complete payment (expires soon)',
           value: url,
           expiresAt,
@@ -323,8 +303,8 @@ export class FakeGatewayProvider implements PaymentProvider {
       // ── default (backward-compatible behavior) ───────────────────────────
       default: {
         // Preserves Phase 2 / Phase 3 behavior exactly:
-        //   status: 'pending'  (transaction waits for webhook or ConfirmFakeGatewayPayment)
-        //   Both providerPaymentUrl and providerQrString are set
+        //   status: 'pending'  (waits for webhook or ConfirmFakeGatewayPayment)
+        //   Both providerPaymentUrl and providerQrString populated
         //   actions: [] (empty — legacy callers read legacy fields directly)
         const url = `https://fake-gateway.local/pay/${providerReference}`;
         const qrString = `FAKE_QR:${providerReference}:${input.amount}:${input.currency}`;
@@ -344,38 +324,46 @@ export class FakeGatewayProvider implements PaymentProvider {
   }
 
   /**
-   * Cancel is not supported in Phase 4.
-   * Void/cancel support is planned for a future phase when real gateway adapters are added.
+   * cancelPayment — provider-level gateway cancellation is not implemented.
+   *
+   * Phase 4 introduced the internal void lifecycle via `VoidPaymentTransaction`
+   * use case (no external provider API call required for FakeGateway).
+   * Real provider-level cancel API calls will be added in a future phase when
+   * a real gateway adapter (Midtrans, Xendit, Stripe) is integrated.
    */
   async cancelPayment(_input: CancelProviderPaymentInput): Promise<CancelProviderPaymentResult> {
     return {
       success: false,
-      failureReason: 'FakeGatewayProvider does not support cancel. Implement in Phase 4.',
+      failureReason:
+        'FakeGatewayProvider does not support provider-level cancel. ' +
+        'Use VoidPaymentTransaction use case (Phase 4) for internal void lifecycle. ' +
+        'Real provider cancel API will be added in a future gateway adapter phase.',
     };
   }
 
   /**
-   * Refund is not supported in Phase 4.
-   * Refund support (outgoing transactions + intent recalculation) is planned for Phase 4.
+   * refundPayment — provider-level gateway refund is not implemented.
+   *
+   * Phase 4 introduced the internal refund lifecycle via `RefundPaymentTransaction`
+   * use case (no external provider API call required for FakeGateway).
+   * Real provider-level refund API calls will be added in a future phase when
+   * a real gateway adapter (Midtrans, Xendit, Stripe) is integrated.
    */
   async refundPayment(_input: RefundProviderPaymentInput): Promise<RefundProviderPaymentResult> {
     return {
       providerReference: null,
       success: false,
-      failureReason: 'FakeGatewayProvider does not support refund. Implement in Phase 4.',
+      failureReason:
+        'FakeGatewayProvider does not support provider-level refund. ' +
+        'Use RefundPaymentTransaction use case (Phase 4) for internal refund lifecycle. ' +
+        'Real provider refund API will be added in a future gateway adapter phase.',
     };
   }
 
   /**
-   * Verify the HMAC-SHA256 signature in `x-fake-gateway-signature`.
+   * verifyWebhook — verify the HMAC-SHA256 signature in `x-fake-gateway-signature`.
    *
-   * Returns false in production (unconditionally) to prevent accidental
-   * webhook processing by a leaked fake-gateway endpoint.
-   *
-   * Returns false if:
-   *  - NODE_ENV === 'production'
-   *  - No secret is available
-   *  - The provided signature does not match
+   * Returns false in production (unconditionally).
    */
   async verifyWebhook(input: VerifyWebhookInput): Promise<boolean> {
     if (process.env.NODE_ENV === 'production') return false;
@@ -395,14 +383,9 @@ export class FakeGatewayProvider implements PaymentProvider {
   }
 
   /**
-   * Parse a fake gateway webhook payload.
+   * parseWebhook — parse a fake gateway webhook payload.
    *
-   * Expects JSON with:
-   *   event_id, event_type, provider_reference, status, failure_reason?, metadata?
-   *
-   * Throws if:
-   *  - The payload is not valid JSON
-   *  - Required fields (event_id, event_type, provider_reference) are missing
+   * Expects JSON with: event_id, event_type, provider_reference, status, failure_reason?, metadata?
    */
   async parseWebhook(input: ParseWebhookInput): Promise<ParsedProviderWebhook> {
     let body: Record<string, unknown>;
@@ -426,21 +409,12 @@ export class FakeGatewayProvider implements PaymentProvider {
       throw new Error('FakeGatewayProvider.parseWebhook: missing or invalid "provider_reference"');
     }
 
-    // Map event_type to canonical transactionStatus
     let transactionStatus: ParsedProviderWebhook['transactionStatus'];
     switch (eventType) {
-      case 'payment.succeeded':
-        transactionStatus = 'succeeded';
-        break;
-      case 'payment.failed':
-        transactionStatus = 'failed';
-        break;
-      case 'payment.pending':
-        transactionStatus = 'pending';
-        break;
-      default:
-        transactionStatus = 'ignored';
-        break;
+      case 'payment.succeeded': transactionStatus = 'succeeded'; break;
+      case 'payment.failed':    transactionStatus = 'failed';    break;
+      case 'payment.pending':   transactionStatus = 'pending';   break;
+      default:                  transactionStatus = 'ignored';   break;
     }
 
     const failureReason =
@@ -459,7 +433,6 @@ export class FakeGatewayProvider implements PaymentProvider {
       transactionStatus,
       failureReason,
       metadata,
-      // Legacy convenience fields — derived from transactionStatus
       isPaymentSuccess: transactionStatus === 'succeeded',
       isPaymentFailure: transactionStatus === 'failed',
       amount: typeof body['amount'] === 'number' ? body['amount'] : null,
@@ -471,13 +444,7 @@ export class FakeGatewayProvider implements PaymentProvider {
 
   /**
    * Compute the HMAC-SHA256 signature for a given raw payload.
-   *
-   * Used in tests and dev tooling to generate a valid signature without having
-   * to hand-craft the HMAC value.
-   *
-   * @param rawPayload  The raw request body string (same bytes the server receives).
-   * @param secret      Optional secret — defaults to the non-prod constant.
-   *                    Pass the value of FAKE_GATEWAY_WEBHOOK_SECRET if you set it.
+   * Use in tests to generate a valid signature without hand-crafting the HMAC.
    */
   static computeSignature(rawPayload: string, secret?: string): string {
     const s = secret ?? DEFAULT_NON_PROD_SECRET;

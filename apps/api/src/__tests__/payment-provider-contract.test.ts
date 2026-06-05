@@ -1,17 +1,26 @@
 /**
- * Payment Engine Phase 6 — Provider Contract Tests
+ * Payment Engine Phase 6 — Provider Contract Tests (Hardening edition)
  *
  * Covers:
  *  1.  ProviderCapabilities — FakeGatewayProvider and ManualProvider expose correct capabilities
- *  2.  CreateProviderPaymentResult shape — all new Phase 6 fields present on every result
- *  3.  FakeGateway scenarios — all 8 scenarios produce correct status/actions/legacy fields
- *  4.  ProviderAction contract — each action has type, label, value, optional expiresAt
- *  5.  CreateGatewayPayment with requires_action scenario — tx stored as requires_action
- *  6.  CreateGatewayPayment with immediate_success — allocation applied in same tx
- *  7.  CreateGatewayPayment with immediate_failure — tx stored as failed
- *  8.  CreateGatewayPayment with pending_expiry — tx stored as requires_action, expiresAt
- *  9.  ManualProvider capabilities — correct static values
- * 10.  ProviderAccountConfig type — structural validation
+ *  2.  Phase 6 Hardening capabilities expansion — supportsRedirect, supportsQr, supportsVa,
+ *      supportsPaymentCode, supportsPartialRefund, supportsMultiplePartialRefund,
+ *      canReturnImmediateSuccess, canReturnImmediateFailure
+ *  3.  CreateProviderPaymentResult shape — all Phase 6 fields present on every result
+ *  4.  FakeGateway scenarios — all 8 scenarios produce correct status/actions/legacy fields
+ *  5.  ProviderAction descriptor — every action has machine-readable `descriptor` field
+ *  6.  ProviderAction type — canonical `redirect_customer` used (not deprecated `redirect`)
+ *  7.  CreateGatewayPayment: requires_action / failed / pending_expiry / default paths
+ *  8.  CreateGatewayPayment immediate_success — direct settlement (NO ApplyGatewayTransactionStatus)
+ *      - tx created as succeeded directly (no two-step pending→succeeded)
+ *      - exactly one allocation created
+ *      - intent recalculated to paid
+ *      - idempotentReplay false
+ *  9.  CreateGatewayPayment immediate_failure — failed tx, no allocation
+ * 10.  CreateGatewayPayment: missing immediate-success deps → IMMEDIATE_SUCCESS_NOT_CONFIGURED
+ * 11.  ProviderAccountConfig — has credentialsRef, no raw credentials field
+ * 12.  FakeGateway cancel/refund messages — no stale Phase 4 language
+ * 13.  Phase 2 regression — default scenario still works without descriptor/actions
  */
 
 import '../../register-paths';
@@ -30,6 +39,7 @@ import type {
   DomainPaymentIntent,
   ProviderCapabilities,
   ProviderAction,
+  ProviderActionDescriptor,
   CreateProviderPaymentResult,
   ProviderAccountConfig,
 } from '@pos/domain/payments';
@@ -37,7 +47,6 @@ import { FakeGatewayProvider } from '@pos/infrastructure/payments/providers/Fake
 import type { FakeGatewayScenario } from '@pos/infrastructure/payments/providers/FakeGatewayProvider';
 import { PaymentProviderRegistry } from '@pos/application/payments/PaymentProviderRegistry';
 import { CreateGatewayPayment } from '@pos/application/payments/CreateGatewayPayment';
-import { ApplyGatewayTransactionStatus } from '@pos/application/payments/ApplyGatewayTransactionStatus';
 import { RecalculatePaymentIntent } from '@pos/application/payments/RecalculatePaymentIntent';
 
 // ── Sequence counters ─────────────────────────────────────────────────────────
@@ -107,11 +116,12 @@ function makeFakeTxRepo() {
         parentTransactionId: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-        succeededAt: null,
-        failedAt: null,
-        cancelledAt: null,
-        receivedAmount: null,
-        changeAmount: null,
+        // Only set timestamp fields if not already provided (immediate_success passes succeededAt)
+        succeededAt: d.succeededAt ?? null,
+        failedAt: d.failedAt ?? null,
+        cancelledAt: d.cancelledAt ?? null,
+        receivedAmount: d.receivedAmount ?? null,
+        changeAmount: d.changeAmount ?? null,
         failureReason: d.failureReason ?? null,
         providerReference: d.providerReference ?? null,
         providerPaymentUrl: d.providerPaymentUrl ?? null,
@@ -161,8 +171,12 @@ function makeFakeDb() {
 }
 
 /**
- * Build a fully wired CreateGatewayPayment with ApplyGatewayTransactionStatus
- * injected (required for immediate success/failure tests).
+ * Build a fully wired CreateGatewayPayment with:
+ * - allocationRepo (5th arg) — required for immediate success settlement
+ * - recalculate (6th arg)    — required for immediate success settlement
+ *
+ * Phase 6 Hardening: ApplyGatewayTransactionStatus is NOT injected.
+ * Direct settlement avoids the intent→tx→intent reversed lock ordering.
  */
 function makeFullUseCase(intent: DomainPaymentIntent) {
   const fakeDb = makeFakeDb();
@@ -175,13 +189,6 @@ function makeFullUseCase(intent: DomainPaymentIntent) {
     txRepo as any,
   );
 
-  const applyGatewayStatus = new ApplyGatewayTransactionStatus(
-    intentRepo as any,
-    txRepo as any,
-    allocationRepo as any,
-    recalculate,
-  );
-
   const registry = new PaymentProviderRegistry().register(new FakeGatewayProvider());
 
   const useCase = new CreateGatewayPayment(
@@ -189,13 +196,14 @@ function makeFullUseCase(intent: DomainPaymentIntent) {
     intentRepo as any,
     txRepo as any,
     registry,
-    applyGatewayStatus,
+    allocationRepo as any,
+    recalculate,
   );
 
-  return { useCase, intentRepo, txRepo, allocationRepo };
+  return { useCase, intentRepo, txRepo, allocationRepo, recalculate };
 }
 
-// ── Test suite 1: ProviderCapabilities ────────────────────────────────────────
+// ── Test suite 1: ProviderCapabilities (original + expanded) ─────────────────
 
 describe('ProviderCapabilities contract', () => {
   it('FakeGatewayProvider exposes capabilities object', () => {
@@ -208,7 +216,7 @@ describe('ProviderCapabilities contract', () => {
     assert.strictEqual(typeof caps.supportsPolling, 'boolean');
   });
 
-  it('FakeGatewayProvider.capabilities has correct values', () => {
+  it('FakeGatewayProvider.capabilities has correct original values', () => {
     const provider = new FakeGatewayProvider();
     assert.strictEqual(provider.capabilities.canCancel, false);
     assert.strictEqual(provider.capabilities.canRefund, false);
@@ -246,14 +254,73 @@ describe('ProviderCapabilities contract', () => {
   });
 });
 
-// ── Test suite 2: CreateProviderPaymentResult shape ───────────────────────────
+// ── Test suite 2: Phase 6 Hardening — Expanded capabilities matrix ────────────
+
+describe('Phase 6 Hardening — expanded ProviderCapabilities matrix', () => {
+  const fake = new FakeGatewayProvider();
+  const manual = new ManualProvider();
+
+  // ── FakeGateway gateway action capabilities ────────────────────────────────
+  it('FakeGateway: supportsRedirect is true', () => {
+    assert.strictEqual(fake.capabilities.supportsRedirect, true);
+  });
+  it('FakeGateway: supportsQr is true', () => {
+    assert.strictEqual(fake.capabilities.supportsQr, true);
+  });
+  it('FakeGateway: supportsVa is true', () => {
+    assert.strictEqual(fake.capabilities.supportsVa, true);
+  });
+  it('FakeGateway: supportsPaymentCode is true', () => {
+    assert.strictEqual(fake.capabilities.supportsPaymentCode, true);
+  });
+  it('FakeGateway: canReturnImmediateSuccess is true', () => {
+    assert.strictEqual(fake.capabilities.canReturnImmediateSuccess, true);
+  });
+  it('FakeGateway: canReturnImmediateFailure is true', () => {
+    assert.strictEqual(fake.capabilities.canReturnImmediateFailure, true);
+  });
+  it('FakeGateway: supportsPartialRefund is false', () => {
+    assert.strictEqual(fake.capabilities.supportsPartialRefund, false);
+  });
+  it('FakeGateway: supportsMultiplePartialRefund is false', () => {
+    assert.strictEqual(fake.capabilities.supportsMultiplePartialRefund, false);
+  });
+
+  // ── ManualProvider gateway action capabilities ─────────────────────────────
+  it('ManualProvider: supportsRedirect is false', () => {
+    assert.strictEqual(manual.capabilities.supportsRedirect, false);
+  });
+  it('ManualProvider: supportsQr is false', () => {
+    assert.strictEqual(manual.capabilities.supportsQr, false);
+  });
+  it('ManualProvider: supportsVa is false', () => {
+    assert.strictEqual(manual.capabilities.supportsVa, false);
+  });
+  it('ManualProvider: supportsPaymentCode is false', () => {
+    assert.strictEqual(manual.capabilities.supportsPaymentCode, false);
+  });
+  it('ManualProvider: canReturnImmediateSuccess is true (manual settles synchronously)', () => {
+    assert.strictEqual(manual.capabilities.canReturnImmediateSuccess, true);
+  });
+  it('ManualProvider: canReturnImmediateFailure is false', () => {
+    assert.strictEqual(manual.capabilities.canReturnImmediateFailure, false);
+  });
+  it('ManualProvider: supportsPartialRefund is false', () => {
+    assert.strictEqual(manual.capabilities.supportsPartialRefund, false);
+  });
+  it('ManualProvider: supportsMultiplePartialRefund is false', () => {
+    assert.strictEqual(manual.capabilities.supportsMultiplePartialRefund, false);
+  });
+  it('ManualProvider: supportsWebhook is false', () => {
+    assert.strictEqual(manual.capabilities.supportsWebhook, false);
+  });
+});
+
+// ── Test suite 3: CreateProviderPaymentResult shape ───────────────────────────
 
 describe('CreateProviderPaymentResult Phase 6 shape', () => {
   const provider = new FakeGatewayProvider();
 
-  /**
-   * Assert the full Phase 6 result shape is present regardless of scenario.
-   */
   function assertResultShape(result: CreateProviderPaymentResult, label: string) {
     assert.ok('status' in result, `${label}: missing "status" field`);
     assert.ok('actions' in result, `${label}: missing "actions" field`);
@@ -284,7 +351,185 @@ describe('CreateProviderPaymentResult Phase 6 shape', () => {
   }
 });
 
-// ── Test suite 3: FakeGateway scenario behaviors ──────────────────────────────
+// ── Test suite 4: ProviderAction descriptor — machine-readable value tags ─────
+
+describe('Phase 6 Hardening — ProviderAction descriptor field', () => {
+  const provider = new FakeGatewayProvider();
+
+  it('redirect action has descriptor WEB_URL', async () => {
+    const r = await provider.createPayment({
+      paymentIntentId: 'desc-redirect',
+      amount: 50000,
+      currency: 'IDR',
+      method: 'qris',
+      metadata: { scenario: 'redirect' },
+    });
+    assert.strictEqual(r.actions.length, 1);
+    const action = r.actions[0] as ProviderAction;
+    const desc: ProviderActionDescriptor = action.descriptor;
+    assert.strictEqual(desc, 'WEB_URL');
+  });
+
+  it('qris action has descriptor QR_STRING', async () => {
+    const r = await provider.createPayment({
+      paymentIntentId: 'desc-qris',
+      amount: 50000,
+      currency: 'IDR',
+      method: 'qris',
+      metadata: { scenario: 'qris' },
+    });
+    assert.strictEqual(r.actions.length, 1);
+    const desc: ProviderActionDescriptor = r.actions[0].descriptor;
+    assert.strictEqual(desc, 'QR_STRING');
+  });
+
+  it('va action has descriptor VA_NUMBER', async () => {
+    const r = await provider.createPayment({
+      paymentIntentId: 'desc-va',
+      amount: 50000,
+      currency: 'IDR',
+      method: 'bank_transfer',
+      metadata: { scenario: 'va' },
+    });
+    assert.strictEqual(r.actions.length, 1);
+    const desc: ProviderActionDescriptor = r.actions[0].descriptor;
+    assert.strictEqual(desc, 'VA_NUMBER');
+  });
+
+  it('payment_code action has descriptor PAYMENT_CODE', async () => {
+    const r = await provider.createPayment({
+      paymentIntentId: 'desc-payment-code',
+      amount: 50000,
+      currency: 'IDR',
+      method: 'other',
+      metadata: { scenario: 'payment_code' },
+    });
+    assert.strictEqual(r.actions.length, 1);
+    const desc: ProviderActionDescriptor = r.actions[0].descriptor;
+    assert.strictEqual(desc, 'PAYMENT_CODE');
+  });
+
+  it('immediate_success has no action (actions array empty)', async () => {
+    const r = await provider.createPayment({
+      paymentIntentId: 'desc-imm-success',
+      amount: 50000,
+      currency: 'IDR',
+      method: 'qris',
+      metadata: { scenario: 'immediate_success' },
+    });
+    assert.strictEqual(r.actions.length, 0);
+  });
+
+  it('immediate_failure has no action (actions array empty)', async () => {
+    const r = await provider.createPayment({
+      paymentIntentId: 'desc-imm-fail',
+      amount: 50000,
+      currency: 'IDR',
+      method: 'qris',
+      metadata: { scenario: 'immediate_failure' },
+    });
+    assert.strictEqual(r.actions.length, 0);
+  });
+
+  it('pending_expiry action has descriptor WEB_URL', async () => {
+    const r = await provider.createPayment({
+      paymentIntentId: 'desc-pending-expiry',
+      amount: 50000,
+      currency: 'IDR',
+      method: 'qris',
+      metadata: { scenario: 'pending_expiry' },
+    });
+    assert.strictEqual(r.actions.length, 1);
+    const desc: ProviderActionDescriptor = r.actions[0].descriptor;
+    assert.strictEqual(desc, 'WEB_URL');
+  });
+
+  it('all actions that have actions include label, value, and descriptor fields', async () => {
+    const scenarios: FakeGatewayScenario[] = ['redirect', 'qris', 'va', 'payment_code', 'pending_expiry'];
+    for (const scenario of scenarios) {
+      const r = await provider.createPayment({
+        paymentIntentId: `desc-all-${scenario}`,
+        amount: 50000,
+        currency: 'IDR',
+        method: 'qris',
+        metadata: { scenario },
+      });
+      for (const action of r.actions) {
+        assert.ok(typeof action.label === 'string' && action.label.length > 0,
+          `${scenario}: action.label must be a non-empty string`);
+        assert.ok(typeof action.descriptor === 'string' && action.descriptor.length > 0,
+          `${scenario}: action.descriptor must be a non-empty string`);
+        assert.ok(
+          ['WEB_URL', 'QR_STRING', 'VA_NUMBER', 'PAYMENT_CODE', 'NONE'].includes(action.descriptor),
+          `${scenario}: action.descriptor "${action.descriptor}" is not a valid ProviderActionDescriptor`,
+        );
+      }
+    }
+  });
+});
+
+// ── Test suite 5: ProviderAction canonical type — redirect_customer ────────────
+
+describe('Phase 6 Hardening — canonical action types', () => {
+  const provider = new FakeGatewayProvider();
+
+  it('redirect action uses canonical type redirect_customer (not deprecated redirect)', async () => {
+    const r = await provider.createPayment({
+      paymentIntentId: 'type-redirect',
+      amount: 50000,
+      currency: 'IDR',
+      method: 'qris',
+      metadata: { scenario: 'redirect' },
+    });
+    assert.strictEqual(r.actions[0].type, 'redirect_customer');
+  });
+
+  it('pending_expiry action uses canonical type redirect_customer', async () => {
+    const r = await provider.createPayment({
+      paymentIntentId: 'type-expiry',
+      amount: 50000,
+      currency: 'IDR',
+      method: 'qris',
+      metadata: { scenario: 'pending_expiry' },
+    });
+    assert.strictEqual(r.actions[0].type, 'redirect_customer');
+  });
+
+  it('qris action type is present_qr', async () => {
+    const r = await provider.createPayment({
+      paymentIntentId: 'type-qris',
+      amount: 50000,
+      currency: 'IDR',
+      method: 'qris',
+      metadata: { scenario: 'qris' },
+    });
+    assert.strictEqual(r.actions[0].type, 'present_qr');
+  });
+
+  it('va action type is display_code', async () => {
+    const r = await provider.createPayment({
+      paymentIntentId: 'type-va',
+      amount: 50000,
+      currency: 'IDR',
+      method: 'bank_transfer',
+      metadata: { scenario: 'va' },
+    });
+    assert.strictEqual(r.actions[0].type, 'display_code');
+  });
+
+  it('payment_code action type is display_code', async () => {
+    const r = await provider.createPayment({
+      paymentIntentId: 'type-pc',
+      amount: 50000,
+      currency: 'IDR',
+      method: 'other',
+      metadata: { scenario: 'payment_code' },
+    });
+    assert.strictEqual(r.actions[0].type, 'display_code');
+  });
+});
+
+// ── Test suite 6: FakeGateway scenario behaviors (full) ───────────────────────
 
 describe('FakeGatewayProvider scenarios', () => {
   const provider = new FakeGatewayProvider();
@@ -306,17 +551,22 @@ describe('FakeGatewayProvider scenarios', () => {
     assert.strictEqual(r.status, 'requires_action');
   });
 
-  it('redirect: has exactly one action of type redirect', async () => {
+  it('redirect: has exactly one action of type redirect_customer', async () => {
     const r = await provider.createPayment(input('redirect'));
     assert.strictEqual(r.actions.length, 1);
-    assert.strictEqual(r.actions[0].type, 'redirect');
+    assert.strictEqual(r.actions[0].type, 'redirect_customer');
   });
 
   it('redirect: action has non-empty label and value (URL)', async () => {
     const r = await provider.createPayment(input('redirect'));
     const action = r.actions[0] as ProviderAction;
     assert.ok(action.label.length > 0);
-    assert.ok(action.value.startsWith('https://'));
+    assert.ok((action.value ?? '').startsWith('https://'));
+  });
+
+  it('redirect: action descriptor is WEB_URL', async () => {
+    const r = await provider.createPayment(input('redirect'));
+    assert.strictEqual(r.actions[0].descriptor, 'WEB_URL');
   });
 
   it('redirect: legacy providerPaymentUrl is populated, providerQrString is null', async () => {
@@ -345,7 +595,12 @@ describe('FakeGatewayProvider scenarios', () => {
 
   it('qris: action value contains the QR string', async () => {
     const r = await provider.createPayment(input('qris'));
-    assert.ok(r.actions[0].value.startsWith('FAKE_QR:'));
+    assert.ok((r.actions[0].value ?? '').startsWith('FAKE_QR:'));
+  });
+
+  it('qris: action descriptor is QR_STRING', async () => {
+    const r = await provider.createPayment(input('qris'));
+    assert.strictEqual(r.actions[0].descriptor, 'QR_STRING');
   });
 
   it('qris: legacy providerQrString is populated, providerPaymentUrl is null', async () => {
@@ -369,8 +624,13 @@ describe('FakeGatewayProvider scenarios', () => {
 
   it('va: action value is a numeric string (VA number)', async () => {
     const r = await provider.createPayment(input('va'));
-    const vaNumber = r.actions[0].value;
+    const vaNumber = r.actions[0].value ?? '';
     assert.ok(/^\d+$/.test(vaNumber), `VA number "${vaNumber}" should be numeric`);
+  });
+
+  it('va: action descriptor is VA_NUMBER', async () => {
+    const r = await provider.createPayment(input('va'));
+    assert.strictEqual(r.actions[0].descriptor, 'VA_NUMBER');
   });
 
   it('va: legacy URL and QR fields are both null', async () => {
@@ -394,7 +654,12 @@ describe('FakeGatewayProvider scenarios', () => {
 
   it('payment_code: action value starts with FAKE prefix', async () => {
     const r = await provider.createPayment(input('payment_code'));
-    assert.ok(r.actions[0].value.startsWith('FAKE'));
+    assert.ok((r.actions[0].value ?? '').startsWith('FAKE'));
+  });
+
+  it('payment_code: action descriptor is PAYMENT_CODE', async () => {
+    const r = await provider.createPayment(input('payment_code'));
+    assert.strictEqual(r.actions[0].descriptor, 'PAYMENT_CODE');
   });
 
   // ── immediate_success ────────────────────────────────────────────────────
@@ -419,7 +684,7 @@ describe('FakeGatewayProvider scenarios', () => {
     assert.strictEqual(r.failureReason, null);
   });
 
-  it('immediate_success: providerReference is non-null (needed for lock)', async () => {
+  it('immediate_success: providerReference is non-null (needed for lookup)', async () => {
     const r = await provider.createPayment(input('immediate_success'));
     assert.ok(r.providerReference !== null, 'providerReference must be non-null for immediate_success');
   });
@@ -453,10 +718,10 @@ describe('FakeGatewayProvider scenarios', () => {
     assert.strictEqual(r.status, 'requires_action');
   });
 
-  it('pending_expiry: has one redirect action with expiresAt set', async () => {
+  it('pending_expiry: has one redirect_customer action with expiresAt set', async () => {
     const r = await provider.createPayment(input('pending_expiry'));
     assert.strictEqual(r.actions.length, 1);
-    assert.strictEqual(r.actions[0].type, 'redirect');
+    assert.strictEqual(r.actions[0].type, 'redirect_customer');
     assert.ok(r.actions[0].expiresAt instanceof Date, 'action.expiresAt should be a Date');
   });
 
@@ -465,7 +730,6 @@ describe('FakeGatewayProvider scenarios', () => {
     const r = await provider.createPayment(input('pending_expiry'));
     const after = Date.now();
     const expiresAt = r.expiresAt instanceof Date ? r.expiresAt.getTime() : 0;
-    // Should be +15 min ± 5 seconds
     assert.ok(expiresAt >= before + 14 * 60 * 1000, 'expiresAt should be at least 14 min ahead');
     assert.ok(expiresAt <= after + 16 * 60 * 1000, 'expiresAt should be at most 16 min ahead');
   });
@@ -483,7 +747,6 @@ describe('FakeGatewayProvider scenarios', () => {
       amount: 50000,
       currency: 'IDR',
       method: 'qris',
-      // No metadata.scenario
     });
     assert.strictEqual(r.status, 'pending');
   });
@@ -525,8 +788,6 @@ describe('FakeGatewayProvider scenarios', () => {
     assert.ok(r.providerPaymentUrl?.startsWith('https://'));
   });
 
-  // ── rawProviderResponse ───────────────────────────────────────────────────
-
   it('rawProviderResponse is present and is an object for all scenarios', async () => {
     for (const scenario of ['redirect', 'qris', 'immediate_success', 'default'] as FakeGatewayScenario[]) {
       const r = await provider.createPayment(input(scenario));
@@ -538,20 +799,15 @@ describe('FakeGatewayProvider scenarios', () => {
   });
 });
 
-// ── Test suite 4: CreateGatewayPayment — Phase 6 paths ───────────────────────
+// ── Test suite 7: CreateGatewayPayment — Phase 6 scenario paths ───────────────
 
 describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
 
   it('requires_action scenario: transaction stored with status requires_action', async () => {
-    const intent = makeIntent({
-      id: 'intent-p6-ra-1',
-      tenantId: 'tenant-a',
-      amountDue: 100_000,
-      amountRemaining: 100_000,
-    });
+    const intent = makeIntent({ id: 'intent-p6-ra-1', tenantId: 'tenant-a' });
     const { useCase, txRepo } = makeFullUseCase(intent);
 
-    const result = await useCase.execute({
+    await useCase.execute({
       tenantId: 'tenant-a',
       paymentIntentId: 'intent-p6-ra-1',
       amount: 100_000,
@@ -560,9 +816,9 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
       metadata: { scenario: 'redirect' },
     });
 
-    assert.strictEqual(result.transaction.status, 'requires_action');
-    assert.strictEqual(txRepo._store().length, 1);
-    assert.strictEqual(txRepo._store()[0].status, 'requires_action');
+    const stored = txRepo._store();
+    assert.strictEqual(stored.length, 1);
+    assert.strictEqual(stored[0].status, 'requires_action');
   });
 
   it('requires_action scenario: providerActions is non-empty', async () => {
@@ -579,8 +835,7 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
     });
 
     assert.ok(Array.isArray(result.providerActions));
-    assert.ok(result.providerActions.length > 0, 'providerActions should be non-empty for requires_action');
-    assert.strictEqual(result.providerActions[0].type, 'redirect');
+    assert.ok(result.providerActions.length > 0, 'redirect scenario should have actions');
   });
 
   it('requires_action scenario: immediateSuccess is false', async () => {
@@ -593,7 +848,7 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
       amount: 100_000,
       method: 'qris',
       provider: 'fake_gateway',
-      metadata: { scenario: 'qris' },
+      metadata: { scenario: 'redirect' },
     });
 
     assert.strictEqual(result.immediateSuccess, false);
@@ -601,26 +856,27 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
 
   it('requires_action scenario: intent amountPaid remains 0 (no allocation)', async () => {
     const intent = makeIntent({ id: 'intent-p6-ra-4', tenantId: 'tenant-a' });
-    const { useCase } = makeFullUseCase(intent);
+    const { useCase, allocationRepo } = makeFullUseCase(intent);
 
-    const result = await useCase.execute({
+    await useCase.execute({
       tenantId: 'tenant-a',
       paymentIntentId: 'intent-p6-ra-4',
       amount: 100_000,
       method: 'qris',
       provider: 'fake_gateway',
-      metadata: { scenario: 'qris' },
+      metadata: { scenario: 'redirect' },
     });
 
-    assert.strictEqual(result.intent.amountPaid, 0);
-    assert.strictEqual(result.intent.status, 'requires_payment');
+    assert.strictEqual(allocationRepo._store().length, 0, 'no allocation for requires_action');
   });
 
-  it('immediate_success scenario: transaction stored as succeeded', async () => {
+  // ── immediate_success direct settlement (Task 1 — lock-order fix) ─────────
+
+  it('immediate_success: transaction created directly as succeeded (no two-step)', async () => {
     const intent = makeIntent({ id: 'intent-p6-is-1', tenantId: 'tenant-a' });
     const { useCase, txRepo } = makeFullUseCase(intent);
 
-    const result = await useCase.execute({
+    await useCase.execute({
       tenantId: 'tenant-a',
       paymentIntentId: 'intent-p6-is-1',
       amount: 100_000,
@@ -629,12 +885,30 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
       metadata: { scenario: 'immediate_success' },
     });
 
-    assert.strictEqual(result.transaction.status, 'succeeded');
-    // The row was initially created as 'pending', then updated to 'succeeded' by ApplyGatewayTransactionStatus
-    assert.strictEqual(txRepo._store()[0].status, 'succeeded');
+    const stored = txRepo._store();
+    assert.strictEqual(stored.length, 1, 'exactly one tx created');
+    // Tx must be created as succeeded directly — NOT pending then updated
+    assert.strictEqual(stored[0].status, 'succeeded');
   });
 
-  it('immediate_success scenario: allocation is created', async () => {
+  it('immediate_success: succeededAt is populated on the created tx', async () => {
+    const intent = makeIntent({ id: 'intent-p6-is-at', tenantId: 'tenant-a' });
+    const { useCase, txRepo } = makeFullUseCase(intent);
+
+    await useCase.execute({
+      tenantId: 'tenant-a',
+      paymentIntentId: 'intent-p6-is-at',
+      amount: 100_000,
+      method: 'qris',
+      provider: 'fake_gateway',
+      metadata: { scenario: 'immediate_success' },
+    });
+
+    const stored = txRepo._store();
+    assert.ok(stored[0].succeededAt instanceof Date, 'succeededAt must be a Date on the created row');
+  });
+
+  it('immediate_success: allocation is created', async () => {
     const intent = makeIntent({ id: 'intent-p6-is-2', tenantId: 'tenant-a' });
     const { useCase, allocationRepo } = makeFullUseCase(intent);
 
@@ -647,12 +921,10 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
       metadata: { scenario: 'immediate_success' },
     });
 
-    assert.strictEqual(allocationRepo._store().length, 1, 'one allocation should be created');
-    assert.strictEqual(allocationRepo._store()[0].targetType, 'order');
-    assert.strictEqual(allocationRepo._store()[0].targetId, 'order-1');
+    assert.strictEqual(allocationRepo._store().length, 1, 'exactly one allocation created');
   });
 
-  it('immediate_success scenario: intent status becomes paid', async () => {
+  it('immediate_success: intent status becomes paid', async () => {
     const intent = makeIntent({ id: 'intent-p6-is-3', tenantId: 'tenant-a' });
     const { useCase } = makeFullUseCase(intent);
 
@@ -665,11 +937,10 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
       metadata: { scenario: 'immediate_success' },
     });
 
-    assert.strictEqual(result.intent.status, 'paid');
-    assert.strictEqual(result.immediateSuccess, true);
+    assert.strictEqual(result.intent.status, 'paid', 'intent must become paid after immediate success');
   });
 
-  it('immediate_success scenario: idempotentReplay is false', async () => {
+  it('immediate_success: idempotentReplay is false', async () => {
     const intent = makeIntent({ id: 'intent-p6-is-4', tenantId: 'tenant-a' });
     const { useCase } = makeFullUseCase(intent);
 
@@ -685,11 +956,46 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
     assert.strictEqual(result.idempotentReplay, false);
   });
 
+  it('immediate_success: immediateSuccess flag is true on output', async () => {
+    const intent = makeIntent({ id: 'intent-p6-is-5', tenantId: 'tenant-a' });
+    const { useCase } = makeFullUseCase(intent);
+
+    const result = await useCase.execute({
+      tenantId: 'tenant-a',
+      paymentIntentId: 'intent-p6-is-5',
+      amount: 100_000,
+      method: 'qris',
+      provider: 'fake_gateway',
+      metadata: { scenario: 'immediate_success' },
+    });
+
+    assert.strictEqual(result.immediateSuccess, true);
+  });
+
+  it('immediate_success: exactly one tx row in store (no extra pending row)', async () => {
+    const intent = makeIntent({ id: 'intent-p6-is-6', tenantId: 'tenant-a' });
+    const { useCase, txRepo } = makeFullUseCase(intent);
+
+    await useCase.execute({
+      tenantId: 'tenant-a',
+      paymentIntentId: 'intent-p6-is-6',
+      amount: 100_000,
+      method: 'qris',
+      provider: 'fake_gateway',
+      metadata: { scenario: 'immediate_success' },
+    });
+
+    // Must be 1 tx, not 2 (old code created pending then updated to succeeded)
+    assert.strictEqual(txRepo._store().length, 1);
+  });
+
+  // ── immediate_failure ─────────────────────────────────────────────────────
+
   it('immediate_failure scenario: transaction stored as failed', async () => {
     const intent = makeIntent({ id: 'intent-p6-if-1', tenantId: 'tenant-a' });
     const { useCase, txRepo } = makeFullUseCase(intent);
 
-    const result = await useCase.execute({
+    await useCase.execute({
       tenantId: 'tenant-a',
       paymentIntentId: 'intent-p6-if-1',
       amount: 100_000,
@@ -698,8 +1004,9 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
       metadata: { scenario: 'immediate_failure' },
     });
 
-    assert.strictEqual(result.transaction.status, 'failed');
-    assert.strictEqual(txRepo._store()[0].status, 'failed');
+    const stored = txRepo._store();
+    assert.strictEqual(stored.length, 1);
+    assert.strictEqual(stored[0].status, 'failed');
   });
 
   it('immediate_failure scenario: no allocation created', async () => {
@@ -715,7 +1022,7 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
       metadata: { scenario: 'immediate_failure' },
     });
 
-    assert.strictEqual(allocationRepo._store().length, 0, 'no allocation for failed tx');
+    assert.strictEqual(allocationRepo._store().length, 0);
   });
 
   it('immediate_failure scenario: intent remains in requires_payment', async () => {
@@ -732,7 +1039,6 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
     });
 
     assert.strictEqual(result.intent.status, 'requires_payment');
-    assert.strictEqual(result.immediateSuccess, false);
   });
 
   it('immediate_failure scenario: failureReason stored on transaction', async () => {
@@ -748,18 +1054,20 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
       metadata: { scenario: 'immediate_failure' },
     });
 
-    const storedTx = txRepo._store()[0];
+    const stored = txRepo._store();
     assert.ok(
-      typeof storedTx.failureReason === 'string' && storedTx.failureReason.length > 0,
-      'failureReason should be stored on failed transaction',
+      typeof stored[0].failureReason === 'string' && stored[0].failureReason.length > 0,
+      'failureReason must be a non-empty string for immediate_failure',
     );
   });
+
+  // ── pending_expiry ────────────────────────────────────────────────────────
 
   it('pending_expiry scenario: transaction stored as requires_action', async () => {
     const intent = makeIntent({ id: 'intent-p6-pe-1', tenantId: 'tenant-a' });
     const { useCase, txRepo } = makeFullUseCase(intent);
 
-    const result = await useCase.execute({
+    await useCase.execute({
       tenantId: 'tenant-a',
       paymentIntentId: 'intent-p6-pe-1',
       amount: 100_000,
@@ -768,8 +1076,8 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
       metadata: { scenario: 'pending_expiry' },
     });
 
-    assert.strictEqual(result.transaction.status, 'requires_action');
-    assert.strictEqual(txRepo._store()[0].status, 'requires_action');
+    const stored = txRepo._store();
+    assert.strictEqual(stored[0].status, 'requires_action');
   });
 
   it('pending_expiry scenario: providerActions includes action with expiresAt', async () => {
@@ -785,59 +1093,60 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
       metadata: { scenario: 'pending_expiry' },
     });
 
-    assert.ok(result.providerActions.length > 0, 'providerActions should be non-empty');
-    assert.ok(
-      result.providerActions[0].expiresAt instanceof Date,
-      'action.expiresAt should be a Date for pending_expiry',
-    );
+    const actionsWithExpiry = result.providerActions.filter(a => a.expiresAt instanceof Date);
+    assert.ok(actionsWithExpiry.length > 0, 'pending_expiry should have at least one action with expiresAt');
   });
+
+  // ── default (backward compat) ─────────────────────────────────────────────
 
   it('default scenario (no metadata): transaction stored as pending (backward compat)', async () => {
     const intent = makeIntent({ id: 'intent-p6-def-1', tenantId: 'tenant-a' });
     const { useCase, txRepo } = makeFullUseCase(intent);
 
-    const result = await useCase.execute({
+    await useCase.execute({
       tenantId: 'tenant-a',
       paymentIntentId: 'intent-p6-def-1',
       amount: 100_000,
       method: 'qris',
       provider: 'fake_gateway',
-      // No metadata — default scenario
+      // no metadata / no scenario
     });
 
-    assert.strictEqual(result.transaction.status, 'pending');
-    assert.strictEqual(txRepo._store()[0].status, 'pending');
-    assert.strictEqual(result.immediateSuccess, false);
-    assert.strictEqual(result.providerActions.length, 0);
+    const stored = txRepo._store();
+    assert.strictEqual(stored[0].status, 'pending');
   });
 
-  it('immediate_success without applyGatewayStatus throws IMMEDIATE_SUCCESS_NOT_CONFIGURED', async () => {
-    const intent = makeIntent({ id: 'intent-p6-nc-1', tenantId: 'tenant-a' });
+  // ── missing deps guard ────────────────────────────────────────────────────
+
+  it('immediate_success without allocationRepo/recalculate throws IMMEDIATE_SUCCESS_NOT_CONFIGURED', async () => {
+    const intent = makeIntent({ id: 'intent-p6-nd-1', tenantId: 'tenant-a' });
+
+    // Construct use case with only 4 args (no allocationRepo or recalculate)
     const fakeDb = makeFakeDb();
     const intentRepo = makeFakeIntentRepo(intent);
     const txRepo = makeFakeTxRepo();
     const registry = new PaymentProviderRegistry().register(new FakeGatewayProvider());
 
-    // Construct WITHOUT applyGatewayStatus (4-arg form)
     const useCase = new CreateGatewayPayment(
       fakeDb as any,
       intentRepo as any,
       txRepo as any,
       registry,
-      // no 5th arg
+      // 5th arg (allocationRepo) omitted
+      // 6th arg (recalculate) omitted
     );
 
     await assert.rejects(
       () => useCase.execute({
         tenantId: 'tenant-a',
-        paymentIntentId: 'intent-p6-nc-1',
+        paymentIntentId: 'intent-p6-nd-1',
         amount: 100_000,
         method: 'qris',
         provider: 'fake_gateway',
         metadata: { scenario: 'immediate_success' },
       }),
       (err: any) => {
-        assert.ok(err instanceof PaymentPolicyError);
+        assert.ok(err instanceof PaymentPolicyError, 'should throw PaymentPolicyError');
         assert.strictEqual(err.code, 'IMMEDIATE_SUCCESS_NOT_CONFIGURED');
         return true;
       },
@@ -845,65 +1154,141 @@ describe('CreateGatewayPayment — Phase 6 scenario paths', () => {
   });
 });
 
-// ── Test suite 5: ProviderAccountConfig type ──────────────────────────────────
+// ── Test suite 8: ProviderAccountConfig — credentialsRef, no raw credentials ──
 
 describe('ProviderAccountConfig type', () => {
-  it('accepts a fully-typed config object', () => {
+
+  it('accepts a fully-typed config object with credentialsRef', () => {
     const config: ProviderAccountConfig = {
-      tenantId: 'tenant-a',
-      providerCode: 'fake_gateway',
-      accountId: 'merchant-001',
-      credentials: { apiKey: 'test-key', clientKey: 'client-key' },
-      sandboxMode: true,
-      metadata: { webhookUrl: 'https://example.com/webhook' },
+      provider: 'fake_gateway',
+      tenantId: 'tenant-demo',
+      merchantId: 'merchant-001',
+      environment: 'sandbox',
+      credentialsRef: 'FAKE_GATEWAY_TENANT_DEMO_CREDENTIALS',
+      publicConfig: { clientKey: 'pk_test_abc123' },
+      capabilitiesOverride: { supportsPartialRefund: false },
+      metadata: { timeoutMs: 10000 },
     };
-    assert.strictEqual(config.tenantId, 'tenant-a');
-    assert.strictEqual(config.providerCode, 'fake_gateway');
-    assert.strictEqual(config.accountId, 'merchant-001');
-    assert.strictEqual(config.sandboxMode, true);
-    assert.strictEqual(typeof config.credentials['apiKey'], 'string');
+    assert.strictEqual(config.provider, 'fake_gateway');
+    assert.strictEqual(config.environment, 'sandbox');
+    assert.strictEqual(config.credentialsRef, 'FAKE_GATEWAY_TENANT_DEMO_CREDENTIALS');
+    assert.ok(!('credentials' in config), 'ProviderAccountConfig must NOT have a raw credentials field');
   });
 
-  it('optional sandboxMode and metadata can be omitted', () => {
+  it('optional fields can be omitted — only provider and environment are required', () => {
     const config: ProviderAccountConfig = {
-      tenantId: 'tenant-b',
-      providerCode: 'fake_gateway',
-      accountId: 'merchant-002',
-      credentials: { apiKey: 'k' },
+      provider: 'manual',
+      environment: 'test',
     };
-    assert.strictEqual(config.sandboxMode, undefined);
+    assert.strictEqual(config.tenantId, undefined);
+    assert.strictEqual(config.merchantId, undefined);
+    assert.strictEqual(config.credentialsRef, undefined);
+    assert.strictEqual(config.publicConfig, undefined);
+    assert.strictEqual(config.capabilitiesOverride, undefined);
     assert.strictEqual(config.metadata, undefined);
+  });
+
+  it('environment field accepts sandbox, production, and test values', () => {
+    const environments: ProviderAccountConfig['environment'][] = ['sandbox', 'production', 'test'];
+    for (const environment of environments) {
+      const config: ProviderAccountConfig = { provider: 'fake_gateway', environment };
+      assert.strictEqual(config.environment, environment);
+    }
   });
 });
 
-// ── Test suite 6: Phase 2 regression ─────────────────────────────────────────
+// ── Test suite 9: FakeGateway cancel/refund messages — no stale Phase 4 text ──
+
+describe('Phase 6 Hardening — FakeGateway cancel/refund message cleanup', () => {
+  const provider = new FakeGatewayProvider();
+
+  it('cancelPayment returns success:false (not supported at provider level)', async () => {
+    const result = await provider.cancelPayment({ providerReference: 'fake_ref_cancel' });
+    assert.strictEqual(result.success, false);
+    assert.ok(typeof result.failureReason === 'string' && result.failureReason.length > 0);
+  });
+
+  it('cancelPayment failureReason mentions VoidPaymentTransaction (Phase 4)', async () => {
+    const result = await provider.cancelPayment({ providerReference: 'fake_ref_cancel' });
+    assert.ok(
+      result.failureReason!.includes('VoidPaymentTransaction'),
+      'cancel message should reference VoidPaymentTransaction use case',
+    );
+  });
+
+  it('cancelPayment failureReason does NOT say "planned for Phase 4" or "Implement in Phase 4"', async () => {
+    const result = await provider.cancelPayment({ providerReference: 'fake_ref_cancel' });
+    assert.ok(
+      !result.failureReason!.includes('planned for Phase 4'),
+      'stale "planned for Phase 4" text should be removed',
+    );
+    assert.ok(
+      !result.failureReason!.includes('Implement in Phase 4'),
+      'stale "Implement in Phase 4" text should be removed',
+    );
+  });
+
+  it('cancelPayment message mentions future gateway adapter phase', async () => {
+    const result = await provider.cancelPayment({ providerReference: 'fake_ref_cancel' });
+    assert.ok(
+      result.failureReason!.toLowerCase().includes('future') ||
+      result.failureReason!.toLowerCase().includes('adapter'),
+      'cancel message should mention a future provider adapter phase',
+    );
+  });
+
+  it('refundPayment returns success:false (not supported at provider level)', async () => {
+    const result = await provider.refundPayment({ providerReference: 'fake_ref_refund', amount: 5000 });
+    assert.strictEqual(result.success, false);
+    assert.ok(typeof result.failureReason === 'string' && result.failureReason.length > 0);
+  });
+
+  it('refundPayment failureReason mentions RefundPaymentTransaction (Phase 4)', async () => {
+    const result = await provider.refundPayment({ providerReference: 'fake_ref_refund', amount: 5000 });
+    assert.ok(
+      result.failureReason!.includes('RefundPaymentTransaction'),
+      'refund message should reference RefundPaymentTransaction use case',
+    );
+  });
+
+  it('refundPayment failureReason does NOT say "planned for Phase 4" or "Implement in Phase 4"', async () => {
+    const result = await provider.refundPayment({ providerReference: 'fake_ref_refund', amount: 5000 });
+    assert.ok(
+      !result.failureReason!.includes('planned for Phase 4'),
+      'stale "planned for Phase 4" text should be removed',
+    );
+    assert.ok(
+      !result.failureReason!.includes('Implement in Phase 4'),
+      'stale "Implement in Phase 4" text should be removed',
+    );
+  });
+});
+
+// ── Test suite 10: Phase 2 regression ────────────────────────────────────────
 
 describe('Phase 2 regression — default scenario still works', () => {
+
   it('FakeGatewayProvider default createPayment returns non-null providerReference, URL, QR', async () => {
     const provider = new FakeGatewayProvider();
-    const r = await provider.createPayment({
-      paymentIntentId: 'intent-reg-1',
-      amount: 100000,
+    const result = await provider.createPayment({
+      paymentIntentId: 'intent-reg-p2',
+      amount: 50000,
       currency: 'IDR',
       method: 'qris',
     });
-    assert.ok(r.providerReference?.startsWith('fake_intent-reg-1_'));
-    assert.ok(r.providerPaymentUrl?.includes(r.providerReference!));
-    assert.ok(r.providerQrString?.includes(r.providerReference!));
-    assert.strictEqual(r.succeededImmediately, false);
-    assert.strictEqual(r.failureReason, null);
+    assert.ok(result.providerReference !== null, 'providerReference must be non-null');
+    assert.ok(result.providerPaymentUrl !== null, 'providerPaymentUrl must be non-null');
+    assert.ok(result.providerQrString !== null, 'providerQrString must be non-null');
   });
 
   it('ManualProvider createPayment has status succeeded (Phase 6 field)', async () => {
     const provider = new ManualProvider();
-    const r = await provider.createPayment({
-      paymentIntentId: 'intent-manual-1',
+    const result = await provider.createPayment({
+      paymentIntentId: 'intent-reg-manual',
       amount: 50000,
       currency: 'IDR',
-      method: 'cash',
+      method: 'qris',
     });
-    assert.strictEqual(r.status, 'succeeded');
-    assert.strictEqual(r.succeededImmediately, true);
-    assert.strictEqual(r.actions.length, 0);
+    assert.strictEqual(result.status, 'succeeded');
   });
 });

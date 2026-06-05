@@ -2,6 +2,7 @@ import type { Database } from '@pos/infrastructure/database';
 import type {
   IPaymentIntentRepository,
   IPaymentTransactionRepository,
+  IPaymentAllocationRepository,
 } from '@pos/infrastructure/repositories/payments';
 import type { DomainPaymentIntent, DomainPaymentTransaction, ProviderAction } from '@pos/domain/payments';
 import {
@@ -12,8 +13,8 @@ import {
 import type { PaymentProviderRegistry } from './PaymentProviderRegistry';
 import { intentRowToDomain } from './CreatePaymentIntent';
 import { txRowToDomain } from './ListPaymentTransactions';
-import type { ApplyGatewayTransactionStatus } from './ApplyGatewayTransactionStatus';
-import type { InsertPaymentTransaction } from '../../../shared/schema';
+import type { RecalculatePaymentIntent } from './RecalculatePaymentIntent';
+import type { InsertPaymentTransaction, InsertPaymentAllocation } from '../../../shared/schema';
 
 export interface CreateGatewayPaymentInput {
   tenantId: string;
@@ -30,30 +31,28 @@ export interface CreateGatewayPaymentOutput {
   transaction: DomainPaymentTransaction;
   /** Provider-assigned reference for webhook matching and lookup. */
   providerReference: string | null;
-  /** @deprecated Prefer providerActions[].value for redirect actions. */
+  /** @deprecated Prefer providerActions[descriptor=WEB_URL].value */
   providerPaymentUrl: string | null;
-  /** @deprecated Prefer providerActions[].value for QR actions. */
+  /** @deprecated Prefer providerActions[descriptor=QR_STRING].value */
   providerQrString: string | null;
   /** True when this response was produced by an idempotency replay (no new tx created). */
   idempotentReplay: boolean;
   /**
    * Phase 6: Ordered list of customer actions returned by the provider.
+   * Each action includes a machine-readable `descriptor` for UI dispatch.
    * Empty for pending/succeeded/failed outcomes or idempotent replays.
    */
   providerActions: ProviderAction[];
   /**
-   * Phase 6: True when the provider settled the transaction immediately
-   * (scenario: immediate_success).  Allocation is applied in the same DB tx.
+   * Phase 6: True when the provider settled the transaction immediately.
+   * Allocation was applied and intent recalculated in the same DB transaction.
    */
   immediateSuccess: boolean;
 }
 
 /**
- * Provider whitelist: only fake_gateway may be used until a real gateway phase
- * integrates production adapters.  This guard prevents accidental real-money
- * calls if a future provider code leaks in before its adapter is hardened.
- *
- * Expand this set when adding Midtrans, Xendit, Stripe, etc.
+ * Provider whitelist: only fake_gateway is allowed until a real gateway phase
+ * integrates hardened production adapters. Prevents accidental real-money calls.
  */
 const ALLOWED_GATEWAY_PROVIDERS = new Set<string>(['fake_gateway']);
 
@@ -61,49 +60,50 @@ const ALLOWED_GATEWAY_PROVIDERS = new Set<string>(['fake_gateway']);
  * CreateGatewayPayment — create a pending/requires_action/immediate payment
  * via a registered gateway provider.
  *
- * Phase 6 additions
- * -----------------
- * 1. Provider result `status` field drives transaction status:
- *    - `pending`         → transaction stored as `pending`
- *    - `requires_action` → transaction stored as `requires_action`
- *    - `succeeded`       → transaction stored as `pending`, then immediately
- *                          transitioned to `succeeded` (via ApplyGatewayTransactionStatus)
- *                          + allocation created — all in the same DB transaction.
- *    - `failed`          → transaction stored as `failed`; no allocation.
+ * Phase 6 Hardening — Immediate-success lock-ordering fix
+ * ========================================================
  *
- * 2. `providerActions` from the provider result are propagated to the caller.
+ * Background
+ * ----------
+ * Normal settlement flows (webhook, confirmation) follow strict lock ordering:
+ *   1. payment_transactions FOR UPDATE
+ *   2. payment_intents FOR UPDATE
  *
- * 3. `immediateSuccess: true` is set on the output when the provider settles
- *    the payment synchronously.
+ * The Phase 6 original implementation called ApplyGatewayTransactionStatus
+ * (which follows the tx→intent order) from inside CreateGatewayPayment after
+ * Step 1 had already locked the intent.  This produced:
+ *   intent → tx → intent
+ * — a reversed lock-order pattern that is safe now but would be a deadlock
+ * hazard once concurrent real-provider flows exist.
  *
- * Immediate success implementation
- * ---------------------------------
- * For `succeeded` status, `applyGatewayStatus` (optional 5th constructor arg)
- * is called within the SAME outer DB transaction.  This atomically:
- *   a) Updates the transaction row to `succeeded`
- *   b) Creates a payment allocation
- *   c) Recalculates intent totals (amountPaid, amountRemaining, status)
+ * Fix
+ * ---
+ * For `status: 'succeeded'` from the provider, CreateGatewayPayment now:
+ *   a) Creates the transaction directly as `succeeded` (no pending→succeeded
+ *      two-step).
+ *   b) Creates the allocation directly using the already-locked intent data.
+ *   c) Recalculates intent totals using RecalculatePaymentIntent.
  *
- * If `applyGatewayStatus` is not injected and the provider returns `succeeded`,
+ * Because CreateGatewayPayment OWNS the newly created tx row (it just inserted
+ * it) and already holds the intent FOR UPDATE lock, no additional row locking
+ * is needed.  ApplyGatewayTransactionStatus is NOT called — avoiding the
+ * tx→intent re-lock that would produce the mixed ordering.
+ *
+ * Lock ordering summary
+ * ---------------------
+ * - Normal settlement (webhook/confirm): tx FOR UPDATE → intent FOR UPDATE
+ * - Immediate-success in CreateGatewayPayment: intent FOR UPDATE only
+ *   (tx was just created; caller owns it; no lock contention possible)
+ *
+ * Constructor dependencies
+ * ------------------------
+ * The 5th (`allocationRepo`) and 6th (`recalculate`) arguments are optional
+ * for backward compatibility with Phase 2 unit tests that construct this use
+ * case with 4 arguments.  Those tests use the `default` scenario which returns
+ * `status: 'pending'` and never triggers the immediate-success path.
+ *
+ * If either dependency is missing and the provider returns `succeeded`,
  * a clear `IMMEDIATE_SUCCESS_NOT_CONFIGURED` error is thrown.
- *
- * Locking order (unchanged from Phase 2)
- * ----------------------------------------
- * CreateGatewayPayment locks payment_intents FOR UPDATE (Step 1).
- * When `applyGatewayStatus` is called for immediate success it locks
- * payment_transactions FOR UPDATE → payment_intents FOR UPDATE (the standard
- * settlement locking order).  This is safe because the intent lock is
- * released by the inner helper after it re-acquires it — Drizzle's
- * savepoint nesting means both locks live within the same pg transaction.
- *
- * Backward compatibility
- * -----------------------
- * - The 5th constructor argument (`applyGatewayStatus`) is optional so that
- *   existing Phase 2 unit tests can continue to construct this use-case with
- *   4 arguments.  Those tests use the `default` scenario which returns
- *   `status: 'pending'` and never triggers the immediate-success path.
- * - `providerPaymentUrl` and `providerQrString` on the output are kept for
- *   all callers that read them directly from the response.
  */
 export class CreateGatewayPayment {
   constructor(
@@ -112,10 +112,16 @@ export class CreateGatewayPayment {
     private readonly txRepo: IPaymentTransactionRepository,
     private readonly providerRegistry: PaymentProviderRegistry,
     /**
-     * Optional — required only when providers may return `status: 'succeeded'`
-     * (immediate success).  Inject via container for production use.
+     * Required for immediate-success settlement (provider returns `status: 'succeeded'`).
+     * Optional for backward compat with 4-arg Phase 2 test constructions.
      */
-    private readonly applyGatewayStatus?: ApplyGatewayTransactionStatus,
+    private readonly allocationRepo?: IPaymentAllocationRepository,
+    /**
+     * Required for immediate-success settlement — recalculates intent totals
+     * after the allocation is created.
+     * Optional for backward compat with 4-arg Phase 2 test constructions.
+     */
+    private readonly recalculate?: RecalculatePaymentIntent,
   ) {}
 
   async execute(input: CreateGatewayPaymentInput): Promise<CreateGatewayPaymentOutput> {
@@ -123,7 +129,6 @@ export class CreateGatewayPayment {
       throw new PaymentPolicyError('Payment amount must be greater than zero', 'INVALID_AMOUNT');
     }
 
-    // Provider whitelist guard — prevents accidental real-money calls
     if (!ALLOWED_GATEWAY_PROVIDERS.has(input.provider)) {
       throw new PaymentPolicyError(
         `Provider "${input.provider}" is not supported for gateway payments. ` +
@@ -132,12 +137,14 @@ export class CreateGatewayPayment {
       );
     }
 
-    // Resolve the provider — throws UNSUPPORTED_PROVIDER if not registered
     const gatewayProvider = this.providerRegistry.get(input.provider);
 
     return await this.db.transaction(async (tx) => {
-      // Step 1 — Lock the intent row FOR UPDATE (prevents concurrent overpayment /
-      // status change while we are creating the transaction).
+      // Step 1 — Lock the intent row FOR UPDATE.
+      // This is the only lock acquired in CreateGatewayPayment.
+      // Immediate-success path uses this already-held lock for the allocation
+      // step — it does NOT call ApplyGatewayTransactionStatus (which would
+      // re-lock tx→intent and reverse the ordering).
       const intentRow = await this.intentRepo.lockForUpdate(
         input.paymentIntentId,
         input.tenantId,
@@ -151,17 +158,6 @@ export class CreateGatewayPayment {
       const intentDomain = intentRowToDomain(intentRow);
 
       // Step 2 — Idempotency check (BEFORE terminal-state validation).
-      //
-      // Correct ordering rationale:
-      // When a client sends a gateway payment request with idempotency key K:
-      //   a) The request is processed → pending tx created
-      //   b) A fake-confirmation makes the tx succeed and the intent becomes 'paid'
-      //   c) The client retries the SAME request with idempotency key K
-      //
-      // In step (c), the intent is terminal ('paid'), but the idempotent replay
-      // MUST succeed and return the original transaction — not reject with a
-      // "terminal intent" error. This mirrors standard idempotency guarantees:
-      // a safe retry of an already-completed operation returns the same result.
       if (input.idempotencyKey) {
         const existingTx = await this.txRepo.findByIdempotencyKey(
           input.tenantId,
@@ -170,13 +166,11 @@ export class CreateGatewayPayment {
         );
         if (existingTx) {
           if (existingTx.paymentIntentId !== input.paymentIntentId) {
-            // Same key, different intent — always a conflict (regardless of intent state).
             throw new PaymentPolicyError(
               'Idempotency key was already used for a different payment intent',
               'IDEMPOTENCY_KEY_CONFLICT',
             );
           }
-          // Same key + same intent → idempotent replay.
           return {
             intent: intentDomain,
             transaction: txRowToDomain(existingTx),
@@ -190,15 +184,13 @@ export class CreateGatewayPayment {
         }
       }
 
-      // Step 3 — No idempotency replay found. Validate that a NEW transaction
-      // can be added. Reject terminal-state intents only when we would actually
-      // create a new pending transaction.
+      // Step 3 — Validate intent can accept a new transaction.
       assertIntentAcceptsPayment(intentDomain);
 
-      // Step 4 — Amount validation (same rules as RecordManualPayment).
+      // Step 4 — Amount validation.
       assertAmountValid(input.amount, intentDomain.amountRemaining, intentDomain.allowPartial);
 
-      // Step 5 — Call the provider to generate the payment URL / QR / reference.
+      // Step 5 — Call provider to generate the payment URL / QR / reference.
       const providerResult = await gatewayProvider.createPayment({
         paymentIntentId: input.paymentIntentId,
         amount: input.amount,
@@ -207,34 +199,87 @@ export class CreateGatewayPayment {
         metadata: input.metadata,
       });
 
-      // Step 6 — Map provider status → initial transaction status.
+      // Step 6 — Handle immediate success (provider returns `status: 'succeeded'`).
       //
-      // For 'succeeded': create as 'pending' first so the row exists and can be
-      // found by lockByProviderReferenceForUpdate inside ApplyGatewayTransactionStatus.
-      // Then immediately apply the success transition in Step 8.
-      //
-      // For 'failed': create directly as 'failed' — no allocation needed.
-      //
-      // For 'requires_action' and 'pending': store verbatim.
-      let initialTxStatus: 'pending' | 'requires_action' | 'failed';
-      switch (providerResult.status) {
-        case 'succeeded':
-          // Will be transitioned to 'succeeded' in Step 8 after row is created.
-          initialTxStatus = 'pending';
-          break;
-        case 'failed':
-          initialTxStatus = 'failed';
-          break;
-        case 'requires_action':
-          initialTxStatus = 'requires_action';
-          break;
-        case 'pending':
-        default:
-          initialTxStatus = 'pending';
-          break;
+      // Lock-order note: we already hold intent FOR UPDATE from Step 1.
+      // We create the tx as 'succeeded' directly and apply the allocation
+      // without calling ApplyGatewayTransactionStatus (which would try to
+      // lock tx→intent again and reverse the ordering).
+      // The tx row is brand-new — no lock contention is possible.
+      if (providerResult.status === 'succeeded') {
+        if (!this.allocationRepo || !this.recalculate) {
+          throw new PaymentPolicyError(
+            'Provider returned immediate success but allocationRepo and recalculate are not injected. ' +
+              'Pass allocationRepo (5th arg) and recalculate (6th arg) to CreateGatewayPayment.',
+            'IMMEDIATE_SUCCESS_NOT_CONFIGURED',
+          );
+        }
+
+        // 6a — Create transaction as succeeded directly.
+        const txData: InsertPaymentTransaction = {
+          tenantId: input.tenantId,
+          paymentIntentId: input.paymentIntentId,
+          direction: 'incoming',
+          transactionType: 'payment',
+          method: input.method,
+          provider: input.provider,
+          status: 'succeeded',
+          amount: input.amount.toFixed(2),
+          providerReference: providerResult.providerReference,
+          providerPaymentUrl: providerResult.providerPaymentUrl,
+          providerQrString: providerResult.providerQrString,
+          idempotencyKey: input.idempotencyKey ?? null,
+          metadata: input.metadata ?? null,
+          receivedAmount: null,
+          changeAmount: null,
+          failureReason: null,
+          succeededAt: new Date(),
+        };
+        const createdTx = await this.txRepo.create(txData, tx);
+
+        // 6b — Create allocation (unique index prevents duplicates).
+        const allocationData: InsertPaymentAllocation = {
+          tenantId: input.tenantId,
+          paymentIntentId: input.paymentIntentId,
+          paymentTransactionId: createdTx.id,
+          targetType: intentDomain.payableType,
+          targetId: intentDomain.payableId,
+          amount: input.amount.toFixed(2),
+          metadata: { triggeredBy: 'immediate_success' },
+        };
+        await this.allocationRepo.create(allocationData, tx);
+
+        // 6c — Recalculate intent totals (amountPaid, amountRemaining, status).
+        // RecalculatePaymentIntent.execute() reads intent via findById (not lockForUpdate)
+        // — we already hold the lock, so this is safe.
+        const { intent: updatedIntent } = await this.recalculate.execute({
+          tenantId: input.tenantId,
+          intentId: input.paymentIntentId,
+          tx,
+        });
+
+        return {
+          intent: updatedIntent,
+          transaction: txRowToDomain(createdTx),
+          providerReference: providerResult.providerReference,
+          providerPaymentUrl: providerResult.providerPaymentUrl,
+          providerQrString: providerResult.providerQrString,
+          idempotentReplay: false,
+          providerActions: providerResult.actions,
+          immediateSuccess: true,
+        };
       }
 
-      // Step 7 — Insert the transaction row.
+      // Step 7 — Map provider status → initial transaction status for non-immediate paths.
+      let initialTxStatus: 'pending' | 'requires_action' | 'failed';
+      switch (providerResult.status) {
+        case 'failed':          initialTxStatus = 'failed';          break;
+        case 'requires_action': initialTxStatus = 'requires_action'; break;
+        case 'pending':
+        default:                initialTxStatus = 'pending';          break;
+      }
+
+      // Step 8 — Insert the transaction row.
       const transactionData: InsertPaymentTransaction = {
         tenantId: input.tenantId,
         paymentIntentId: input.paymentIntentId,
@@ -251,63 +296,14 @@ export class CreateGatewayPayment {
         metadata: input.metadata ?? null,
         receivedAmount: null,
         changeAmount: null,
-        failureReason: providerResult.status === 'failed' ? (providerResult.failureReason ?? 'Payment rejected by provider') : null,
+        failureReason:
+          providerResult.status === 'failed'
+            ? (providerResult.failureReason ?? 'Payment rejected by provider')
+            : null,
       };
 
       const createdTx = await this.txRepo.create(transactionData, tx);
 
-      // Step 8 — Immediate success: apply allocation in the same DB transaction.
-      if (providerResult.status === 'succeeded') {
-        if (!this.applyGatewayStatus) {
-          throw new PaymentPolicyError(
-            'Provider returned immediate success but ApplyGatewayTransactionStatus is not injected. ' +
-              'Pass applyGatewayStatus as the 5th constructor argument to CreateGatewayPayment.',
-            'IMMEDIATE_SUCCESS_NOT_CONFIGURED',
-          );
-        }
-
-        if (!providerResult.providerReference) {
-          throw new PaymentPolicyError(
-            'Provider returned immediate success but providerReference is null. ' +
-              'A providerReference is required for lockByProviderReferenceForUpdate.',
-            'MISSING_PROVIDER_REFERENCE',
-          );
-        }
-
-        const applyOutcome = await this.applyGatewayStatus.execute(
-          {
-            tenantId: input.tenantId,
-            provider: input.provider,
-            providerReference: providerResult.providerReference,
-            status: 'succeeded',
-            failureReason: null,
-            allocationMetadata: { triggeredBy: 'immediate_success' },
-          },
-          tx,
-        );
-
-        if (applyOutcome.outcome === 'succeeded') {
-          return {
-            intent: applyOutcome.intent,
-            transaction: applyOutcome.transaction,
-            providerReference: providerResult.providerReference,
-            providerPaymentUrl: providerResult.providerPaymentUrl,
-            providerQrString: providerResult.providerQrString,
-            idempotentReplay: false,
-            providerActions: providerResult.actions,
-            immediateSuccess: true,
-          };
-        }
-
-        // Unexpected outcome from applyGatewayStatus for a just-created pending tx.
-        // This should never happen in practice (we just created the row as pending).
-        throw new PaymentPolicyError(
-          `Unexpected outcome from ApplyGatewayTransactionStatus after immediate success: ${applyOutcome.outcome}`,
-          'IMMEDIATE_SUCCESS_APPLY_FAILED',
-        );
-      }
-
-      // Step 9 — Return result for non-immediate-success paths.
       // Intent status is NOT recalculated — pending/requires_action/failed tx
       // does not change amountPaid.
       return {

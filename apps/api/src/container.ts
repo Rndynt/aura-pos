@@ -306,13 +306,18 @@ class Container {
       this.recalculatePaymentIntent,
     );
 
+    // Phase 6 Hardening: inject allocationRepo + recalculate (not applyGatewayTransactionStatus).
+    // Immediate-success settlement is now handled directly inside CreateGatewayPayment without
+    // calling ApplyGatewayTransactionStatus — avoids intent→tx→intent reversed lock ordering.
+    // Lock contract: CreateGatewayPayment holds intent FOR UPDATE; tx is newly created (owned);
+    // allocation and recalculate run inside the same DB transaction without acquiring new locks.
     this.createGatewayPayment = new CreateGatewayPayment(
       db,
       this.paymentIntentRepository,
       this.paymentTransactionRepository,
       this.paymentProviderRegistry,
-      // Phase 6: inject applyGatewayTransactionStatus to enable immediate success/failure
-      this.applyGatewayTransactionStatus,
+      this.paymentAllocationRepository,
+      this.recalculatePaymentIntent,
     );
 
     this.confirmFakeGatewayPayment = new ConfirmFakeGatewayPayment(
