@@ -345,11 +345,149 @@ apps/api/src/__tests__/payment-orchestration-core-contract-adapter.test.ts
 
 ---
 
+## Phase 8C — Standalone DB Schema + Repository Boundary
+
+### What changed in Phase 8C
+
+**Standalone schema (Task 1)**
+
+Six new `payment_orchestration_*` tables added to `shared/schema.ts` under a clearly
+separated section. These tables are the persistence boundary for the standalone service.
+No existing embedded payment engine tables were modified.
+
+| Table | Purpose |
+|-------|---------|
+| `payment_orchestration_merchants` | Primary merchant identity (standalone, not tenant-bound) |
+| `payment_orchestration_provider_accounts` | Links merchants to payment providers (credentials by reference only) |
+| `payment_orchestration_intents` | Standalone payment intents with external AuraPoS refs |
+| `payment_orchestration_transactions` | Individual payment/refund/void transactions |
+| `payment_orchestration_provider_events` | Inbound provider webhooks (nullable merchantId until resolved) |
+| `payment_orchestration_idempotency_keys` | Idempotency tracking for Phase 8D use cases |
+
+Key design decisions:
+- `merchant_id` is the primary owner identity — **not** `tenant_id`
+- `external_tenant_id` exists only as a source-app reference (correlation, not ownership)
+- `credentials_ref` is an opaque string pointing to env/secret-manager — raw API keys are never stored
+- All partial unique indexes applied via Drizzle `uniqueIndex().where()` for correctness
+- `payment_orchestration_provider_events.merchant_id` is nullable: real provider webhooks carry no merchant header; backfilled after `provider_reference` resolves to a known transaction
+
+**Migration file (Task 5)**
+
+Migration file generated:
+
+```text
+migrations/0022_payment_orchestration_standalone.sql
+```
+
+Contains only `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` statements
+for the 6 new `payment_orchestration_*` tables. Does not touch any existing table.
+
+To apply in a dev environment:
+```bash
+psql $DATABASE_URL -f migrations/0022_payment_orchestration_standalone.sql
+# or let the server auto-apply on next startup via runMigrationAsync()
+```
+
+**Core repository port interfaces (Task 2)**
+
+Six repository interfaces added to:
+
+```text
+packages/payment-orchestration-core/src/application/repositories.ts
+```
+
+Exported from `packages/payment-orchestration-core/src/index.ts`:
+
+```ts
+PaymentMerchantRepository
+PaymentProviderAccountRepository
+PaymentIntentRepository
+PaymentTransactionRepository
+PaymentProviderEventRepository
+PaymentIdempotencyRepository
+```
+
+All interfaces use `merchantId` as primary owner identity. No `tenantId` in any interface.
+
+**Service infrastructure repository skeletons (Task 3)**
+
+Six skeleton classes created in:
+
+```text
+apps/payment-orchestration-service/src/infrastructure/repositories/
+  DrizzlePaymentMerchantRepository.ts
+  DrizzlePaymentProviderAccountRepository.ts
+  DrizzlePaymentIntentRepository.ts
+  DrizzlePaymentTransactionRepository.ts
+  DrizzlePaymentProviderEventRepository.ts
+  DrizzlePaymentIdempotencyRepository.ts
+```
+
+All implement the core port interfaces with full method signatures.
+Methods throw `Error('Not implemented until Phase 8D')` — this is intentional.
+Phase 8D will wire real Drizzle queries.
+
+**DB row ↔ core DTO mappers (Task 4)**
+
+Pure-function mappers in:
+
+```text
+apps/payment-orchestration-service/src/infrastructure/repositories/mappers.ts
+```
+
+```ts
+mapMerchantRow(row: MerchantRow): PaymentMerchant
+mapProviderAccountRow(row: ProviderAccountRow): PaymentProviderAccount
+mapIntentRow(row: IntentRow): StandalonePaymentIntentDTO
+mapTransactionRow(row: TransactionRow): StandalonePaymentTransactionDTO
+mapProviderEventRow(row: ProviderEventRow): PaymentProviderEventDTO
+mapIdempotencyKeyRow(row: IdempotencyKeyRow): PaymentIdempotencyKeyDTO
+```
+
+Rules enforced:
+- snake_case DB → camelCase DTO
+- `merchantId` preserved in all standalone DTOs
+- No `tenantId` in any mapper output
+- Nullable fields defaulted explicitly (`?? null`, `?? {}`)
+- `credentialsRef` preserved as opaque string; never stripped
+
+**Tests (Task 6)**
+
+```text
+apps/api/src/__tests__/payment-orchestration-schema-mappers.test.ts
+```
+
+56 tests across 7 suites. **All pass.** No live DB required.
+
+Covers all 7 acceptance criteria from the prompt:
+1. Merchant row → `PaymentMerchant` with `id`/`displayName`
+2. Provider account row → no raw credentials exposed
+3. Intent row → all 6 external ref fields mapped correctly
+4. Transaction row → provider ref/action fields mapped safely
+5. Provider event row → nullable `merchantId` supported before resolution
+6. Idempotency key row → status/resource snapshot mapped correctly
+7. No mapper output includes `tenantId`
+
+### What did NOT change in Phase 8C
+
+- No existing embedded `payment_engine_*`, `payment_intents`, `payment_transactions`,
+  `payment_allocations`, or `payment_provider_events` tables modified
+- No legacy order payment flow touched (`/api/orders/:id/payments`, `order_payments` table)
+- `apps/payment-orchestration-service` routes remain 501 skeleton — no real use cases wired
+- Embedded `/api/payment-engine/...` remains the runtime source of truth for all live payments
+- FakeGateway behavior unchanged
+- Xendit sandbox adapter behavior unchanged
+- No provider-level refund/cancel implemented
+- No POS UI changes; no order adapter; no split bill; no customer ledger
+- No AuraPoS SDK consumption (Phase 8E)
+
+---
+
 ## Next Phases
 
 | Phase | Description |
 |-------|-------------|
-| 8C    | DB schema addendum: standalone tables (merchant, standalone_intent, etc.) |
+| 8C    | ✅ Standalone DB schema + repository boundary (this phase) |
 | 8D    | Full use-case wiring in payment-orchestration-service |
 | 8E    | AuraPoS consumes client SDK; embedded engine deprecated |
 | 8F    | Remove migration bridge (`createAuraPosPaymentScope`); standalone-only |

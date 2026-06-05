@@ -184,7 +184,7 @@ describe('mapMerchantRow', () => {
   });
 
   it('does NOT include tenantId in output', () => {
-    const merchant = mapMerchantRow(BASE_MERCHANT_ROW) as Record<string, unknown>;
+    const merchant = mapMerchantRow(BASE_MERCHANT_ROW) as unknown as Record<string, unknown>;
     assert.equal('tenantId' in merchant, false);
   });
 });
@@ -205,7 +205,7 @@ describe('mapProviderAccountRow', () => {
   });
 
   it('does not expose a raw_secret or api_key field', () => {
-    const account = mapProviderAccountRow(BASE_PROVIDER_ACCOUNT_ROW) as Record<string, unknown>;
+    const account = mapProviderAccountRow(BASE_PROVIDER_ACCOUNT_ROW) as unknown as Record<string, unknown>;
     assert.equal('rawSecret' in account, false);
     assert.equal('apiKey' in account, false);
     assert.equal('secretKey' in account, false);
@@ -224,7 +224,7 @@ describe('mapProviderAccountRow', () => {
   });
 
   it('does NOT include tenantId in output', () => {
-    const account = mapProviderAccountRow(BASE_PROVIDER_ACCOUNT_ROW) as Record<string, unknown>;
+    const account = mapProviderAccountRow(BASE_PROVIDER_ACCOUNT_ROW) as unknown as Record<string, unknown>;
     assert.equal('tenantId' in account, false);
   });
 });
@@ -281,7 +281,7 @@ describe('mapIntentRow', () => {
   });
 
   it('does NOT include tenantId in output', () => {
-    const intent = mapIntentRow(BASE_INTENT_ROW) as Record<string, unknown>;
+    const intent = mapIntentRow(BASE_INTENT_ROW) as unknown as Record<string, unknown>;
     assert.equal('tenantId' in intent, false);
   });
 
@@ -336,7 +336,7 @@ describe('mapTransactionRow', () => {
   });
 
   it('does NOT include tenantId in output', () => {
-    const txn = mapTransactionRow(BASE_TRANSACTION_ROW) as Record<string, unknown>;
+    const txn = mapTransactionRow(BASE_TRANSACTION_ROW) as unknown as Record<string, unknown>;
     assert.equal('tenantId' in txn, false);
   });
 
@@ -404,7 +404,7 @@ describe('mapProviderEventRow', () => {
   });
 
   it('does NOT include tenantId in output', () => {
-    const event = mapProviderEventRow(BASE_PROVIDER_EVENT_ROW) as Record<string, unknown>;
+    const event = mapProviderEventRow(BASE_PROVIDER_EVENT_ROW) as unknown as Record<string, unknown>;
     assert.equal('tenantId' in event, false);
   });
 });
@@ -462,7 +462,7 @@ describe('mapIdempotencyKeyRow', () => {
   });
 
   it('does NOT include tenantId in output', () => {
-    const key = mapIdempotencyKeyRow(BASE_IDEMPOTENCY_ROW) as Record<string, unknown>;
+    const key = mapIdempotencyKeyRow(BASE_IDEMPOTENCY_ROW) as unknown as Record<string, unknown>;
     assert.equal('tenantId' in key, false);
   });
 });
@@ -471,32 +471,32 @@ describe('mapIdempotencyKeyRow', () => {
 
 describe('No tenantId in any mapper output', () => {
   it('merchant mapper output has no tenantId', () => {
-    const result = mapMerchantRow(BASE_MERCHANT_ROW) as Record<string, unknown>;
+    const result = mapMerchantRow(BASE_MERCHANT_ROW) as unknown as Record<string, unknown>;
     assert.equal('tenantId' in result, false);
   });
 
   it('provider account mapper output has no tenantId', () => {
-    const result = mapProviderAccountRow(BASE_PROVIDER_ACCOUNT_ROW) as Record<string, unknown>;
+    const result = mapProviderAccountRow(BASE_PROVIDER_ACCOUNT_ROW) as unknown as Record<string, unknown>;
     assert.equal('tenantId' in result, false);
   });
 
   it('intent mapper output has no tenantId', () => {
-    const result = mapIntentRow(BASE_INTENT_ROW) as Record<string, unknown>;
+    const result = mapIntentRow(BASE_INTENT_ROW) as unknown as Record<string, unknown>;
     assert.equal('tenantId' in result, false);
   });
 
   it('transaction mapper output has no tenantId', () => {
-    const result = mapTransactionRow(BASE_TRANSACTION_ROW) as Record<string, unknown>;
+    const result = mapTransactionRow(BASE_TRANSACTION_ROW) as unknown as Record<string, unknown>;
     assert.equal('tenantId' in result, false);
   });
 
   it('provider event mapper output has no tenantId', () => {
-    const result = mapProviderEventRow(BASE_PROVIDER_EVENT_ROW) as Record<string, unknown>;
+    const result = mapProviderEventRow(BASE_PROVIDER_EVENT_ROW) as unknown as Record<string, unknown>;
     assert.equal('tenantId' in result, false);
   });
 
   it('idempotency key mapper output has no tenantId', () => {
-    const result = mapIdempotencyKeyRow(BASE_IDEMPOTENCY_ROW) as Record<string, unknown>;
+    const result = mapIdempotencyKeyRow(BASE_IDEMPOTENCY_ROW) as unknown as Record<string, unknown>;
     assert.equal('tenantId' in result, false);
   });
 });
