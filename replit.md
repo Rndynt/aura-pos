@@ -5,8 +5,8 @@
 **READ THIS FIRST — skip exploration, go straight here:**
 
 ### Workflow
-- Command: `npm run dev` (Turborepo — starts API + frontend together)
-- Workflow name: `Start application`
+- `npm run dev` — starts AuraPoS API only; used by the Replit **Start application** workflow
+- `npm run dev:turbo` — optional Turborepo dev workflow if needed (starts API + frontend via Turborepo)
 - If startup fails, check `BETTER_AUTH_SECRET` env var is set (64-char string)
 
 ### Key directories
