@@ -156,6 +156,32 @@ export interface RefundabilityResponse {
   transactions: RefundableTransactionResponse[];
 }
 
+
+// ── Reconcile Payment Intent Totals ──────────────────────────────────────────
+
+export interface ReconcilePaymentIntentTotalsRequest {
+  /** Optional — falls back to SDK config.merchantId when omitted. */
+  merchantId?: string;
+}
+
+export interface ReconcileTotalsSnapshot {
+  amountPaid: number;
+  amountRefunded: number;
+  amountRemaining: number;
+  status: string;
+}
+
+/**
+ * ReconcilePaymentIntentTotalsResponse — service-token protected crash-recovery
+ * response for recomputing intent totals from transaction source of truth.
+ */
+export interface ReconcilePaymentIntentTotalsResponse {
+  intent: PaymentIntentResponse;
+  before: ReconcileTotalsSnapshot;
+  after: ReconcileTotalsSnapshot;
+  changed: boolean;
+}
+
 // ── Phase 8D: Merchant ────────────────────────────────────────────────────────
 
 export interface CreateMerchantRequest {

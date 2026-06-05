@@ -3697,3 +3697,228 @@ Continue by adding Redis-backed pub/sub/cache services, then wire CFD/order queu
 ### Continuation Notes
 
 No blocker remains for this batch. A future batch can add integration tests against a real Redis service if the CI environment provisions Redis.
+
+## Plan: Payment Orchestration Phase 8F Standalone Readiness + Parity Closure
+
+### Source
+
+- Tasklist: `docs/replit-agent-payment-orchestration-phase-8f-standalone-readiness-prompt.md`
+- User request: Check dan eksekusi docs/replit-agent-payment-orchestration-phase-8f-standalone-readiness-prompt.md
+- Date started: 2026-06-05
+- Current status: In progress — inventory and parity audit underway.
+
+### Goal
+
+Determine whether Northflow Payment Orchestration standalone service is ready for AuraPoS FakeGateway SDK integration behind a feature flag, without performing the integration, and document any parity gaps/deferred phases.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: Embedded payment-engine routes/use cases and standalone service routes/use cases.
+- Files inspected: `apps/api/src/http/routes/payment-engine.ts`, `packages/application/payments/*`, `apps/payment-orchestration-service/src/app.ts`, `apps/payment-orchestration-service/src/routes/*`, `apps/payment-orchestration-service/src/application/use-cases/*`.
+- Findings: Embedded runtime is full-featured for FakeGateway/manual/Xendit scaffolding/refund/void/reconciliation; standalone runtime covers merchant/provider-account/intent/gateway FakeGateway/status/refundability/webhook/reconcile but not Xendit runtime or refund/void endpoints.
+- Tasks: Create embedded inventory, standalone inventory, parity matrix, readiness decision, and final report.
+- Risks: Avoid modifying embedded runtime or legacy order payment flow.
+- Validation: Package type-checks and targeted payment orchestration tests.
+
+#### Database/Schema Workstream
+
+- Scope: Standalone `payment_orchestration_*` tables and migration.
+- Files inspected: `shared/schema.ts`, `migrations/0022_payment_orchestration_standalone.sql`, standalone Drizzle repositories.
+- Findings: Merchant-scoped standalone schema exists for merchants, provider accounts, intents, transactions, provider events, and idempotency keys.
+- Tasks: Document schema parity and deferred provider/refund/void gaps.
+- Risks: No schema changes planned for Phase 8F.
+- Validation: Existing mapper/repository-adjacent tests.
+
+#### Frontend/UI Workstream
+
+- Scope: Guardrail verification only.
+- Files inspected: Not applicable beyond task guardrails.
+- Findings: Phase 8F forbids POS UI and AuraPoS SDK consumption changes.
+- Tasks: Confirm no POS UI changes.
+- Risks: Accidental integration must be avoided.
+- Validation: Git diff review.
+
+#### Tests/Validation Workstream
+
+- Scope: Required package checks and targeted test files from phase prompt.
+- Files inspected: `apps/api/src/__tests__/payment-orchestration-*.test.ts`, `apps/api/src/__tests__/payment-xendit-gateway-integration.test.ts`.
+- Findings: Required test files exist.
+- Tasks: Run package type-checks, targeted tests, and root check if practical; record honest results.
+- Risks: Root check may expose unrelated workspace failures.
+- Validation: Command log in final report.
+
+#### Documentation Workstream
+
+- Scope: Architecture doc, parity matrix, readiness decision, final report, active prompt status.
+- Files inspected: `docs/payment-orchestration-hybrid-standalone-architecture.md`, smoke guide, Phase 8D/8E reports.
+- Findings: Needs Phase 8F documentation additions and updated roadmap.
+- Tasks: Create new report files and update architecture docs.
+- Risks: Do not overstate production readiness.
+- Validation: Markdown diff review.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Merchant scoping, service-token auth, webhook signature/auth bypass, idempotency, no secret exposure.
+- Files inspected: standalone auth middleware, webhook routes/handler, repositories, SDK config/types.
+- Findings: Service-token auth protects `/v1` except webhooks; webhooks use provider signature path; merchantId scoping is explicit.
+- Tasks: Document readiness and limitations.
+- Risks: Xendit/production provider readiness deferred.
+- Validation: Auth/webhook targeted tests.
+
+### Execution Order
+
+1. Inventory embedded runtime without changes.
+2. Inventory standalone runtime without AuraPoS integration.
+3. Create parity matrix.
+4. Fix only small safe gaps if discovered; otherwise document none.
+5. Create readiness decision and final report.
+6. Update architecture docs and source prompt status notes.
+7. Run validations.
+8. Inspect accidental files/assets and commit.
+
+### Progress
+
+#### Completed
+
+- [ ] Task: Phase 8F audit/report artifacts
+  - Files changed: Pending
+  - Validation: Pending
+  - Docs updated: Pending
+
+#### Partially Completed
+
+- [ ] Task: Phase 8F source inspection
+  - Completed: Required instructions, source prompt, relevant docs, and key embedded/standalone files inspected.
+  - Remaining: Finish report artifacts and validation.
+  - Reason: Work in progress.
+
+#### Blocked
+
+- [ ] Task: None
+  - Blocker: None
+  - Required next step: Continue execution.
+
+#### Not Attempted
+
+- [ ] Task: Code fixes
+  - Reason: No small code gap confirmed yet; Phase 8F audit may remain docs-only if runtime is sufficient for FakeGateway/dev integration.
+
+### Validation Log
+
+- Command: Pending
+- Result: Pending
+- Notes: Pending
+
+### Documentation Updates
+
+- File: Pending
+- Change: Pending
+
+### Checklist Updates
+
+- File: `docs/replit-agent-payment-orchestration-phase-8f-standalone-readiness-prompt.md`
+- Change: Pending honest execution status update.
+
+### Continuation Notes
+
+Continue by writing the parity matrix, readiness decision, final Phase 8F report, architecture doc Phase 8F section, then run required checks and commit.
+
+### Phase 8F Completion Update — 2026-06-05
+
+#### Completed
+
+- [x] Embedded payment runtime inventory completed without modifying embedded payment files.
+  - Files changed: Documentation/report files only.
+  - Validation: Targeted payment orchestration tests passed.
+  - Docs updated: Final Phase 8F report.
+- [x] Standalone payment orchestration inventory completed.
+  - Files changed: Final Phase 8F report.
+  - Validation: Package type-checks and targeted tests passed.
+  - Docs updated: Parity matrix/readiness/report.
+- [x] Parity matrix created.
+  - Files changed: `docs/reports/payment-orchestration-phase-8f-parity-matrix.md`.
+  - Validation: Reviewed against inspected source files.
+  - Docs updated: Architecture doc links Phase 8F artifacts.
+- [x] Small SDK parity gap fixed.
+  - Files changed: `packages/payment-orchestration-client-sdk/src/client.ts`, `packages/payment-orchestration-client-sdk/src/types.ts`, `packages/payment-orchestration-client-sdk/src/index.ts`.
+  - Validation: SDK type-check and SDK test passed.
+  - Docs updated: Phase 8F matrix/report.
+- [x] Readiness decision created.
+  - Files changed: `docs/reports/payment-orchestration-phase-8f-readiness-decision.md`.
+  - Validation: Decision constrained to FakeGateway/dev integration readiness.
+  - Docs updated: Architecture doc and final report.
+- [x] Final report created with Commands Run table and guardrails.
+  - Files changed: `docs/reports/payment-orchestration-phase-8f-standalone-readiness-report.md`.
+  - Validation: Command log recorded honestly.
+  - Docs updated: Source prompt execution status.
+
+#### Partially Completed
+
+- [ ] Root workspace type-check.
+  - Completed: `npm run check` was attempted.
+  - Remaining: Fix older `@pos/api` payment-orchestration test helper typing drift.
+  - Reason: Root check fails on pre-existing type errors unrelated to the Phase 8F SDK method.
+
+#### Blocked
+
+- [ ] Production provider migration readiness.
+  - Blocker: Standalone Xendit runtime and provider-level refund/cancel are intentionally deferred.
+  - Required next step: Phase 8G Provider Runtime Completion.
+
+#### Not Attempted
+
+- [ ] AuraPoS SDK integration.
+  - Reason: Explicitly forbidden in Phase 8F; deferred to Phase 8I.
+- [ ] Embedded engine deprecation.
+  - Reason: Deferred to Phase 8J after feature-flag integration validation.
+
+### Validation Log
+
+- Command: `pnpm --filter @northflow/payment-orchestration-core type-check`
+- Result: Pass
+- Notes: 0 errors.
+- Command: `pnpm --filter @northflow/payment-orchestration-service type-check`
+- Result: Pass
+- Notes: 0 errors.
+- Command: `pnpm --filter @northflow/payment-orchestration-client-sdk type-check`
+- Result: Pass
+- Notes: 0 errors.
+- Command: targeted `npx tsx --tsconfig apps/api/tsconfig.node.json --test ...` Phase 8F test list
+- Result: Pass
+- Notes: Required payment-orchestration tests plus new SDK test passed individually.
+- Command: `npm run check`
+- Result: Fail
+- Notes: Fails in `@pos/api` on older payment-orchestration test helper typing drift; new SDK test was not among reported failures.
+
+### Documentation Updates
+
+- File: `docs/payment-orchestration-hybrid-standalone-architecture.md`
+- Change: Phase 8F section and roadmap update.
+- File: `docs/reports/payment-orchestration-phase-8f-parity-matrix.md`
+- Change: New parity matrix.
+- File: `docs/reports/payment-orchestration-phase-8f-readiness-decision.md`
+- Change: New readiness decision.
+- File: `docs/reports/payment-orchestration-phase-8f-standalone-readiness-report.md`
+- Change: New final report.
+- File: `docs/replit-agent-payment-orchestration-phase-8f-standalone-readiness-prompt.md`
+- Change: Appended execution status.
+
+### Checklist Updates
+
+- File: `docs/replit-agent-payment-orchestration-phase-8f-standalone-readiness-prompt.md`
+- Change: Tasks 1–9 marked complete with validation note and final decision.
+
+### Continuation Notes
+
+Next safest batch: Phase 8G Provider Runtime Completion, specifically standalone Xendit create-payment/webhook and provider refund/cancel contract design. Keep AuraPoS SDK consumption deferred until Phase 8I and keep embedded payment runtime unchanged until Phase 8J.

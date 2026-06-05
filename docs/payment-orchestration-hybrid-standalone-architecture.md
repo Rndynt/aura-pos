@@ -590,6 +590,58 @@ npx tsx --tsconfig apps/api/tsconfig.node.json --test \
 
 ---
 
+
+## Phase 8F — Standalone Readiness + Parity Closure
+
+Phase 8F audits embedded AuraPoS payment-engine capabilities against the standalone Northflow Payment Orchestration runtime and closes small safe parity gaps without integrating AuraPoS with the SDK.
+
+### Phase 8F Artifacts
+
+| Artifact | Purpose |
+|---|---|
+| `docs/reports/payment-orchestration-phase-8f-parity-matrix.md` | Capability-by-capability embedded vs standalone parity matrix. |
+| `docs/reports/payment-orchestration-phase-8f-readiness-decision.md` | Explicit readiness decision for the next integration phase. |
+| `docs/reports/payment-orchestration-phase-8f-standalone-readiness-report.md` | Final inventory, commands run, limitations, and guardrail confirmations. |
+
+### What Is Ready
+
+- Standalone FakeGateway development flow: merchant, provider account, intent, gateway payment, dev confirm, webhook, status, refundability, and reconciliation.
+- Service-token auth for `/v1` routes, with webhook auth bypass only for provider-signed webhook routes.
+- Merchant-scoped standalone data model using `merchantId` plus `sourceApp`/`externalTenantId`/external payable references.
+- SDK coverage for existing FakeGateway/dev service routes needed for future feature-flag integration, including the Phase 8F-added `reconcilePaymentIntentTotals()` SDK method.
+- Smoke and report documentation sufficient for a controlled FakeGateway/dev integration phase.
+
+### What Is Not Ready
+
+- Production provider migration is not ready.
+- Standalone Xendit create-payment and webhook runtime are not implemented.
+- Provider-level refund/cancel is not implemented in standalone.
+- Scheduled stale expiration/reconciliation worker is not implemented.
+- API/error contract freeze and deployment readiness still need hardening.
+
+### Deferred Phases
+
+| Phase | Deferred Work |
+|---|---|
+| 8G | Provider Runtime Completion: Xendit standalone create-payment/webhook and provider refund/cancel contracts. |
+| 8H | SDK/API Freeze + Deployment Readiness: response/error contract freeze, deployment docs, stale/reconcile worker strategy. |
+| 8I | AuraPoS Integration Behind Feature Flag: consume SDK from AuraPoS behind a feature flag. |
+| 8J | Embedded Engine Deprecation after feature-flag validation. |
+
+### Explicit Integration Warning
+
+AuraPoS SDK integration is **not performed in Phase 8F**. Phase 8F only decides readiness and closes small standalone parity gaps. The embedded payment runtime and legacy order payment flow remain intentionally unchanged.
+
+### Phase 8F Readiness Decision
+
+```text
+READY_FOR_AURAPOS_FAKEGATEWAY_INTEGRATION
+```
+
+This means ready only for FakeGateway/dev feature-flag integration work in Phase 8I. It does **not** mean production real-provider readiness; Xendit/provider runtime completion remains Phase 8G.
+
+---
+
 ## Next Phases
 
 | Phase | Description |
@@ -597,4 +649,8 @@ npx tsx --tsconfig apps/api/tsconfig.node.json --test \
 | 8D    | ✅ Full use-case wiring in payment-orchestration-service |
 | 8D.1  | ✅ Atomic confirm (TOCTOU fix) + failed-key policy |
 | 8E    | ✅ Standalone webhook ingestion + reconciliation safety + hardening |
-| 8F    | AuraPoS SDK consumption; remove migration bridge; Xendit sandbox integration |
+| 8F    | ✅ Standalone Readiness + Parity Closure |
+| 8G    | Provider Runtime Completion |
+| 8H    | SDK/API Freeze + Deployment Readiness |
+| 8I    | AuraPoS Integration Behind Feature Flag |
+| 8J    | Embedded Engine Deprecation |

@@ -53,6 +53,9 @@ export type {
   ProviderAccountResponse,
   ConfirmFakeGatewayPaymentRequest,
   ConfirmFakeGatewayPaymentResponse,
+  ReconcilePaymentIntentTotalsRequest,
+  ReconcileTotalsSnapshot,
+  ReconcilePaymentIntentTotalsResponse,
   ProviderActionResponse,
 } from './types.ts';
 

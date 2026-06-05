@@ -31,6 +31,8 @@ import type {
   ProviderAccountResponse,
   ConfirmFakeGatewayPaymentRequest,
   ConfirmFakeGatewayPaymentResponse,
+  ReconcilePaymentIntentTotalsRequest,
+  ReconcilePaymentIntentTotalsResponse,
 } from './types.ts';
 
 export class PaymentOrchestrationClient {
@@ -183,6 +185,26 @@ export class PaymentOrchestrationClient {
     return this.request<RefundabilityResponse>(
       'GET',
       `/v1/payment-intents/${intentId}/refundability${qs}`,
+    );
+  }
+
+
+  /**
+   * reconcilePaymentIntentTotals — recompute intent totals from transaction state.
+   *
+   * POST /v1/payment-intents/:intentId/reconcile
+   *
+   * This is an operator/service-token protected crash-recovery endpoint, not a
+   * customer-facing payment action. merchantId from input or config.merchantId.
+   */
+  async reconcilePaymentIntentTotals(
+    intentId: string,
+    input?: ReconcilePaymentIntentTotalsRequest,
+  ): Promise<ReconcilePaymentIntentTotalsResponse> {
+    return this.request<ReconcilePaymentIntentTotalsResponse>(
+      'POST',
+      `/v1/payment-intents/${intentId}/reconcile`,
+      this.injectMerchantId(input ?? {}),
     );
   }
 

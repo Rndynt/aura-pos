@@ -585,3 +585,25 @@ confirmation that no AuraPoS SDK integration was implemented
 confirmation that no embedded payment runtime was intentionally changed
 confirmation that no legacy order payment flow was intentionally changed
 ```
+
+---
+
+## Phase 8F Execution Status — 2026-06-05
+
+- [x] Task 1 — Embedded payment engine inventory completed in `docs/reports/payment-orchestration-phase-8f-standalone-readiness-report.md`.
+- [x] Task 2 — Standalone payment orchestration inventory completed in `docs/reports/payment-orchestration-phase-8f-standalone-readiness-report.md`.
+- [x] Task 3 — Parity matrix created at `docs/reports/payment-orchestration-phase-8f-parity-matrix.md`.
+- [x] Task 4 — Small safe gap fixed: SDK now exposes `reconcilePaymentIntentTotals()` for the existing standalone reconcile route, with exported request/response types.
+- [x] Task 5 — Readiness decision created at `docs/reports/payment-orchestration-phase-8f-readiness-decision.md`.
+- [x] Task 6 — Test added for the fixed SDK gap at `apps/api/src/__tests__/payment-orchestration-client-sdk.test.ts`.
+- [x] Task 7 — Architecture docs updated with Phase 8F section and refreshed roadmap.
+- [x] Task 8 — Final 8F report created at `docs/reports/payment-orchestration-phase-8f-standalone-readiness-report.md`.
+- [x] Task 9 — Accidental files/assets check completed via `git status --short` and changed-file review; no screenshots/logs/build output/env files/node_modules were staged.
+
+Final decision:
+
+```text
+READY_FOR_AURAPOS_FAKEGATEWAY_INTEGRATION
+```
+
+Validation note: targeted Phase 8F package checks and payment orchestration tests passed. Root `npm run check` was attempted and failed in `@pos/api` due pre-existing type errors in older payment orchestration test helper typings; the new Phase 8F SDK test was not among the reported failures.
