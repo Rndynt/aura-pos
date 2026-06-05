@@ -293,21 +293,26 @@ class Container {
       .register(new ManualProvider())
       .register(new FakeGatewayProvider());
 
-    this.createGatewayPayment = new CreateGatewayPayment(
-      db,
-      this.paymentIntentRepository,
-      this.paymentTransactionRepository,
-      this.paymentProviderRegistry,
-    );
-
     // Payment Engine — Phase 3: Webhook / Event Engine
-    // ApplyGatewayTransactionStatus is the shared atomic helper used by both
-    // ConfirmFakeGatewayPayment (dev/test endpoint) and HandlePaymentProviderWebhook.
+    // ApplyGatewayTransactionStatus is the shared atomic helper used by:
+    //  - ConfirmFakeGatewayPayment (dev/test controlled confirmation endpoint)
+    //  - HandlePaymentProviderWebhook (generic webhook handler)
+    //  - CreateGatewayPayment (Phase 6: immediate success path)
+    // Constructed BEFORE CreateGatewayPayment so it can be injected as a dep.
     this.applyGatewayTransactionStatus = new ApplyGatewayTransactionStatus(
       this.paymentIntentRepository,
       this.paymentTransactionRepository,
       this.paymentAllocationRepository,
       this.recalculatePaymentIntent,
+    );
+
+    this.createGatewayPayment = new CreateGatewayPayment(
+      db,
+      this.paymentIntentRepository,
+      this.paymentTransactionRepository,
+      this.paymentProviderRegistry,
+      // Phase 6: inject applyGatewayTransactionStatus to enable immediate success/failure
+      this.applyGatewayTransactionStatus,
     );
 
     this.confirmFakeGatewayPayment = new ConfirmFakeGatewayPayment(
