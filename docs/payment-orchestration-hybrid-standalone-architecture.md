@@ -483,11 +483,73 @@ Covers all 7 acceptance criteria from the prompt:
 
 ---
 
+## Phase 8D — Real Use-Case Wiring
+
+### What changed in Phase 8D
+
+Phase 8D upgrades the standalone service from a Phase 8A skeleton (all `/v1/...` routes → 501) to a fully functional payment microservice.
+
+#### Foundation
+- `src/config/env.ts` — added `dbUrl` (resolves `PAYMENT_ORCHESTRATION_DATABASE_URL` → `DATABASE_URL`), phase updated to `'8D'`
+- `src/infrastructure/db.ts` — `createPoDb(dbUrl)`: Drizzle/postgres.js connection, pool max 3, `prepare: false` for NeonDB/PgBouncer compatibility
+- `src/infrastructure/providers/StandaloneFakeGatewayProvider.ts` — 7-scenario FakeGateway (qris, redirect, va, payment_code, immediate_success, immediate_failure, pending_expiry)
+- `src/infrastructure/providers/providerRegistry.ts` — registers FakeGateway in non-production; empty in production
+- `src/middleware/auth.ts` — dual-header service token: `x-payment-orchestration-service-token` (primary) + `x-payment-engine-service-token` (compat alias)
+- `src/middleware/errors.ts` — global Express error handler, sanitizes 5xx messages
+
+#### Real Repository Implementations (6 files)
+All 6 `Drizzle*Repository.ts` files now execute real Drizzle ORM queries against `payment_orchestration_*` tables. Uses `as any` cast at mapper call sites to bridge Drizzle's `unknown`-typed jsonb columns.
+
+#### Use Cases (7 files)
+| Class | Key rule |
+|-------|----------|
+| `CreateMerchant` | Idempotent: returns existing if `sourceApp+externalRef` match |
+| `CreateProviderAccount` | Verifies merchant exists (404 if not) |
+| `CreatePaymentIntent` | Validates positive integer amountDue; supports idempotency key |
+| `CreateGatewayPayment` | Rejects overpayment (`OVERPAYMENT_REJECTED`); updates intent immediately on `succeeded` |
+| `ConfirmFakeGatewayPayment` | Dev-only (`FORBIDDEN_IN_PRODUCTION` in production); idempotent on already-succeeded |
+| `GetPaymentIntentStatus` | Returns `isTerminal`, `requiresAction`, `canRetryPayment` computed fields |
+| `GetRefundability` | Sums succeeded incoming txns minus outgoing refund txns by `parentTransactionId` |
+| `intentStatusHelper.ts` | `computeIntentStatus(amountDue, amountPaid)`: 0→requires_payment, partial→partially_paid, equal→paid, over→overpaid |
+
+#### Routes
+| Method | Path | Notes |
+|--------|------|-------|
+| POST | `/v1/merchants` | CreateMerchant |
+| GET | `/v1/merchants/:id` | Direct repo read |
+| POST | `/v1/merchants/:merchantId/provider-accounts` | CreateProviderAccount |
+| GET | `/v1/merchants/:merchantId/provider-accounts/:id` | Direct repo read |
+| POST | `/v1/payment-intents` | CreatePaymentIntent |
+| GET | `/v1/payment-intents/:id/status` | GetPaymentIntentStatus |
+| GET | `/v1/payment-intents/:id/refundability` | GetRefundability |
+| POST | `/v1/payment-intents/:id/gateway-payments` | CreateGatewayPayment |
+| POST | `/v1/dev/fake-gateway/transactions/:id/confirm` | ConfirmFakeGatewayPayment (non-prod only) |
+
+Auth middleware (`createAuthMiddleware`) applied to all `/v1/...` routes. Health + version remain unprotected.
+
+#### SDK
+`@northflow/payment-orchestration-client-sdk` updated with 5 new methods: `createMerchant`, `getMerchant`, `createProviderAccount`, `getProviderAccount`, `confirmFakeGatewayPayment`. 6 new request/response types exported.
+
+#### Tests
+`apps/api/src/__tests__/payment-orchestration-service-fakegateway-flow.test.ts` — 14 scenarios, in-memory repos, real use-case classes. All 14 pass. Run:
+```bash
+npx tsx --tsconfig apps/api/tsconfig.node.json --test \
+  apps/api/src/__tests__/payment-orchestration-service-fakegateway-flow.test.ts
+```
+
+### What did NOT change in Phase 8D
+- Embedded AuraPoS payment engine (`apps/api/src/payment-engine/`) — still active
+- Xendit/real provider wiring — Phase 8E+
+- Webhook ingestion (`/v1/webhooks/:provider`) — still 501
+- No Drizzle migrations auto-run at startup; run manually via `psql $DATABASE_URL -f migrations/...`
+- No POS UI changes
+
+---
+
 ## Next Phases
 
 | Phase | Description |
 |-------|-------------|
-| 8C    | ✅ Standalone DB schema + repository boundary (this phase) |
-| 8D    | Full use-case wiring in payment-orchestration-service |
+| 8D    | ✅ Full use-case wiring in payment-orchestration-service (this phase) |
 | 8E    | AuraPoS consumes client SDK; embedded engine deprecated |
 | 8F    | Remove migration bridge (`createAuraPosPaymentScope`); standalone-only |

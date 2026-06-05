@@ -1,14 +1,14 @@
 /**
- * DrizzlePaymentIdempotencyRepository — Phase 8C skeleton.
+ * DrizzlePaymentIdempotencyRepository — Phase 8D real implementation.
  *
- * Implements PaymentIdempotencyRepository from @northflow/payment-orchestration-core.
- * Methods throw until Phase 8D wires the Drizzle DB connection and schema imports.
+ * Implements PaymentIdempotencyRepository using Drizzle ORM against
+ * the payment_orchestration_idempotency_keys table.
  *
- * Purpose:
- *   Protects create-intent, create-payment, and refund operations from duplicate
- *   submissions. On Phase 8D, reserve() will do an upsert with conflict detection.
+ * Uniqueness constraint: (merchantId, scope, idempotencyKey).
+ * reserve() inserts with status 'processing'; conflicts bubble up as errors to caller.
  */
 
+import { eq, and } from 'drizzle-orm';
 import type {
   PaymentIdempotencyRepository,
 } from '@northflow/payment-orchestration-core';
@@ -19,27 +19,93 @@ import type {
   MarkIdempotencyCompletedInput,
   MarkIdempotencyFailedInput,
 } from '@northflow/payment-orchestration-core';
+import type { PoDb } from '../db.ts';
+import { paymentOrchestrationIdempotencyKeys as t } from '../../../../../shared/schema.ts';
+import { mapIdempotencyKeyRow } from './mappers.ts';
 
 export class DrizzlePaymentIdempotencyRepository
   implements PaymentIdempotencyRepository
 {
-  reserve(
-    _input: ReserveIdempotencyKeyInput,
+  constructor(private readonly db: PoDb) {}
+
+  async reserve(
+    input: ReserveIdempotencyKeyInput,
   ): Promise<PaymentIdempotencyKeyDTO> {
-    throw new Error('Not implemented until Phase 8D');
+    const now = new Date();
+    const rows = await this.db
+      .insert(t)
+      .values({
+        id: input.id,
+        merchantId: input.merchantId,
+        scope: input.scope,
+        idempotencyKey: input.idempotencyKey,
+        requestHash: input.requestHash,
+        responseSnapshot: null,
+        resourceType: null,
+        resourceId: null,
+        status: 'processing',
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: input.expiresAt ?? null,
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('Failed to reserve idempotency key — no row returned');
+    return mapIdempotencyKeyRow(row as any);
   }
 
-  find(
-    _input: FindIdempotencyKeyInput,
+  async find(
+    input: FindIdempotencyKeyInput,
   ): Promise<PaymentIdempotencyKeyDTO | null> {
-    throw new Error('Not implemented until Phase 8D');
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(
+        and(
+          eq(t.merchantId, input.merchantId),
+          eq(t.scope, input.scope),
+          eq(t.idempotencyKey, input.idempotencyKey),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return mapIdempotencyKeyRow(row as any);
   }
 
-  markCompleted(_input: MarkIdempotencyCompletedInput): Promise<void> {
-    throw new Error('Not implemented until Phase 8D');
+  async markCompleted(input: MarkIdempotencyCompletedInput): Promise<void> {
+    await this.db
+      .update(t)
+      .set({
+        status: 'completed',
+        responseSnapshot: input.responseSnapshot as Record<string, unknown>,
+        resourceType: input.resourceType ?? null,
+        resourceId: input.resourceId ?? null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(t.merchantId, input.merchantId),
+          eq(t.scope, input.scope),
+          eq(t.idempotencyKey, input.idempotencyKey),
+        ),
+      );
   }
 
-  markFailed(_input: MarkIdempotencyFailedInput): Promise<void> {
-    throw new Error('Not implemented until Phase 8D');
+  async markFailed(input: MarkIdempotencyFailedInput): Promise<void> {
+    await this.db
+      .update(t)
+      .set({
+        status: 'failed',
+        responseSnapshot: { error: input.error } as Record<string, unknown>,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(t.merchantId, input.merchantId),
+          eq(t.scope, input.scope),
+          eq(t.idempotencyKey, input.idempotencyKey),
+        ),
+      );
   }
 }

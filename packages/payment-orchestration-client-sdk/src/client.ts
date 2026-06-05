@@ -21,6 +21,12 @@ import type {
   GatewayPaymentResponse,
   PaymentIntentStatusResponse,
   RefundabilityResponse,
+  CreateMerchantRequest,
+  MerchantResponse,
+  CreateProviderAccountRequest,
+  ProviderAccountResponse,
+  ConfirmFakeGatewayPaymentRequest,
+  ConfirmFakeGatewayPaymentResponse,
 } from './types.ts';
 
 export class PaymentOrchestrationClient {
@@ -143,13 +149,86 @@ export class PaymentOrchestrationClient {
    *
    * GET /v1/payment-intents/:intentId/refundability
    *
-   * Phase 8A: service returns 501 (placeholder route added in Phase 8A hardening).
    * Phase 8D: fully implemented.
    */
   async getRefundability(intentId: string): Promise<RefundabilityResponse> {
     return this.request<RefundabilityResponse>(
       'GET',
       `/v1/payment-intents/${intentId}/refundability`,
+    );
+  }
+
+  // ── Phase 8D: merchant + provider account methods ────────────────────────────
+
+  /**
+   * createMerchant — create or return an existing merchant.
+   *
+   * POST /v1/merchants
+   * Phase 8D.
+   */
+  async createMerchant(input: CreateMerchantRequest): Promise<MerchantResponse> {
+    return this.request<MerchantResponse>('POST', '/v1/merchants', input);
+  }
+
+  /**
+   * getMerchant — retrieve a merchant by ID.
+   *
+   * GET /v1/merchants/:id
+   * Phase 8D.
+   */
+  async getMerchant(id: string): Promise<MerchantResponse> {
+    return this.request<MerchantResponse>('GET', `/v1/merchants/${id}`);
+  }
+
+  /**
+   * createProviderAccount — create a provider account for a merchant.
+   *
+   * POST /v1/merchants/:merchantId/provider-accounts
+   * Phase 8D.
+   */
+  async createProviderAccount(
+    merchantId: string,
+    input: CreateProviderAccountRequest,
+  ): Promise<ProviderAccountResponse> {
+    return this.request<ProviderAccountResponse>(
+      'POST',
+      `/v1/merchants/${merchantId}/provider-accounts`,
+      input,
+    );
+  }
+
+  /**
+   * getProviderAccount — retrieve a provider account.
+   *
+   * GET /v1/merchants/:merchantId/provider-accounts/:id
+   * Phase 8D.
+   */
+  async getProviderAccount(
+    merchantId: string,
+    id: string,
+  ): Promise<ProviderAccountResponse> {
+    return this.request<ProviderAccountResponse>(
+      'GET',
+      `/v1/merchants/${merchantId}/provider-accounts/${id}`,
+    );
+  }
+
+  /**
+   * confirmFakeGatewayPayment — manually confirm a FakeGateway transaction.
+   *
+   * POST /v1/dev/fake-gateway/transactions/:transactionId/confirm
+   *
+   * ⚠ DEV/TEST ONLY. Not available in production.
+   * Phase 8D.
+   */
+  async confirmFakeGatewayPayment(
+    transactionId: string,
+    input: ConfirmFakeGatewayPaymentRequest,
+  ): Promise<ConfirmFakeGatewayPaymentResponse> {
+    return this.request<ConfirmFakeGatewayPaymentResponse>(
+      'POST',
+      `/v1/dev/fake-gateway/transactions/${transactionId}/confirm`,
+      input,
     );
   }
 }

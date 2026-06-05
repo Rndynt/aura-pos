@@ -1,10 +1,11 @@
 /**
- * DrizzlePaymentIntentRepository — Phase 8C skeleton.
+ * DrizzlePaymentIntentRepository — Phase 8D real implementation.
  *
- * Implements PaymentIntentRepository from @northflow/payment-orchestration-core.
- * Methods throw until Phase 8D wires the Drizzle DB connection and schema imports.
+ * Implements PaymentIntentRepository using Drizzle ORM against
+ * the payment_orchestration_intents table.
  */
 
+import { eq, and } from 'drizzle-orm';
 import type {
   PaymentIntentRepository,
   CreatePaymentIntentDbInput,
@@ -13,36 +14,116 @@ import type {
   FindByExternalPayableInput,
 } from '@northflow/payment-orchestration-core';
 import type { StandalonePaymentIntentDTO } from '@northflow/payment-orchestration-core';
+import type { PoDb } from '../db.ts';
+import { paymentOrchestrationIntents as t } from '../../../../../shared/schema.ts';
+import { mapIntentRow } from './mappers.ts';
 
 export class DrizzlePaymentIntentRepository implements PaymentIntentRepository {
-  findById(
-    _id: string,
-    _merchantId: string,
+  constructor(private readonly db: PoDb) {}
+
+  async findById(
+    id: string,
+    merchantId: string,
   ): Promise<StandalonePaymentIntentDTO | null> {
-    throw new Error('Not implemented until Phase 8D');
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(and(eq(t.id, id), eq(t.merchantId, merchantId)))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return mapIntentRow(row as any);
   }
 
-  findByExternalPayable(
-    _input: FindByExternalPayableInput,
+  async findByExternalPayable(
+    input: FindByExternalPayableInput,
   ): Promise<StandalonePaymentIntentDTO | null> {
-    throw new Error('Not implemented until Phase 8D');
+    const conditions = input.sourceApp
+      ? and(
+          eq(t.merchantId, input.merchantId),
+          eq(t.externalPayableType, input.externalPayableType),
+          eq(t.externalPayableId, input.externalPayableId),
+          eq(t.sourceApp, input.sourceApp),
+        )
+      : and(
+          eq(t.merchantId, input.merchantId),
+          eq(t.externalPayableType, input.externalPayableType),
+          eq(t.externalPayableId, input.externalPayableId),
+        );
+
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(conditions)
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return mapIntentRow(row as any);
   }
 
-  create(
-    _input: CreatePaymentIntentDbInput,
+  async create(
+    input: CreatePaymentIntentDbInput,
   ): Promise<StandalonePaymentIntentDTO> {
-    throw new Error('Not implemented until Phase 8D');
+    const now = new Date();
+    const amountDue = input.amountDue;
+    const rows = await this.db
+      .insert(t)
+      .values({
+        id: input.id,
+        merchantId: input.merchantId,
+        providerAccountId: input.providerAccountId ?? null,
+        sourceApp: input.sourceApp ?? null,
+        externalTenantId: input.externalTenantId ?? null,
+        externalOutletId: input.externalOutletId ?? null,
+        externalLocationId: input.externalLocationId ?? null,
+        externalPayableType: input.externalPayableType,
+        externalPayableId: input.externalPayableId,
+        amountDue,
+        amountPaid: 0,
+        amountRefunded: 0,
+        amountRemaining: amountDue,
+        currency: input.currency ?? 'IDR',
+        status: 'requires_payment',
+        allowPartial: input.allowPartial ?? false,
+        expiresAt: input.expiresAt ?? null,
+        metadata: (input.metadata ?? {}) as Record<string, unknown>,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('Failed to create payment intent — no row returned');
+    return mapIntentRow(row as any);
   }
 
-  updateTotals(
-    _input: UpdateIntentTotalsInput,
+  async updateTotals(
+    input: UpdateIntentTotalsInput,
   ): Promise<StandalonePaymentIntentDTO> {
-    throw new Error('Not implemented until Phase 8D');
+    const rows = await this.db
+      .update(t)
+      .set({
+        amountPaid: input.amountPaid,
+        amountRefunded: input.amountRefunded,
+        amountRemaining: input.amountRemaining,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(t.id, input.id), eq(t.merchantId, input.merchantId)))
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error(`Payment intent not found: ${input.id}`);
+    return mapIntentRow(row as any);
   }
 
-  updateStatus(
-    _input: UpdateIntentStatusInput,
+  async updateStatus(
+    input: UpdateIntentStatusInput,
   ): Promise<StandalonePaymentIntentDTO> {
-    throw new Error('Not implemented until Phase 8D');
+    const rows = await this.db
+      .update(t)
+      .set({ status: input.status, updatedAt: new Date() })
+      .where(and(eq(t.id, input.id), eq(t.merchantId, input.merchantId)))
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error(`Payment intent not found: ${input.id}`);
+    return mapIntentRow(row as any);
   }
 }

@@ -1,54 +1,137 @@
 /**
- * DrizzlePaymentTransactionRepository — Phase 8C skeleton.
+ * DrizzlePaymentTransactionRepository — Phase 8D real implementation.
  *
- * Implements PaymentTransactionRepository from @northflow/payment-orchestration-core.
- * Methods throw until Phase 8D wires the Drizzle DB connection and schema imports.
+ * Implements PaymentTransactionRepository using Drizzle ORM against
+ * the payment_orchestration_transactions table.
  */
 
+import { eq, and, sum } from 'drizzle-orm';
 import type {
   PaymentTransactionRepository,
   CreatePaymentTransactionInput,
   UpdateTransactionStatusInput,
 } from '@northflow/payment-orchestration-core';
 import type { StandalonePaymentTransactionDTO } from '@northflow/payment-orchestration-core';
+import type { PoDb } from '../db.ts';
+import { paymentOrchestrationTransactions as t } from '../../../../../shared/schema.ts';
+import { mapTransactionRow } from './mappers.ts';
 
 export class DrizzlePaymentTransactionRepository
   implements PaymentTransactionRepository
 {
-  findById(
-    _id: string,
-    _merchantId: string,
+  constructor(private readonly db: PoDb) {}
+
+  async findById(
+    id: string,
+    merchantId: string,
   ): Promise<StandalonePaymentTransactionDTO | null> {
-    throw new Error('Not implemented until Phase 8D');
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(and(eq(t.id, id), eq(t.merchantId, merchantId)))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return mapTransactionRow(row as any);
   }
 
-  findByIntentId(
-    _intentId: string,
-    _merchantId: string,
+  async findByIntentId(
+    intentId: string,
+    merchantId: string,
   ): Promise<StandalonePaymentTransactionDTO[]> {
-    throw new Error('Not implemented until Phase 8D');
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(and(eq(t.intentId, intentId), eq(t.merchantId, merchantId)));
+    return rows.map((r) => mapTransactionRow(r as any));
   }
 
-  findByProviderReference(
-    _provider: string,
-    _providerReference: string,
+  async findByProviderReference(
+    provider: string,
+    providerReference: string,
   ): Promise<StandalonePaymentTransactionDTO | null> {
-    throw new Error('Not implemented until Phase 8D');
+    const rows = await this.db
+      .select()
+      .from(t)
+      .where(
+        and(
+          eq(t.provider, provider),
+          eq(t.providerReference, providerReference),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return mapTransactionRow(row as any);
   }
 
-  create(
-    _input: CreatePaymentTransactionInput,
+  async create(
+    input: CreatePaymentTransactionInput,
   ): Promise<StandalonePaymentTransactionDTO> {
-    throw new Error('Not implemented until Phase 8D');
+    const now = new Date();
+    const rows = await this.db
+      .insert(t)
+      .values({
+        id: input.id,
+        merchantId: input.merchantId,
+        intentId: input.intentId,
+        providerAccountId: input.providerAccountId ?? null,
+        provider: input.provider,
+        method: input.method,
+        transactionType: input.transactionType,
+        direction: input.direction,
+        status: input.status,
+        amount: input.amount,
+        currency: input.currency ?? 'IDR',
+        parentTransactionId: input.parentTransactionId ?? null,
+        providerReference: input.providerReference ?? null,
+        providerEventId: input.providerEventId ?? null,
+        providerPaymentUrl: input.providerPaymentUrl ?? null,
+        providerQrString: input.providerQrString ?? null,
+        failureReason: input.failureReason ?? null,
+        idempotencyKey: input.idempotencyKey ?? null,
+        metadata: (input.metadata ?? {}) as Record<string, unknown>,
+        rawProviderResponse: (input.rawProviderResponse ?? {}) as Record<string, unknown>,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error('Failed to create transaction — no row returned');
+    return mapTransactionRow(row as any);
   }
 
-  updateStatus(
-    _input: UpdateTransactionStatusInput,
+  async updateStatus(
+    input: UpdateTransactionStatusInput,
   ): Promise<StandalonePaymentTransactionDTO> {
-    throw new Error('Not implemented until Phase 8D');
+    const rows = await this.db
+      .update(t)
+      .set({
+        status: input.status,
+        failureReason: input.failureReason ?? null,
+        providerReference: input.providerReference ?? undefined,
+        providerEventId: input.providerEventId ?? undefined,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(t.id, input.id), eq(t.merchantId, input.merchantId)))
+      .returning();
+    const row = rows[0];
+    if (!row) throw new Error(`Transaction not found: ${input.id}`);
+    return mapTransactionRow(row as any);
   }
 
-  sumSucceededRefundsByParent(_parentTransactionId: string): Promise<number> {
-    throw new Error('Not implemented until Phase 8D');
+  async sumSucceededRefundsByParent(parentTransactionId: string): Promise<number> {
+    const result = await this.db
+      .select({ total: sum(t.amount) })
+      .from(t)
+      .where(
+        and(
+          eq(t.parentTransactionId, parentTransactionId),
+          eq(t.transactionType, 'refund'),
+          eq(t.direction, 'outgoing'),
+          eq(t.status, 'succeeded'),
+        ),
+      );
+    return Number(result[0]?.total ?? 0);
   }
 }

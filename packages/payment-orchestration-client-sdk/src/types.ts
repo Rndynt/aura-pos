@@ -117,3 +117,73 @@ export interface RefundabilityResponse {
   refundableAmount: number;
   reason: string | null;
 }
+
+// ── Phase 8D: Merchant ────────────────────────────────────────────────────────
+
+export interface CreateMerchantRequest {
+  id?: string;
+  name: string;
+  legalName?: string | null;
+  sourceApp?: string | null;
+  externalRef?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface MerchantResponse {
+  id: string;
+  name: string;
+  legalName: string | null;
+  status: string;
+  metadata: Record<string, unknown>;
+}
+
+// ── Phase 8D: Provider Account ────────────────────────────────────────────────
+
+export interface CreateProviderAccountRequest {
+  id?: string;
+  provider: string;
+  environment: 'sandbox' | 'test' | 'production';
+  providerAccountRef?: string | null;
+  credentialsRef?: string | null;
+  publicConfig?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ProviderAccountResponse {
+  id: string;
+  merchantId: string;
+  provider: string;
+  environment: string;
+  status: string;
+  publicConfig: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+}
+
+// ── Phase 8D: FakeGateway Dev Confirm ─────────────────────────────────────────
+
+export interface ConfirmFakeGatewayPaymentRequest {
+  merchantId: string;
+}
+
+export interface ConfirmFakeGatewayPaymentResponse {
+  alreadyConfirmed: boolean;
+  transaction: {
+    id: string;
+    intentId: string;
+    merchantId: string;
+    status: string;
+    amount: number;
+    currency: string;
+    providerReference: string | null;
+    providerQrString: string | null;
+  };
+  intent: {
+    id: string;
+    merchantId: string;
+    status: string;
+    amountDue: number;
+    amountPaid: number;
+    amountRemaining: number;
+    currency: string;
+  };
+}

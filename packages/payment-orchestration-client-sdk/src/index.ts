@@ -33,7 +33,7 @@
  * ```
  */
 
-// ── Primary exports (Phase 8B) ─────────────────────────────────────────────────
+// ── Primary exports (Phase 8D) ─────────────────────────────────────────────────
 
 export { PaymentOrchestrationClient } from './client.ts';
 export { PaymentOrchestrationClientError, PaymentOrchestrationNetworkError } from './errors.ts';
@@ -46,6 +46,12 @@ export type {
   PaymentIntentStatusResponse,
   RefundabilityResponse,
   ProviderActionResponse,
+  CreateMerchantRequest,
+  MerchantResponse,
+  CreateProviderAccountRequest,
+  ProviderAccountResponse,
+  ConfirmFakeGatewayPaymentRequest,
+  ConfirmFakeGatewayPaymentResponse,
 } from './types.ts';
 
 // ── Deprecated aliases (Phase 8B) — will be removed in a future major version ──

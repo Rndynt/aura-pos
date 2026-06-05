@@ -10,12 +10,16 @@
  *
  * Token resolution order (prefer new name, keep legacy alias for backwards compat):
  *   PAYMENT_ORCHESTRATION_SERVICE_TOKEN → PAYMENT_ENGINE_SERVICE_TOKEN (alias)
+ *
+ * DB URL resolution order:
+ *   PAYMENT_ORCHESTRATION_DATABASE_URL → DATABASE_URL
  */
 
 export interface PaymentOrchestrationServiceConfig {
   port: number;
   nodeEnv: string;
   serviceToken: string;
+  dbUrl: string;
   version: string;
   phase: string;
 }
@@ -33,8 +37,13 @@ export function loadEnv(): PaymentOrchestrationServiceConfig {
     process.env['PAYMENT_ORCHESTRATION_SERVICE_TOKEN'] ??
     process.env['PAYMENT_ENGINE_SERVICE_TOKEN'] ??
     '';
-  const version = '0.1.0';
-  const phase = '8A';
+  const dbUrl = (
+    process.env['PAYMENT_ORCHESTRATION_DATABASE_URL'] ??
+    process.env['DATABASE_URL'] ??
+    ''
+  ).trim();
+  const version = '0.2.0';
+  const phase = '8D';
 
-  return { port, nodeEnv, serviceToken, version, phase };
+  return { port, nodeEnv, serviceToken, dbUrl, version, phase };
 }

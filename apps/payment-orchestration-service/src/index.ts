@@ -20,20 +20,26 @@ const container = createContainer(config);
 const app = createApp(container);
 
 app.listen(config.port, () => {
+  const base = `http://localhost:${config.port}`;
   console.log(
     `[payment-orchestration-service] Phase ${config.phase} listening on port ${config.port} ` +
       `(NODE_ENV=${config.nodeEnv})`,
   );
-  console.log(`  GET http://localhost:${config.port}/health`);
-  console.log(`  GET http://localhost:${config.port}/version`);
+  console.log(`  GET  ${base}/health`);
+  console.log(`  GET  ${base}/version`);
   console.log('');
-  console.log('  Placeholder routes (501 Not Implemented):');
-  console.log(`  POST http://localhost:${config.port}/v1/payment-intents`);
-  console.log(
-    `  GET  http://localhost:${config.port}/v1/payment-intents/:id/status`,
-  );
-  console.log(
-    `  GET  http://localhost:${config.port}/v1/payment-intents/:id/refundability`,
-  );
-  console.log(`  POST http://localhost:${config.port}/v1/webhooks/:provider`);
+  console.log('  API v1 routes (service token required):');
+  console.log(`  POST ${base}/v1/merchants`);
+  console.log(`  GET  ${base}/v1/merchants/:id`);
+  console.log(`  POST ${base}/v1/merchants/:merchantId/provider-accounts`);
+  console.log(`  GET  ${base}/v1/merchants/:merchantId/provider-accounts/:id`);
+  console.log(`  POST ${base}/v1/payment-intents`);
+  console.log(`  GET  ${base}/v1/payment-intents/:id/status`);
+  console.log(`  GET  ${base}/v1/payment-intents/:id/refundability`);
+  console.log(`  POST ${base}/v1/payment-intents/:id/gateway-payments`);
+  if (config.nodeEnv !== 'production') {
+    console.log('');
+    console.log('  Dev/test only:');
+    console.log(`  POST ${base}/v1/dev/fake-gateway/transactions/:transactionId/confirm`);
+  }
 });

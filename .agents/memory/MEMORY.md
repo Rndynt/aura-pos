@@ -2,3 +2,4 @@
 - [Tenant ID design](tenant-id-design.md) — tenants.id uses slug strings (e.g. "thamada"), NOT uuid; never change to uuid type. All other business entity id columns are uuid.
 - [Feature catalog source of truth](feature-catalog-sot.md) — plan-tier gating derives from marketplace.tsx catalog; pure-data layer lives at src/lib/featureCatalog.ts. Never hardcode FREE_FEATURE_CODES or GROWTH_MODULES separately.
 - [Payment provider test invocation](payment-provider-test-invoke.md) — use `npx tsx --tsconfig apps/api/tsconfig.node.json --test <file>` not bare `npx tsx --test`; @pos/domain/payments is not in package exports, only resolved via tsconfig paths.
+- [Phase 8D standalone wiring](phase-8d-standalone-wiring.md) — Drizzle jsonb columns type as `unknown`; cast to `as any` at mapXxxRow() call sites. Test imports for service use-cases use `../../../payment-orchestration-service/` (3 levels up from apps/api/src/__tests__/).
