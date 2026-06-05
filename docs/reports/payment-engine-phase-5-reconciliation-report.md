@@ -255,7 +255,33 @@ All three batch use cases catch exceptions per item and continue the batch. The 
 | Limitation | Future Phase |
 |------------|-------------|
 | Real gateway transactions cannot be expired — cancellation API not implemented | Phase 6+ |
-| `reprocessStaleProviderEvents` processes events for ALL tenants (no tenantId filter on the event repo query) — add optional tenantId filter if needed | Phase 6 |
+| ~~`reprocessStaleProviderEvents` processes events for ALL tenants (no tenantId filter on the event repo query)~~ **Fixed in Phase 5 Hardening** | ✅ Done |
 | No scheduled/cron job wiring — reconciliation must be triggered manually via HTTP | Phase 6 (cron layer) |
 | `listByTenant` for reconciliation is limited to 200 intents per call — needs cursor-based pagination for very large tenants | Phase 6 |
 | `ReprocessStaleProviderEvents` re-parses `rawPayload` using the current provider version — if payload format changed, parsing may fail (safe failure, event marked `failed`) | Inherent |
+
+---
+
+## 8. Legacy Order Payment Audit (Added by Phase 5 Hardening)
+
+**Explicit confirmation:** The following files and behaviors were **not intentionally changed** during Phase 5 base implementation:
+
+- `apps/api/src/http/routes/orders.ts` — not modified
+- `packages/application/orders/RecordPayment.ts` — not modified
+- `packages/application/orders/CreateAndPayOrder.ts` — not modified
+- `/api/orders/:id/payments` endpoint behavior — unchanged
+- `/api/orders/create-and-pay` endpoint behavior — unchanged
+- `order_payments` legacy table — not touched
+
+All Phase 5 changes are isolated to the `payment_provider_events` / `payment_transactions` / `payment_intents` reconciliation path.
+
+## 9. Phase 6+ Feature Confirmation (Added by Phase 5 Hardening)
+
+**Explicit confirmation:** The following features were **not implemented** in Phase 5:
+
+- No real Midtrans / Xendit / Stripe adapter
+- No real provider credentials
+- No real provider refund or cancel API call
+- No order adapter
+- No POS UI changes
+- No split bill, customer ledger, stock reservation, PPOB wallet, or standalone extraction

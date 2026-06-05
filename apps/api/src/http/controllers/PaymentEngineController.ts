@@ -386,6 +386,7 @@ export async function reprocessStaleProviderEvents(req: Request, res: Response):
     const result = await container.reprocessStaleProviderEvents.execute({
       cutoffMinutes: data.cutoff_minutes,
       provider: data.provider,
+      tenantId: req.tenantId!,
       batchSize: data.batch_size,
       dryRun: data.dry_run,
     });

@@ -5,7 +5,7 @@ import {
   type PaymentProviderEvent,
   type InsertPaymentProviderEvent,
 } from '../../../../shared/schema';
-import { and, eq, lt } from 'drizzle-orm';
+import { and, eq, lt, sql } from 'drizzle-orm';
 
 export interface IPaymentProviderEventRepository {
   /**
@@ -65,12 +65,25 @@ export interface IPaymentProviderEventRepository {
   /**
    * Phase 5: List provider events stuck in 'pending' status older than cutoffDate.
    * Fresh events (created after cutoffDate) are never returned.
-   * Optionally filtered by provider and limited by batchSize.
+   * Optionally filtered by provider, tenantId, and limited by batchSize.
+   *
+   * Phase 5 Hardening: tenantId filter added so tenant-manager calls only see
+   * their own events. null-tenant events are excluded when tenantId is provided.
    */
   listStalePendingEvents(
     cutoffDate: Date,
-    options?: { provider?: string; limit?: number },
+    options?: { provider?: string; tenantId?: string; limit?: number },
   ): Promise<PaymentProviderEvent[]>;
+
+  /**
+   * Phase 5 Hardening: Lock a provider event row by id with SELECT ... FOR UPDATE.
+   * Must be called inside an active DB transaction.
+   * Returns null if no row with that id exists.
+   *
+   * Used by ReprocessStaleProviderEvents to claim an event before processing,
+   * preventing concurrent reconciliation jobs from double-processing the same event.
+   */
+  lockByIdForUpdate(id: string, tx: any): Promise<PaymentProviderEvent | null>;
 }
 
 export class PaymentProviderEventRepository
@@ -232,7 +245,7 @@ export class PaymentProviderEventRepository
    */
   async listStalePendingEvents(
     cutoffDate: Date,
-    options?: { provider?: string; limit?: number },
+    options?: { provider?: string; tenantId?: string; limit?: number },
   ): Promise<PaymentProviderEvent[]> {
     try {
       const conditions = [
@@ -242,6 +255,14 @@ export class PaymentProviderEventRepository
 
       if (options?.provider) {
         conditions.push(eq(paymentProviderEvents.provider, options.provider));
+      }
+
+      // Phase 5 Hardening: tenant-scope filter.
+      // When tenantId is supplied, only return rows that belong to that tenant.
+      // Rows with tenantId = null are intentionally excluded — they require a
+      // future superadmin/global reconciliation job, not a per-tenant manager call.
+      if (options?.tenantId) {
+        conditions.push(eq(paymentProviderEvents.tenantId, options.tenantId));
       }
 
       const rows = await this.db
@@ -254,6 +275,34 @@ export class PaymentProviderEventRepository
       return rows;
     } catch (error) {
       this.handleError('list stale pending events', error);
+    }
+  }
+
+  /**
+   * Phase 5 Hardening: Lock a provider event row by id with SELECT ... FOR UPDATE.
+   *
+   * Must be called inside an active DB transaction (`tx` is required).
+   * Returns null if no row with that id exists.
+   *
+   * Pattern mirrors PaymentTransactionRepository.lockByIdForUpdate — issue the
+   * SELECT ... FOR UPDATE first to hold the advisory row lock, then re-fetch via
+   * the ORM to get a fully-typed result object.
+   */
+  async lockByIdForUpdate(id: string, tx: any): Promise<PaymentProviderEvent | null> {
+    try {
+      await tx.execute(sql`
+        SELECT id FROM payment_provider_events
+        WHERE id = ${id}
+        FOR UPDATE
+      `);
+      const rows = await tx
+        .select()
+        .from(paymentProviderEvents)
+        .where(eq(paymentProviderEvents.id, id))
+        .limit(1);
+      return rows[0] ?? null;
+    } catch (error) {
+      this.handleError('lock by id for update', error);
     }
   }
 }

@@ -172,8 +172,11 @@ function makeDbEvent(overrides: Partial<any> = {}): any {
 // ── Helper: build a fake DB with transaction support ─────────────────────────
 
 function makeDb(txCallback?: (cb: (dbTx: any) => Promise<any>) => Promise<any>): any {
+  // Default dbTx includes a no-op execute() so real SQL helpers don't throw if
+  // accidentally invoked on the mock (e.g. lockByIdForUpdate via a non-fake repo).
+  const defaultDbTx = { execute: async () => ({}) };
   return {
-    transaction: txCallback ?? (async (cb: (dbTx: any) => Promise<any>) => cb({})),
+    transaction: txCallback ?? (async (cb: (dbTx: any) => Promise<any>) => cb(defaultDbTx)),
   };
 }
 
@@ -661,6 +664,7 @@ describe('ReprocessStaleProviderEvents', () => {
     let markProcessedCalled = false;
     const fakeEventRepo = {
       listStalePendingEvents: async () => [event],
+      lockByIdForUpdate: async () => event,
       markProcessed: async () => { markProcessedCalled = true; },
       markFailed: async () => {},
       markIgnored: async () => {},
@@ -686,6 +690,7 @@ describe('ReprocessStaleProviderEvents', () => {
 
     const fakeEventRepo = {
       listStalePendingEvents: async () => [event],
+      lockByIdForUpdate: async () => event,
       markProcessed: async () => {},
       markFailed: async () => {},
       markIgnored: async () => {},
@@ -722,6 +727,7 @@ describe('ReprocessStaleProviderEvents', () => {
     let markIgnoredCalled = false;
     const fakeEventRepo = {
       listStalePendingEvents: async () => [event],
+      lockByIdForUpdate: async () => event,
       markProcessed: async () => {},
       markFailed: async () => {},
       markIgnored: async () => { markIgnoredCalled = true; },
@@ -763,6 +769,7 @@ describe('ReprocessStaleProviderEvents', () => {
     let markProcessedCalled = false;
     const fakeEventRepo = {
       listStalePendingEvents: async () => [event],
+      lockByIdForUpdate: async () => event,
       markProcessed: async () => { markProcessedCalled = true; },
       markFailed: async () => {},
       markIgnored: async () => {},
@@ -806,6 +813,7 @@ describe('ReprocessStaleProviderEvents', () => {
     let processCount = 0;
     const fakeEventRepo = {
       listStalePendingEvents: async () => [goodEvent, badEvent],
+      lockByIdForUpdate: async (id: string) => (id === goodEvent.id ? goodEvent : badEvent),
       markProcessed: async (id: string) => {
         if (id === badEvent.id) throw new Error('DB error during mark');
         processCount++;
@@ -856,6 +864,7 @@ describe('ReprocessStaleProviderEvents', () => {
     let resolvedTenant: string | null = null;
     const fakeEventRepo = {
       listStalePendingEvents: async () => [event],
+      lockByIdForUpdate: async () => event,
       markProcessed: async () => {},
       markFailed: async () => {},
       markIgnored: async () => {},
@@ -897,6 +906,7 @@ describe('ReprocessStaleProviderEvents', () => {
     let markFailedCalled = false;
     const fakeEventRepo = {
       listStalePendingEvents: async () => [event],
+      lockByIdForUpdate: async () => event,
       markProcessed: async () => {},
       markFailed: async () => { markFailedCalled = true; },
       markIgnored: async () => {},
@@ -917,6 +927,258 @@ describe('ReprocessStaleProviderEvents', () => {
     assert.equal(result.failed, 1);
     assert.equal(result.events[0].outcome, 'failed');
     assert.ok(markFailedCalled);
+  });
+
+  // ── Phase 5 Hardening: Task 1 — tenant-scoped listing ──────────────────────
+
+  it('passes tenantId filter to listStalePendingEvents', async () => {
+    let capturedOptions: any = {};
+    const fakeEventRepo = {
+      listStalePendingEvents: async (_cutoff: Date, opts: any) => {
+        capturedOptions = opts;
+        return [];
+      },
+      lockByIdForUpdate: async () => null,
+      markProcessed: async () => {},
+      markFailed: async () => {},
+      markIgnored: async () => {},
+    };
+    const fakeTxRepo = { findByProviderReferenceGlobal: async () => null };
+
+    const uc = new ReprocessStaleProviderEvents(
+      makeDb() as any,
+      fakeEventRepo as any,
+      fakeTxRepo as any,
+      makeRegistry(),
+      makeApplyGatewayStatus() as any,
+    );
+    await uc.execute({ cutoffMinutes: 15, tenantId: 'tenant-x', dryRun: false });
+
+    assert.equal(capturedOptions.tenantId, 'tenant-x', 'tenantId must be forwarded to repo');
+  });
+
+  it('dry-run passes tenantId filter and makes no mutations', async () => {
+    const event = makeDbEvent({ tenantId: 'tenant-a' });
+    let capturedTenantId: string | undefined;
+    const fakeEventRepo = {
+      listStalePendingEvents: async (_cutoff: Date, opts: any) => {
+        capturedTenantId = opts?.tenantId;
+        return [event];
+      },
+      markProcessed: async () => {},
+      markFailed: async () => {},
+      markIgnored: async () => {},
+    };
+    const fakeTxRepo = { findByProviderReferenceGlobal: async () => null };
+
+    const uc = new ReprocessStaleProviderEvents(
+      makeDb() as any,
+      fakeEventRepo as any,
+      fakeTxRepo as any,
+      makeRegistry(),
+      makeApplyGatewayStatus() as any,
+    );
+    const result = await uc.execute({ cutoffMinutes: 15, tenantId: 'tenant-a', dryRun: true });
+
+    assert.equal(capturedTenantId, 'tenant-a');
+    assert.equal(result.totalFound, 1);
+    assert.equal(result.events[0].outcome, undefined, 'dry-run sets no outcome');
+  });
+
+  // ── Phase 5 Hardening: Task 2 — event row locking ──────────────────────────
+
+  it('silently skips event already claimed (lockByIdForUpdate returns non-pending)', async () => {
+    const event = makeDbEvent({ signatureValid: true, tenantId: 'tenant-a' });
+    // Simulate another concurrent job having claimed and processed this event.
+    const alreadyClaimed = { ...event, processingStatus: 'processed' };
+
+    let markProcessedCalled = false;
+    const fakeEventRepo = {
+      listStalePendingEvents: async () => [event],
+      lockByIdForUpdate: async () => alreadyClaimed,
+      markProcessed: async () => { markProcessedCalled = true; },
+      markFailed: async () => {},
+      markIgnored: async () => {},
+    };
+    const fakeTxRepo = { findByProviderReferenceGlobal: async () => null };
+
+    const db = makeDb(async (cb: any) => cb({}));
+    const uc = new ReprocessStaleProviderEvents(
+      db as any,
+      fakeEventRepo as any,
+      fakeTxRepo as any,
+      makeRegistry(),
+      makeApplyGatewayStatus() as any,
+    );
+    const result = await uc.execute({ cutoffMinutes: 15, dryRun: false });
+
+    assert.equal(result.reprocessed, 0);
+    assert.equal(result.skipped, 0);
+    assert.equal(result.failed, 0);
+    assert.equal(result.events.length, 0, 'already-claimed events are silently skipped');
+    assert.equal(markProcessedCalled, false);
+  });
+
+  it('dry-run does not call lockByIdForUpdate', async () => {
+    const event = makeDbEvent({ signatureValid: true });
+
+    let lockCalled = false;
+    const fakeEventRepo = {
+      listStalePendingEvents: async () => [event],
+      lockByIdForUpdate: async () => { lockCalled = true; return event; },
+      markProcessed: async () => {},
+      markFailed: async () => {},
+      markIgnored: async () => {},
+    };
+    const fakeTxRepo = { findByProviderReferenceGlobal: async () => null };
+
+    const uc = new ReprocessStaleProviderEvents(
+      makeDb() as any,
+      fakeEventRepo as any,
+      fakeTxRepo as any,
+      makeRegistry(),
+      makeApplyGatewayStatus() as any,
+    );
+    await uc.execute({ cutoffMinutes: 15, dryRun: true });
+
+    assert.equal(lockCalled, false, 'dry-run must never lock rows');
+  });
+
+  // ── Phase 5 Hardening: Task 3 — invalid-signature finalization ─────────────
+
+  it('marks invalid-signature event as ignored (not left pending) in actual run', async () => {
+    const event = makeDbEvent({ signatureValid: false, tenantId: 'tenant-a' });
+
+    let markIgnoredCalledWith: string | null = null;
+    let markProcessedCalled = false;
+    const fakeEventRepo = {
+      listStalePendingEvents: async () => [event],
+      lockByIdForUpdate: async () => event,
+      markProcessed: async () => { markProcessedCalled = true; },
+      markFailed: async () => {},
+      markIgnored: async (_id: string, reason: string) => { markIgnoredCalledWith = reason; },
+    };
+    const fakeTxRepo = { findByProviderReferenceGlobal: async () => null };
+
+    const db = makeDb(async (cb: any) => cb({}));
+    const uc = new ReprocessStaleProviderEvents(
+      db as any,
+      fakeEventRepo as any,
+      fakeTxRepo as any,
+      makeRegistry(),
+      makeApplyGatewayStatus() as any,
+    );
+    const result = await uc.execute({ cutoffMinutes: 15, dryRun: false });
+
+    assert.equal(result.skipped, 1);
+    assert.equal(result.events[0].outcome, 'skipped_invalid_sig');
+    assert.ok(
+      String(markIgnoredCalledWith).includes('REPROCESS_INVALID_SIGNATURE'),
+      `markIgnored must be called with REPROCESS_INVALID_SIGNATURE, got: ${markIgnoredCalledWith}`,
+    );
+    assert.equal(markProcessedCalled, false, 'invalid-sig must never mutate money');
+  });
+
+  it('dry-run does not call markIgnored for invalid-signature event', async () => {
+    const event = makeDbEvent({ signatureValid: false, tenantId: 'tenant-a' });
+
+    let markIgnoredCalled = false;
+    const fakeEventRepo = {
+      listStalePendingEvents: async () => [event],
+      markProcessed: async () => {},
+      markFailed: async () => {},
+      markIgnored: async () => { markIgnoredCalled = true; },
+    };
+    const fakeTxRepo = { findByProviderReferenceGlobal: async () => null };
+
+    const uc = new ReprocessStaleProviderEvents(
+      makeDb() as any,
+      fakeEventRepo as any,
+      fakeTxRepo as any,
+      makeRegistry(),
+      makeApplyGatewayStatus() as any,
+    );
+    await uc.execute({ cutoffMinutes: 15, dryRun: true });
+
+    assert.equal(markIgnoredCalled, false, 'dry-run must not call markIgnored');
+  });
+
+  // ── Phase 5 Hardening: Task 4 — unsupported-provider finalization ──────────
+
+  it('marks unsupported-provider event as failed (not left pending) in actual run', async () => {
+    const event = makeDbEvent({
+      provider: 'nonexistent_provider',
+      signatureValid: true,
+      tenantId: 'tenant-a',
+    });
+
+    let markFailedCalledWith: string | null = null;
+    const fakeEventRepo = {
+      listStalePendingEvents: async () => [event],
+      lockByIdForUpdate: async () => event,
+      markProcessed: async () => {},
+      markFailed: async (_id: string, reason: string) => { markFailedCalledWith = reason; },
+      markIgnored: async () => {},
+    };
+    const fakeTxRepo = { findByProviderReferenceGlobal: async () => null };
+
+    const db = makeDb(async (cb: any) => cb({}));
+    const uc = new ReprocessStaleProviderEvents(
+      db as any,
+      fakeEventRepo as any,
+      fakeTxRepo as any,
+      makeRegistry(), // does not include 'nonexistent_provider'
+      makeApplyGatewayStatus() as any,
+    );
+    const result = await uc.execute({ cutoffMinutes: 15, dryRun: false });
+
+    assert.equal(result.skipped, 1);
+    assert.equal(result.events[0].outcome, 'unsupported_provider');
+    assert.ok(
+      String(markFailedCalledWith).includes('UNSUPPORTED_PROVIDER'),
+      `markFailed must be called with UNSUPPORTED_PROVIDER, got: ${markFailedCalledWith}`,
+    );
+  });
+
+  it('batch continues after unsupported-provider event', async () => {
+    const badProviderEvent = makeDbEvent({
+      provider: 'nonexistent_provider',
+      signatureValid: true,
+      tenantId: 'tenant-a',
+    });
+    const ref = `ref-good-${Date.now()}`;
+    const goodEvent = makeDbEvent({
+      signatureValid: true,
+      tenantId: 'tenant-a',
+      rawPayload: { event_id: `evt-good-${Date.now()}`, event_type: 'payment.succeeded', provider_reference: ref, metadata: {} },
+      providerReference: ref,
+    });
+
+    let markProcessedCalled = false;
+    const fakeEventRepo = {
+      listStalePendingEvents: async () => [badProviderEvent, goodEvent],
+      lockByIdForUpdate: async (id: string) =>
+        id === badProviderEvent.id ? badProviderEvent : goodEvent,
+      markProcessed: async () => { markProcessedCalled = true; },
+      markFailed: async () => {},
+      markIgnored: async () => {},
+    };
+    const fakeTxRepo = { findByProviderReferenceGlobal: async () => null };
+
+    const db = makeDb(async (cb: any) => cb({}));
+    const applyStatus = makeApplyGatewayStatus('succeeded');
+    const uc = new ReprocessStaleProviderEvents(
+      db as any,
+      fakeEventRepo as any,
+      fakeTxRepo as any,
+      makeRegistry(),
+      applyStatus as any,
+    );
+    const result = await uc.execute({ cutoffMinutes: 15, dryRun: false });
+
+    assert.equal(result.skipped, 1);
+    assert.equal(result.reprocessed, 1);
+    assert.ok(markProcessedCalled, 'good event must be reprocessed after unsupported-provider event');
   });
 });
 
