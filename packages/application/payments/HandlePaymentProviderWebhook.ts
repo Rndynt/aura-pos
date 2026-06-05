@@ -233,6 +233,34 @@ export class HandlePaymentProviderWebhook {
       resolvedTenantId = txGlobal.tenantId;
     }
 
+    // ── Step 5b: Backfill event tenantId after tenant resolution ─────────────
+    //
+    // Real provider webhooks (e.g. Xendit) do not carry x-tenant-id. After
+    // resolving the tenant from the transaction row above, we backfill the
+    // provider event row so tenant-scoped stale reconciliation (Phase 5) can
+    // find and retry it.
+    //
+    // Done OUTSIDE the DB transaction so the backfill persists even if the
+    // subsequent mutation transaction rolls back (event stays 'pending' with
+    // tenantId set — stale recovery job can repick with correct tenant scope).
+    //
+    // Conflict policy: if event.tenantId is already set to a DIFFERENT tenant,
+    // assignTenant throws TENANT_MISMATCH — we log and continue (the event
+    // processing is still valid; the mismatch is auditable in the event row).
+    if (resolvedTenantId && !event.tenantId) {
+      try {
+        await this.eventRepo.assignTenant(event.id, resolvedTenantId);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[HandlePaymentProviderWebhook] Could not backfill event tenantId for event ` +
+            `${event.id}: ${msg}`,
+        );
+        // Non-fatal: continue processing. The missing tenantId is observable via
+        // listStalePendingEvents (global scan) and auditable in event.errorMessage.
+      }
+    }
+
     // ── Step 6: Process inside a DB transaction ───────────────────────────────
     //
     // The event row already exists (committed in step 4).

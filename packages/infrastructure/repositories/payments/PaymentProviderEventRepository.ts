@@ -84,6 +84,21 @@ export interface IPaymentProviderEventRepository {
    * preventing concurrent reconciliation jobs from double-processing the same event.
    */
   lockByIdForUpdate(id: string, tx: any): Promise<PaymentProviderEvent | null>;
+
+  /**
+   * Phase 7A Hardening: Assign tenantId to a provider event initially inserted
+   * without a tenant (real provider webhooks without x-tenant-id header).
+   *
+   * Rules:
+   * - No-op if event.tenantId is already equal to the resolved tenantId.
+   * - Only assigns when event.tenantId is currently null.
+   * - Throws with 'TENANT_MISMATCH' if event.tenantId conflicts with resolved tenantId.
+   * - Never allows cross-tenant mutation.
+   *
+   * Intended to be called OUTSIDE the main DB transaction so the backfill persists
+   * even if the subsequent payment mutation transaction rolls back.
+   */
+  assignTenant(id: string, tenantId: string, tx?: any): Promise<PaymentProviderEvent>;
 }
 
 export class PaymentProviderEventRepository
@@ -303,6 +318,79 @@ export class PaymentProviderEventRepository
       return rows[0] ?? null;
     } catch (error) {
       this.handleError('lock by id for update', error);
+    }
+  }
+
+  /**
+   * Phase 7A Hardening: Assign tenantId to a provider event initially inserted
+   * without a tenant (real provider webhooks without x-tenant-id header).
+   *
+   * - No-op if event.tenantId already equals tenantId.
+   * - Only assigns when current tenantId is null (UPDATE ... WHERE tenant_id IS NULL).
+   * - Throws TENANT_MISMATCH if the event belongs to a different tenant.
+   * - Concurrent-safe: uses WHERE tenant_id IS NULL to prevent cross-tenant clobber.
+   */
+  async assignTenant(id: string, tenantId: string, tx?: any): Promise<PaymentProviderEvent> {
+    try {
+      const client = tx ?? this.db;
+
+      // Read current row to check existing tenantId.
+      const currentRows = await client
+        .select()
+        .from(paymentProviderEvents)
+        .where(eq(paymentProviderEvents.id, id))
+        .limit(1);
+
+      if (!currentRows[0]) {
+        throw new Error(`Provider event ${id} not found`);
+      }
+
+      const existing = currentRows[0] as PaymentProviderEvent;
+
+      // No-op: already assigned to the same tenant.
+      if (existing.tenantId === tenantId) {
+        return existing;
+      }
+
+      // Conflict: event already belongs to a different tenant — reject.
+      if (existing.tenantId !== null) {
+        throw new Error(
+          `TENANT_MISMATCH: provider event ${id} already belongs to tenant ` +
+            `"${existing.tenantId}", cannot assign to "${tenantId}".`,
+        );
+      }
+
+      // Assign tenantId with WHERE tenant_id IS NULL for concurrent-safety.
+      const updated = await client
+        .update(paymentProviderEvents)
+        .set({ tenantId })
+        .where(and(eq(paymentProviderEvents.id, id), sql`tenant_id IS NULL`))
+        .returning();
+
+      if (updated.length > 0) {
+        return updated[0] as PaymentProviderEvent;
+      }
+
+      // Row was updated concurrently between our SELECT and UPDATE — re-read.
+      const reRead = await client
+        .select()
+        .from(paymentProviderEvents)
+        .where(eq(paymentProviderEvents.id, id))
+        .limit(1);
+
+      const reReadRow = reRead[0] as PaymentProviderEvent | undefined;
+      if (reReadRow?.tenantId === tenantId) {
+        return reReadRow; // Concurrent assignment to same tenant — OK.
+      }
+
+      throw new Error(
+        `TENANT_MISMATCH: concurrent tenant assignment conflict for event ${id}.`,
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('TENANT_MISMATCH')) {
+        throw error; // Re-throw tenant mismatch errors directly — not a repository error.
+      }
+      this.handleError('assign tenant', error);
     }
   }
 }

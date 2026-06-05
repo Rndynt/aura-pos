@@ -10,6 +10,7 @@
  *   XENDIT_SANDBOX_ENABLED=true
  *   XENDIT_SECRET_KEY_SANDBOX=xnd_development_...
  *   XENDIT_WEBHOOK_TOKEN_SANDBOX=...
+ *   PAYMENT_ENGINE_SERVICE_TOKEN=<at-least-32-char-token>
  *   API_BASE_URL=http://localhost:5000  (AuraPoS API must be running)
  *
  * Usage:
@@ -17,12 +18,19 @@
  *   XENDIT_SANDBOX_ENABLED=true \
  *   XENDIT_SECRET_KEY_SANDBOX=xnd_development_... \
  *   XENDIT_WEBHOOK_TOKEN_SANDBOX=... \
- *   npx tsx apps/api/src/scripts/payment-engine/xendit-sandbox-smoke.ts
+ *   PAYMENT_ENGINE_SERVICE_TOKEN=... \
+ *   npx tsx --tsconfig apps/api/tsconfig.node.json \
+ *     apps/api/src/scripts/payment-engine/xendit-sandbox-smoke.ts
+ *
+ * Auth notes:
+ *   - Normal payment-engine routes require x-payment-engine-service-token.
+ *   - Webhook route uses x-callback-token — NOT the service token.
  */
 
 const SMOKE_ENABLED = process.env['XENDIT_SANDBOX_SMOKE_TEST'] === 'true';
 const SANDBOX_ENABLED = process.env['XENDIT_SANDBOX_ENABLED'] === 'true';
 const SECRET_KEY = process.env['XENDIT_SECRET_KEY_SANDBOX'] ?? '';
+const SERVICE_TOKEN = process.env['PAYMENT_ENGINE_SERVICE_TOKEN'] ?? '';
 const NODE_ENV = process.env['NODE_ENV'] ?? 'development';
 const API_BASE = process.env['API_BASE_URL'] ?? 'http://localhost:5000';
 
@@ -49,27 +57,47 @@ if (!SECRET_KEY) {
   process.exit(1);
 }
 
+if (SERVICE_TOKEN.length < 32) {
+  console.error(
+    '[xendit-sandbox-smoke] FAILED: PAYMENT_ENGINE_SERVICE_TOKEN must be at least 32 characters. ' +
+      'This token authenticates calls to the payment-engine service routes.',
+  );
+  process.exit(1);
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const TENANT_ID = 'demo-tenant';
+/** Headers for normal payment-engine routes (require service token + tenant-id). */
 const HEADERS = {
   'Content-Type': 'application/json',
   'x-tenant-id': TENANT_ID,
+  'x-payment-engine-service-token': SERVICE_TOKEN,
 };
 
+/**
+ * POST to a payment-engine route with service token auth.
+ * Unwraps the { success, data } envelope returned by sendSuccess().
+ */
 async function apiPost(path: string, body: unknown): Promise<{ status: number; data: unknown }> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers: HEADERS,
     body: JSON.stringify(body),
   });
-  const data = await res.json();
+  const envelope = await res.json() as Record<string, unknown>;
+  const data = ('data' in envelope) ? envelope['data'] : envelope;
   return { status: res.status, data };
 }
 
+/**
+ * GET a payment-engine route with service token auth.
+ * Unwraps the { success, data } envelope returned by sendSuccess().
+ */
 async function apiGet(path: string): Promise<{ status: number; data: unknown }> {
   const res = await fetch(`${API_BASE}${path}`, { headers: HEADERS });
-  const data = await res.json();
+  const envelope = await res.json() as Record<string, unknown>;
+  const data = ('data' in envelope) ? envelope['data'] : envelope;
   return { status: res.status, data };
 }
 
@@ -97,10 +125,12 @@ console.log(`  NODE_ENV: ${NODE_ENV}`);
   // Step 1 — Create a payment intent
   step('Step 1: Create payment intent');
   const intentRes = await apiPost('/api/payment-engine/intents', {
-    payableType: 'order',
-    payableId: `smoke-order-${Date.now()}`,
-    amount: 10000,
+    payable_type: 'order',
+    payable_id: `smoke-order-${Date.now()}`,
+    amount_due: 10000,
     currency: 'IDR',
+    allow_partial: false,
+    metadata: { source: 'xendit-sandbox-smoke' },
   });
   console.log(`  HTTP ${intentRes.status}`);
   check('201 Created', intentRes.status === 201);
@@ -113,7 +143,7 @@ console.log(`  NODE_ENV: ${NODE_ENV}`);
   // Step 2 — Create Xendit sandbox gateway payment (QRIS)
   step('Step 2: Create Xendit sandbox payment (QRIS)');
   const payRes = await apiPost(
-    `/api/payment-engine/intents/${intentId}/gateway-payment`,
+    `/api/payment-engine/intents/${intentId}/gateway-payments`,
     {
       provider: 'xendit_sandbox',
       method: 'qris',
@@ -124,7 +154,9 @@ console.log(`  NODE_ENV: ${NODE_ENV}`);
   console.log(`  HTTP ${payRes.status}`);
 
   const payData = payRes.data as Record<string, unknown>;
-  console.log(`  Status: ${payData['status']}`);
+  // The response wraps the transaction under a 'transaction' key.
+  const txData = (payData['transaction'] ?? payData) as Record<string, unknown>;
+  console.log(`  Transaction status: ${txData['status'] ?? payData['status'] ?? '(none)'}`);
   console.log(`  Provider reference: ${payData['providerReference']}`);
 
   if (payRes.status === 422) {

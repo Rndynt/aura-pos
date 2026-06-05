@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Database } from '@pos/infrastructure/database';
 import type {
   IPaymentIntentRepository,
@@ -51,10 +52,17 @@ export interface CreateGatewayPaymentOutput {
 }
 
 /**
- * Provider whitelist: only fake_gateway is allowed until a real gateway phase
- * integrates hardened production adapters. Prevents accidental real-money calls.
+ * Recognized gateway provider codes (Phase 7A: fake_gateway + xendit_sandbox).
+ * This allowlist prevents unknown strings from reaching the registry.
+ * Each provider must ALSO be registered in the registry to be usable.
+ *
+ * Policy:
+ *  - 'manual'        → always rejected (not a gateway provider)
+ *  - 'fake_gateway'  → allowed if registered (always registered in dev/test)
+ *  - 'xendit_sandbox'→ allowed only when registered (requires XENDIT_SANDBOX_ENABLED=true)
+ *  - anything else   → rejected (unrecognized code)
  */
-const ALLOWED_GATEWAY_PROVIDERS = new Set<string>(['fake_gateway']);
+const GATEWAY_PROVIDER_CODES = new Set<string>(['fake_gateway', 'xendit_sandbox']);
 
 /**
  * CreateGatewayPayment — create a pending/requires_action/immediate payment
@@ -129,10 +137,26 @@ export class CreateGatewayPayment {
       throw new PaymentPolicyError('Payment amount must be greater than zero', 'INVALID_AMOUNT');
     }
 
-    if (!ALLOWED_GATEWAY_PROVIDERS.has(input.provider)) {
+    // Policy: reject manual provider — it is not a gateway payment provider.
+    if (input.provider === 'manual') {
+      throw new PaymentPolicyError(
+        `Provider "manual" is not supported for gateway payments. Use RecordManualPayment instead.`,
+        'UNSUPPORTED_PROVIDER',
+      );
+    }
+    // Policy: reject unrecognized gateway codes before touching the registry.
+    if (!GATEWAY_PROVIDER_CODES.has(input.provider)) {
       throw new PaymentPolicyError(
         `Provider "${input.provider}" is not supported for gateway payments. ` +
-          `Allowed provider(s): ${[...ALLOWED_GATEWAY_PROVIDERS].join(', ')}.`,
+          `Recognized gateway providers: ${[...GATEWAY_PROVIDER_CODES].join(', ')}.`,
+        'UNSUPPORTED_PROVIDER',
+      );
+    }
+    // Policy: provider must be registered (xendit_sandbox requires XENDIT_SANDBOX_ENABLED=true + key).
+    if (!this.providerRegistry.has(input.provider)) {
+      throw new PaymentPolicyError(
+        `Provider "${input.provider}" is recognized but not registered. ` +
+          `Ensure it is enabled and configured (e.g. XENDIT_SANDBOX_ENABLED=true for xendit_sandbox).`,
         'UNSUPPORTED_PROVIDER',
       );
     }
@@ -191,12 +215,22 @@ export class CreateGatewayPayment {
       assertAmountValid(input.amount, intentDomain.amountRemaining, intentDomain.allowPartial);
 
       // Step 5 — Call provider to generate the payment URL / QR / reference.
+      //
+      // Generate a per-attempt unique provider_request_id so that multiple gateway
+      // attempts for the same intent use different reference_id values in Xendit
+      // (and equivalent providers).  Without this, `reference_id = aurapos-<intentId>`
+      // would collide on retries.
+      //
+      // Source order: idempotency key (caller's unique key) → fresh UUID.
+      // This is passed in metadata so the provider can use it as its reference_id.
+      const providerRequestId = `aurapos-${input.paymentIntentId}-${input.idempotencyKey ?? randomUUID()}`;
+
       const providerResult = await gatewayProvider.createPayment({
         paymentIntentId: input.paymentIntentId,
         amount: input.amount,
         currency: intentDomain.currency,
         method: input.method,
-        metadata: input.metadata,
+        metadata: { ...input.metadata, provider_request_id: providerRequestId },
       });
 
       // Step 6 — Handle immediate success (provider returns `status: 'succeeded'`).

@@ -37,6 +37,11 @@ XENDIT_API_BASE_URL=https://api.xendit.co
 # Return URLs after payment completion
 XENDIT_PAYMENT_SUCCESS_RETURN_URL=http://localhost:5000/payment/success
 XENDIT_PAYMENT_FAILURE_RETURN_URL=http://localhost:5000/payment/failure
+
+# Payment engine service token — required for all payment-engine routes
+# Must be at least 32 characters. Set in Replit Secrets or .env (never commit).
+# NOTE: Webhook routes use x-callback-token, NOT this token.
+PAYMENT_ENGINE_SERVICE_TOKEN=REPLACE_WITH_AT_LEAST_32_CHAR_TOKEN
 ```
 
 > **Security rules:**
@@ -71,39 +76,61 @@ If you do NOT see this message, check:
 
 ### Step 1 — Create a Payment Intent
 
+> **Auth:** All payment-engine routes require the `x-payment-engine-service-token` header.
+> Set `SERVICE_TOKEN` to your `PAYMENT_ENGINE_SERVICE_TOKEN` env var value.
+
 ```bash
+SERVICE_TOKEN="your-payment-engine-service-token-here"   # ≥32 chars
+
 curl -s -X POST http://localhost:5000/api/payment-engine/intents \
   -H "Content-Type: application/json" \
   -H "x-tenant-id: demo-tenant" \
+  -H "x-payment-engine-service-token: ${SERVICE_TOKEN}" \
   -d '{
-    "payableType": "order",
-    "payableId": "test-order-001",
-    "amount": 100000,
-    "currency": "IDR"
+    "payable_type": "order",
+    "payable_id": "test-order-001",
+    "amount_due": 100000,
+    "currency": "IDR",
+    "allow_partial": false
   }' | jq .
 ```
 
-Expected: `201 Created` with an `id` field — save it as `INTENT_ID`.
+Expected: `201 Created` with a `data.id` field — save it as `INTENT_ID`.
 
 ```json
 {
-  "id": "pi_xxxxxxxxxxxxxxxx",
-  "status": "open",
-  "amount": 100000,
-  "amountPaid": 0,
-  "amountRemaining": 100000,
-  ...
+  "success": true,
+  "data": {
+    "id": "pi_xxxxxxxxxxxxxxxx",
+    "status": "requires_payment",
+    "amountDue": 100000,
+    "amountPaid": 0,
+    "amountRemaining": 100000
+  }
 }
+```
+
+Extract the intent ID:
+
+```bash
+INTENT_ID=$(curl -s -X POST http://localhost:5000/api/payment-engine/intents \
+  -H "Content-Type: application/json" \
+  -H "x-tenant-id: demo-tenant" \
+  -H "x-payment-engine-service-token: ${SERVICE_TOKEN}" \
+  -d '{"payable_type":"order","payable_id":"test-order-001","amount_due":100000,"currency":"IDR"}' \
+  | jq -r '.data.id')
+echo "INTENT_ID=${INTENT_ID}"
 ```
 
 ### Step 2 — Create a Xendit Sandbox Gateway Payment (QRIS)
 
-```bash
-INTENT_ID="pi_xxxxxxxxxxxxxxxx"
+> **Route:** `/gateway-payments` (plural) — not `/gateway-payment`.
 
-curl -s -X POST "http://localhost:5000/api/payment-engine/intents/${INTENT_ID}/gateway-payment" \
+```bash
+curl -s -X POST "http://localhost:5000/api/payment-engine/intents/${INTENT_ID}/gateway-payments" \
   -H "Content-Type: application/json" \
   -H "x-tenant-id: demo-tenant" \
+  -H "x-payment-engine-service-token: ${SERVICE_TOKEN}" \
   -d '{
     "provider": "xendit_sandbox",
     "method": "qris",
@@ -114,32 +141,52 @@ curl -s -X POST "http://localhost:5000/api/payment-engine/intents/${INTENT_ID}/g
   }' | jq .
 ```
 
-Expected response includes Xendit `payment_request_id` and actions:
+Expected: `{ "success": true, "data": { "providerReference": ..., "transaction": { ... }, ... } }`.
+The key fields are nested under `data`:
 
 ```json
 {
-  "providerReference": "pr_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-  "status": "requires_action",
-  "providerActions": [
-    {
-      "type": "present_qr",
-      "descriptor": "QR_STRING",
-      "label": "Scan QR code to pay",
-      "value": "00020101021226..."
+  "success": true,
+  "data": {
+    "providerReference": "pr_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "providerPaymentUrl": null,
+    "providerQrString": "00020101021226...",
+    "providerActions": [
+      {
+        "type": "present_qr",
+        "descriptor": "QR_STRING",
+        "label": "Scan QR code to pay",
+        "value": "00020101021226..."
+      }
+    ],
+    "transaction": {
+      "status": "requires_action",
+      "provider": "xendit_sandbox",
+      "method": "qris"
     }
-  ],
-  ...
+  }
 }
 ```
 
-Save `providerReference` as `PROVIDER_REF`.
+Save `data.providerReference` as `PROVIDER_REF`:
+
+```bash
+PROVIDER_REF=$(curl -s -X POST "http://localhost:5000/api/payment-engine/intents/${INTENT_ID}/gateway-payments" \
+  -H "Content-Type: application/json" \
+  -H "x-tenant-id: demo-tenant" \
+  -H "x-payment-engine-service-token: ${SERVICE_TOKEN}" \
+  -d '{"provider":"xendit_sandbox","method":"qris","amount":100000}' \
+  | jq -r '.data.providerReference')
+echo "PROVIDER_REF=${PROVIDER_REF}"
+```
 
 ### Step 3 — E-Wallet Payment (OVO example)
 
 ```bash
-curl -s -X POST "http://localhost:5000/api/payment-engine/intents/${INTENT_ID}/gateway-payment" \
+curl -s -X POST "http://localhost:5000/api/payment-engine/intents/${INTENT_ID}/gateway-payments" \
   -H "Content-Type: application/json" \
   -H "x-tenant-id: demo-tenant" \
+  -H "x-payment-engine-service-token: ${SERVICE_TOKEN}" \
   -d '{
     "provider": "xendit_sandbox",
     "method": "ewallet",
@@ -153,9 +200,10 @@ curl -s -X POST "http://localhost:5000/api/payment-engine/intents/${INTENT_ID}/g
 ### Step 4 — Bank Transfer (Virtual Account)
 
 ```bash
-curl -s -X POST "http://localhost:5000/api/payment-engine/intents/${INTENT_ID}/gateway-payment" \
+curl -s -X POST "http://localhost:5000/api/payment-engine/intents/${INTENT_ID}/gateway-payments" \
   -H "Content-Type: application/json" \
   -H "x-tenant-id: demo-tenant" \
+  -H "x-payment-engine-service-token: ${SERVICE_TOKEN}" \
   -d '{
     "provider": "xendit_sandbox",
     "method": "bank_transfer",
@@ -170,7 +218,8 @@ curl -s -X POST "http://localhost:5000/api/payment-engine/intents/${INTENT_ID}/g
 
 ```bash
 curl -s "http://localhost:5000/api/payment-engine/intents/${INTENT_ID}/status" \
-  -H "x-tenant-id: demo-tenant" | jq .
+  -H "x-tenant-id: demo-tenant" \
+  -H "x-payment-engine-service-token: ${SERVICE_TOKEN}" | jq .
 ```
 
 Expected (before payment completes):
@@ -229,9 +278,13 @@ Expected: `200 OK` with `outcome: "processed"`.
 
 ### Step 8 — Verify Final Intent Status
 
+> **Note:** The webhook route (`/webhooks/xendit_sandbox`) uses `x-callback-token`, NOT the service token.
+> All other routes use `x-payment-engine-service-token`.
+
 ```bash
 curl -s "http://localhost:5000/api/payment-engine/intents/${INTENT_ID}/status" \
-  -H "x-tenant-id: demo-tenant" | jq .
+  -H "x-tenant-id: demo-tenant" \
+  -H "x-payment-engine-service-token: ${SERVICE_TOKEN}" | jq .
 ```
 
 Expected after successful webhook:

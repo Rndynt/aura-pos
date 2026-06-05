@@ -1,4 +1,4 @@
-import { timingSafeEqual as cryptoTimingSafeEqual } from 'node:crypto';
+import { timingSafeEqual as cryptoTimingSafeEqual, randomUUID } from 'node:crypto';
 import type {
   PaymentProvider,
   ProviderCapabilities,
@@ -366,8 +366,14 @@ export class XenditProvider implements PaymentProvider {
   async createPayment(input: CreateProviderPaymentInput): Promise<CreateProviderPaymentResult> {
     const channelCode = this.resolveChannelCode(input.method, input.metadata);
 
-    // reference_id is OUR reference; Xendit returns payment_request_id as its reference.
-    const referenceId = `aurapos-${input.paymentIntentId}`;
+    // reference_id is OUR stable reference sent to Xendit.
+    // Use the per-attempt provider_request_id injected by CreateGatewayPayment (Task 6).
+    // This prevents reference_id collisions when the same intent has multiple gateway attempts.
+    // Falls back to a generated unique suffix if not provided (e.g. direct provider calls in tests).
+    const referenceId =
+      typeof input.metadata?.['provider_request_id'] === 'string'
+        ? (input.metadata['provider_request_id'] as string)
+        : `aurapos-${input.paymentIntentId}-${randomUUID().slice(0, 8)}`;
 
     const requestBody = {
       reference_id: referenceId,
