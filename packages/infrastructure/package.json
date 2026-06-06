@@ -14,9 +14,6 @@
     "./repositories/orders/*": "./repositories/orders/*.ts",
     "./repositories/seating/*": "./repositories/seating/*.ts",
     "./repositories/tenants/*": "./repositories/tenants/*.ts",
-    "./payments/providers": "./payments/providers/index.ts",
-    "./payments/providers/*": "./payments/providers/*.ts",
-    "./repositories/payments/*": "./repositories/payments/*.ts",
     "./seeders": "./seeders/index.ts",
     "./seeders/*": "./seeders/*.ts"
   },

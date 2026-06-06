@@ -323,25 +323,6 @@ importers:
         specifier: ^5.4.20
         version: 5.4.21(@types/node@20.16.11)(lightningcss@1.32.0)(terser@5.48.0)
 
-  apps/payment-orchestration-service:
-    dependencies:
-      '@northflow/payment-orchestration-core':
-        specifier: workspace:*
-        version: link:../../packages/payment-orchestration-core
-      express:
-        specifier: ^4.21.2
-        version: 4.22.2
-    devDependencies:
-      '@types/express':
-        specifier: ^4.17.21
-        version: 4.17.21
-      '@types/node':
-        specifier: 20.16.11
-        version: 20.16.11
-      tsx:
-        specifier: ^4.21.0
-        version: 4.22.2
-
   apps/pos-terminal-web:
     dependencies:
       '@hookform/resolvers':
@@ -614,10 +595,6 @@ importers:
       fake-indexeddb:
         specifier: ^6.2.5
         version: 6.2.5
-
-  packages/payment-orchestration-client-sdk: {}
-
-  packages/payment-orchestration-core: {}
 
   shared: {}
 

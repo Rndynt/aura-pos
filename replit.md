@@ -14,11 +14,8 @@
 apps/
   api/                          — Express backend (main AuraPoS API)
   pos-terminal-web/             — React 19 + Vite frontend (main POS UI)
-  payment-orchestration-service/— Standalone payment microservice (Phase 8D+)
 packages/
   core/                         — Shared utilities, tenant.ts (CURRENT_TENANT_ID here)
-  payment-orchestration-core/   — workspace package / future standalone package containing payment domain types/interfaces
-  payment-orchestration-client-sdk/ — typed HTTP client for future app integrations
 shared/
   schema.ts                     — Drizzle ORM schema (source of truth for DB types)
 docs/
@@ -30,26 +27,9 @@ docs/
 Edit `packages/core/tenant.ts` line 1: `export const CURRENT_TENANT_ID = "demo-tenant"`
 Available: `demo-tenant` (cafe/restaurant), `laundry-indo` (laundry), `minimarket-demo` (retail)
 
-### Test command (payment orchestration)
-```
-npx tsx --tsconfig apps/api/tsconfig.node.json --test apps/api/src/__tests__/<file>.test.ts
-```
-
-### Type-check commands
-```
-pnpm --filter @northflow/payment-orchestration-core type-check
-pnpm --filter @northflow/payment-orchestration-service type-check
-```
-
 ### Critical constraints
 - `tenants.id` is a slug string (e.g. `"demo-tenant"`), NOT uuid
-- No intentional changes to embedded payment runtime unless a phase explicitly says so:
-  - `apps/api/src/http/routes/payment-engine.ts`
-  - `packages/application/payments/*`
-  - `packages/domain/payments/*`
-  - `packages/infrastructure/payments/providers/*`
-- `IDEMPOTENCY_SCOPE = 'create_gateway_payment'` in CreateGatewayPayment (not 'gateway_payment')
-- Webhook route registered BEFORE auth middleware in `app.ts`
+- Local POS tender flows are kept in order use cases and order payment records; embedded provider/orchestration runtime is not part of AuraPoS.
 - Memory: `.agents/memory/MEMORY.md` — read this for cross-session decisions
 
 ---

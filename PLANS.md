@@ -4697,3 +4697,166 @@ Continue from backend/API and SDK parity implementation, then update docs/report
 ### Continuation Notes
 
 Next safe action is to push local standalone commit `aef58a5f3350ab8e2190dd665a3c31e50bd9d027` to `https://github.com/Rndynt/northflow-payment-orchestration.git` from an authenticated environment, then update the final decision to `NORTHFLOW_PAYMENT_PARITY_READY_FOR_AURAPOS_PAYMENT_REMOVAL` only if the push succeeds and no new validation failures appear.
+
+## Plan: Cleanup Extracted Payment Engine, Keep POS Tender
+
+### Source
+
+- Tasklist: `docs/replit-agent-clean-payment-engine-keep-pos-tenders-prompt.md`
+- User request: `Eksekusi docs/replit-agent-clean-payment-engine-keep-pos-tenders-prompt.md`
+- Date started: 2026-06-06
+- Current status: In progress
+
+### Goal
+
+Remove local Northflow extraction artifacts and embedded payment orchestration runtime from AuraPoS while preserving basic POS cashier tender fields and checkout behavior.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [ ] Relevant docs
+- [ ] Relevant source files
+
+### Workstreams
+
+Real subagents were not used because the platform instructions for this run only allow spawning subagents when explicitly requested by the user. Workstreams below are simulated.
+
+#### Backend/API Workstream
+
+- Scope: API routes/controllers/use cases/repositories referencing embedded payment orchestration.
+- Files inspected: Pending
+- Findings: Pending
+- Tasks: Remove orchestration registrations/runtime while keeping POS tender endpoints and order completion.
+- Risks: Accidentally removing local POS tender payment fields.
+- Validation: `npm run check`, package type checks/tests where available.
+
+#### Database/Schema Workstream
+
+- Scope: schema and migrations for payment intent/provider orchestration tables versus local order tender fields.
+- Files inspected: Pending
+- Findings: Pending
+- Tasks: Remove active schema references for orchestration tables; preserve order/tender fields.
+- Risks: Destructive migration history edits versus current schema consistency.
+- Validation: schema searches and type-check.
+
+#### Frontend/UI Workstream
+
+- Scope: POS tender UI/client hooks and any orchestration SDK references.
+- Files inspected: Pending
+- Findings: Pending
+- Tasks: Remove orchestration client dependencies; preserve cash/manual tender UI.
+- Risks: Breaking cashier checkout.
+- Validation: frontend type-check/build where feasible.
+
+#### Tests/Validation Workstream
+
+- Scope: orchestration tests and audit commands.
+- Files inspected: Pending
+- Findings: Pending
+- Tasks: Remove tests for deleted runtime and run audit searches/checks.
+- Risks: Existing unrelated failures.
+- Validation: documented command results.
+
+#### Documentation Workstream
+
+- Scope: remove obsolete orchestration docs/prompts/reports except required final report/pointers.
+- Files inspected: Pending
+- Findings: Pending
+- Tasks: Add final cleanup report and update tasklist/plan honestly.
+- Risks: Removing useful external Northflow docs pointers.
+- Validation: audit searches.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: ensure any kept tender/order mutations remain tenant-aware.
+- Files inspected: Pending
+- Findings: Pending
+- Tasks: Preserve tenant-scoped order payment behavior; avoid cross-tenant regressions.
+- Risks: Tender refactor may bypass tenant filters.
+- Validation: source inspection and tests/type-check.
+
+### Execution Order
+
+1. Inventory and classify payment-related files.
+2. Remove extracted workspace/packages/apps/scripts and workspace/config references.
+3. Remove embedded backend/payment orchestration runtime and registrations.
+4. Remove active tests and frontend/client references tied to orchestration.
+5. Clean active schema/config references while preserving POS tender fields.
+6. Add cleanup report and update checklist/plan.
+7. Run audit searches and validation commands.
+8. Commit and create PR.
+
+### Progress
+
+#### Completed
+
+- [ ] Task: Pending
+  - Files changed:
+  - Validation:
+  - Docs updated:
+
+#### Partially Completed
+
+- [ ] Task: Pending
+  - Completed:
+  - Remaining:
+  - Reason:
+
+#### Blocked
+
+- [ ] Task: Pending
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+
+- [ ] Task: Pending
+  - Reason:
+
+### Validation Log
+
+- Command: Pending
+- Result: Pending
+- Notes: Pending
+
+### Documentation Updates
+
+- File: `PLANS.md`
+- Change: Added active execution plan for cleanup task.
+
+### Checklist Updates
+
+- File: Pending
+- Change: Pending
+
+### Continuation Notes
+
+Continue with repository inventory/classification of orchestration artifacts and POS tender files.
+
+### Final Update — Cleanup Extracted Payment Engine, Keep POS Tender
+
+- Current status: Completed and validated.
+- Decision: `AURAPOS_NORTHFLOW_AND_EMBEDDED_PAYMENT_ENGINE_REMOVED_POS_TENDERS_KEPT`.
+- Completed:
+  - Removed local Northflow extraction workspace, standalone payment-orchestration app, local payment-orchestration packages, extraction script, embedded payment-engine route/controller/use cases/domain/infrastructure/providers/repositories/scripts/tests, and obsolete payment docs/prompts/reports.
+  - Removed workspace/config references to `@northflow/payment-orchestration-*` and deleted orchestration project references.
+  - Removed active payment intent/transaction/allocation/provider-event and payment-orchestration schema/migration entries while preserving POS order payment schema and tender use cases.
+  - Preserved POS tender behavior through `order_payments`, `RecordPayment`, `CreateAndPayOrder`, POS cart/payment dialog state, receipt display, and offline local payment storage.
+  - Added `docs/reports/remove-northflow-and-embedded-payment-keep-pos-tenders-report.md`.
+- Validation log:
+  - `npm run check`: passed.
+  - `pnpm build`: passed with non-blocking Vite/PostCSS/chunk-size warnings.
+  - `pnpm test`: passed.
+  - `pnpm run db:check`: passed.
+  - Active source/config/test audit search for deleted orchestration references: passed with no matches.
+  - Broad repository audit excluding `PLANS.md` and the final report: passed with no matches.
+- Documentation updates:
+  - Final cleanup report added.
+  - `replit.md` updated to remove stale payment orchestration onboarding instructions.
+  - Obsolete payment orchestration docs/prompts/reports removed.
+- Continuation notes:
+  - No blocker remains for this cleanup batch.
+  - If future provider orchestration is needed, use the standalone Northflow repository rather than reintroducing local AuraPoS runtime artifacts.

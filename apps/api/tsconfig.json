@@ -8,22 +8,49 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "paths": {
-      "@shared": ["../../shared"],
-      "@shared/*": ["../../shared/*"],
-      "@pos/core": ["../../packages/core"],
-      "@pos/core/*": ["../../packages/core/*"],
-      "@pos/domain": ["../../packages/domain"],
-      "@pos/domain/*": ["../../packages/domain/*"],
-      "@pos/application": ["../../packages/application"],
-      "@pos/application/*": ["../../packages/application/*"],
-      "@pos/infrastructure": ["../../packages/infrastructure"],
-      "@pos/infrastructure/*": ["../../packages/infrastructure/*"],
-      "@pos/features": ["../../packages/features"],
-      "@pos/features/*": ["../../packages/features/*"],
-      "@northflow/payment-orchestration-core": ["../../packages/payment-orchestration-core/src"],
-      "@northflow/payment-orchestration-core/*": ["../../packages/payment-orchestration-core/src/*"]
+      "@shared": [
+        "../../shared"
+      ],
+      "@shared/*": [
+        "../../shared/*"
+      ],
+      "@pos/core": [
+        "../../packages/core"
+      ],
+      "@pos/core/*": [
+        "../../packages/core/*"
+      ],
+      "@pos/domain": [
+        "../../packages/domain"
+      ],
+      "@pos/domain/*": [
+        "../../packages/domain/*"
+      ],
+      "@pos/application": [
+        "../../packages/application"
+      ],
+      "@pos/application/*": [
+        "../../packages/application/*"
+      ],
+      "@pos/infrastructure": [
+        "../../packages/infrastructure"
+      ],
+      "@pos/infrastructure/*": [
+        "../../packages/infrastructure/*"
+      ],
+      "@pos/features": [
+        "../../packages/features"
+      ],
+      "@pos/features/*": [
+        "../../packages/features/*"
+      ]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

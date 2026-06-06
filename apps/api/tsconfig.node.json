@@ -2,7 +2,9 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "ESNext",
-    "lib": ["ES2020"],
+    "lib": [
+      "ES2020"
+    ],
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -14,22 +16,51 @@
     "noEmit": true,
     "baseUrl": "../..",
     "paths": {
-      "@shared": ["./shared"],
-      "@shared/*": ["./shared/*"],
-      "@pos/core": ["./packages/core"],
-      "@pos/core/*": ["./packages/core/*"],
-      "@pos/domain": ["./packages/domain"],
-      "@pos/domain/*": ["./packages/domain/*"],
-      "@pos/application": ["./packages/application"],
-      "@pos/application/*": ["./packages/application/*"],
-      "@pos/infrastructure": ["./packages/infrastructure"],
-      "@pos/infrastructure/*": ["./packages/infrastructure/*"],
-      "@pos/features": ["./packages/features"],
-      "@pos/features/*": ["./packages/features/*"],
-      "@northflow/payment-orchestration-core": ["./packages/payment-orchestration-core/src"],
-      "@northflow/payment-orchestration-core/*": ["./packages/payment-orchestration-core/src/*"]
+      "@shared": [
+        "./shared"
+      ],
+      "@shared/*": [
+        "./shared/*"
+      ],
+      "@pos/core": [
+        "./packages/core"
+      ],
+      "@pos/core/*": [
+        "./packages/core/*"
+      ],
+      "@pos/domain": [
+        "./packages/domain"
+      ],
+      "@pos/domain/*": [
+        "./packages/domain/*"
+      ],
+      "@pos/application": [
+        "./packages/application"
+      ],
+      "@pos/application/*": [
+        "./packages/application/*"
+      ],
+      "@pos/infrastructure": [
+        "./packages/infrastructure"
+      ],
+      "@pos/infrastructure/*": [
+        "./packages/infrastructure/*"
+      ],
+      "@pos/features": [
+        "./packages/features"
+      ],
+      "@pos/features/*": [
+        "./packages/features/*"
+      ]
     }
   },
-  "include": ["src/**/*", "../../shared/**/*", "../../packages/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*",
+    "../../shared/**/*",
+    "../../packages/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

@@ -23,12 +23,6 @@
       "path": "./packages/offline/tsconfig.json"
     },
     {
-      "path": "./packages/payment-orchestration-core/tsconfig.json"
-    },
-    {
-      "path": "./packages/payment-orchestration-client-sdk/tsconfig.json"
-    },
-    {
       "path": "./apps/api/tsconfig.json"
     },
     {
@@ -36,9 +30,6 @@
     },
     {
       "path": "./apps/web/tsconfig.json"
-    },
-    {
-      "path": "./apps/payment-orchestration-service/tsconfig.json"
     }
   ]
 }
