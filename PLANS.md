@@ -4468,3 +4468,232 @@ Close standalone extraction blockers for payment orchestration without implement
 ### Continuation Notes
 
 Phase 8J is complete and ready for standalone repo extraction planning. Continue with `8K — SDK/API Contract Freeze + Deployment Readiness`, focusing on freezing API/SDK contracts, deployment manifests, CI packaging, and any extraction repository bootstrap.
+
+## Plan: Complete Northflow Payment Legacy Parity Hardening
+
+### Source
+
+- Tasklist: `docs/replit-agent-payment-parity-hardening-completion-prompt.md`
+- User request: "Check dan eksekusi docs/replit-agent-payment-parity-hardening-completion-prompt.md"
+- Date started: 2026-06-06
+- Current status: In progress
+
+### Goal
+
+Complete safe actionable legacy payment parity hardening inside `northflow-payment-orchestration/` without deleting AuraPoS payment code or integrating POS UI.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: refund/void use cases, transaction route serialization, provider runtime contracts.
+- Files inspected: `RefundPaymentTransaction.ts`, `VoidPaymentTransaction.ts`, `transactions.ts`, provider files.
+- Findings: refund/void provider fallback was broad; void did not accept/persist idempotency key; refund did not replay/conflict on transaction idempotency key.
+- Tasks: implement transaction idempotency lookup, idempotent replay flags, route body/response updates, provider unsupported errors.
+- Risks: race safety depends on existing `(merchant_id, idempotency_key)` unique transaction index.
+- Validation: targeted tests plus type-check/build/check.
+
+#### Database/Schema Workstream
+
+- Scope: transaction idempotency columns and repository primitives.
+- Files inspected: `schema.ts`, migrations, transaction repository.
+- Findings: `idempotency_key` column and unique merchant/key index already exist; repository lacked lookup/update support for refund/void parity.
+- Tasks: add repository lookup by merchant/key and allow status update to set idempotency key/metadata/raw response.
+- Risks: no DB transaction/lock primitive in current repository port; document reliance on unique constraint.
+- Validation: repository compile checks and parity tests.
+
+#### Frontend/UI Workstream
+
+- Scope: none; hard guardrail says do not add POS UI.
+- Files inspected: not applicable.
+- Findings: no UI work required.
+- Tasks: none.
+- Risks: none.
+- Validation: not applicable.
+
+#### Tests/Validation Workstream
+
+- Scope: SDK and refund/void parity tests.
+- Files inspected: `payment-orchestration-client-sdk.test.ts`, `payment-orchestration-refund-void-parity.test.ts`.
+- Findings: tests existed but accepted unsafe fallback and lacked idempotency coverage.
+- Tasks: add SDK refund/void method tests, idempotency replay/conflict tests, unsupported provider tests.
+- Risks: full workspace validation may expose pre-existing failures.
+- Validation: pnpm commands listed in prompt.
+
+#### Documentation Workstream
+
+- Scope: API/SDK/error/smoke/OpenAPI/README/parity reports/extraction check.
+- Files inspected: docs and script named by prompt.
+- Findings: refund/void docs existed partially but lacked final hardening detail and reports.
+- Tasks: sync docs with idempotency/provider policy and create parity reports.
+- Risks: standalone sync may be blocked by missing credentials/remote access.
+- Validation: extraction-check and docs tests.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: merchant isolation and provider unsupported behavior.
+- Files inspected: use cases and routes.
+- Findings: use cases consistently use merchantId; unsafe non-manual provider fallback must be removed.
+- Tasks: keep merchant-scoped lookups/updates, reject unsupported gateway refund/cancel.
+- Risks: provider capability inconsistency if future provider omits methods but claims support.
+- Validation: tests for non-manual provider without refund/cancel.
+
+### Execution Order
+
+1. Fix transaction idempotency and provider fallback in use cases/routes.
+2. Add SDK refund/void types and methods.
+3. Update tests for SDK, idempotency, and provider unsupported policy.
+4. Update OpenAPI/API/SDK/error/smoke/README docs and parity reports.
+5. Update extraction check.
+6. Run validation.
+7. Record blockers and final decision honestly.
+
+### Progress
+
+#### Completed
+
+- [ ] Task: Pending implementation in this batch.
+  - Files changed:
+  - Validation:
+  - Docs updated:
+
+#### Partially Completed
+
+- [ ] Task: Standalone repository sync.
+  - Completed: Folder validation planned.
+  - Remaining: Push/sync to external standalone repo.
+  - Reason: Requires remote access/credentials; must be validated after code checks.
+
+#### Blocked
+
+- [ ] Task: None yet.
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+
+- [ ] Task: AuraPoS payment deletion.
+  - Reason: Explicit hard guardrail forbids deletion in this phase.
+
+### Validation Log
+
+- Command: Pending.
+- Result: Pending.
+- Notes: Pending.
+
+### Documentation Updates
+
+- File: Pending.
+- Change: Pending.
+
+### Checklist Updates
+
+- File: `docs/replit-agent-payment-parity-hardening-completion-prompt.md`
+- Change: Source prompt is not a checkbox checklist; completion will be recorded in reports and this plan.
+
+### Continuation Notes
+
+Continue from backend/API and SDK parity implementation, then update docs/reports and run validation.
+
+### Execution Batch Update — 2026-06-06
+
+#### Completed
+
+- [x] SDK refund/void contract
+  - Files changed: `packages/client-sdk/src/client.ts`, `packages/client-sdk/src/types.ts`, `packages/client-sdk/src/index.ts`
+  - Validation: `pnpm test`, `pnpm check`, client SDK type-check passed.
+  - Docs updated: SDK contract docs and OpenAPI.
+- [x] Refund idempotency parity
+  - Files changed: `RefundPaymentTransaction.ts`, repository contract/implementation, tests.
+  - Validation: refund idempotent replay/conflict tests passed.
+  - Docs updated: API/SDK/error docs and parity reports.
+- [x] Void idempotency parity
+  - Files changed: `VoidPaymentTransaction.ts`, `transactions.ts`, repository status update contract, tests.
+  - Validation: void replay, already-cancelled mismatch, and unsupported provider tests passed.
+  - Docs updated: API/SDK/error docs and parity reports.
+- [x] Unsafe provider fallback hardening
+  - Files changed: refund/void use cases and provider contract docs.
+  - Validation: non-manual provider missing refund/cancel method tests passed.
+  - Docs updated: provider fallback policy documented.
+- [x] OpenAPI/API/SDK docs and parity reports
+  - Files changed: OpenAPI, API contract, SDK contract, smoke docs, README, error codes, two reports.
+  - Validation: extraction-check passed.
+  - Docs updated: all named docs synchronized.
+- [x] Extraction check update
+  - Files changed: `scripts/extraction-check.ts`
+  - Validation: `pnpm extraction-check` passed with 96/96 checks.
+
+#### Partially Completed
+
+- [ ] Standalone repository sync
+  - Completed: Cloned `https://github.com/Rndynt/northflow-payment-orchestration.git`, rsynced validated folder contents, and created local standalone commit `aef58a5f3350ab8e2190dd665a3c31e50bd9d027` with message `fix: complete legacy payment parity hardening`.
+  - Remaining: Push local standalone commit to GitHub.
+  - Reason: `git push origin HEAD:main` failed because the environment has no GitHub username/credentials (`fatal: could not read Username for 'https://github.com': No such device or address`).
+
+#### Blocked
+
+- [ ] Standalone repository push
+  - Blocker: Missing GitHub credentials for HTTPS push.
+  - Required next step: Push local standalone commit from an authenticated environment or provide repository write credentials.
+
+#### Not Attempted
+
+- [ ] AuraPoS payment deletion/removal
+  - Reason: Explicit hard guardrail forbids deleting AuraPoS payment code in this phase.
+
+### Validation Log
+
+- Command: `pnpm install`
+- Result: Passed.
+- Notes: Installed standalone folder workspace dependencies; pnpm warned about ignored build scripts for esbuild packages.
+- Command: `pnpm check`
+- Result: Passed after adding TypeScript 6 deprecation silence and DOM lib for SDK fetch/Response types.
+- Notes: Initial pre-install attempt failed because `turbo` was unavailable before `pnpm install`.
+- Command: `pnpm build`
+- Result: Passed.
+- Notes: Turbo warned no output files for service build because build is no-emit type check.
+- Command: `pnpm test`
+- Result: Passed; 210 tests passed.
+- Notes: Test suite logs an expected error-handler crash fixture and npm env warnings.
+- Command: `pnpm extraction-check`
+- Result: Passed; 96 checks passed.
+- Notes: In-repo standalone folder ready to push.
+- Command: `pnpm --filter @northflow/payment-orchestration-core type-check`
+- Result: Passed.
+- Notes: None.
+- Command: `pnpm --filter @northflow/payment-orchestration-client-sdk type-check`
+- Result: Passed.
+- Notes: None.
+- Command: `pnpm --filter @northflow/payment-orchestration-service type-check`
+- Result: Passed.
+- Notes: None.
+- Command: `npm run check`
+- Result: Passed from AuraPoS root; 13/13 packages successful.
+- Notes: npm emitted environment config warnings.
+
+### Documentation Updates
+
+- File: `northflow-payment-orchestration/docs/reports/legacy-payment-to-northflow-parity-matrix.md`
+- Change: Added parity matrix and final decision.
+- File: `northflow-payment-orchestration/docs/reports/legacy-payment-parity-migration-report.md`
+- Change: Added blockers fixed, limitations, validation, standalone sync status, and final decision.
+- File: API/SDK/OpenAPI/error/smoke/README docs
+- Change: Documented refund/void endpoints, idempotency behavior, response/error envelopes, and provider fallback policy.
+
+### Checklist Updates
+
+- File: `docs/replit-agent-payment-parity-hardening-completion-prompt.md`
+- Change: Source prompt is not a checkbox checklist; execution status recorded in reports and this plan.
+
+### Continuation Notes
+
+Next safe action is to push local standalone commit `aef58a5f3350ab8e2190dd665a3c31e50bd9d027` to `https://github.com/Rndynt/northflow-payment-orchestration.git` from an authenticated environment, then update the final decision to `NORTHFLOW_PAYMENT_PARITY_READY_FOR_AURAPOS_PAYMENT_REMOVAL` only if the push succeeds and no new validation failures appear.
