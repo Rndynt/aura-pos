@@ -3616,8 +3616,8 @@ Move order queue and CFD cross-instance signaling away from process-local only b
 
 ### Documentation Updates
 
-- File: Pending
-- Change: Pending
+- File: `roadmap/refactor/p0-baseline-safety-net.md`
+- Change: P0 status changed from planned to completed after required validation passed.
 
 ### Checklist Updates
 
@@ -3822,8 +3822,8 @@ Determine whether Northflow Payment Orchestration standalone service is ready fo
 
 ### Documentation Updates
 
-- File: Pending
-- Change: Pending
+- File: `roadmap/refactor/p0-baseline-safety-net.md`
+- Change: P0 status changed from planned to completed after required validation passed.
 
 ### Checklist Updates
 
@@ -4829,8 +4829,8 @@ Real subagents were not used because the platform instructions for this run only
 
 ### Checklist Updates
 
-- File: Pending
-- Change: Pending
+- File: `roadmap/refactor/p0-baseline-safety-net.md`
+- Change: P0 status changed from planned to completed after required validation passed.
 
 ### Continuation Notes
 
@@ -4860,3 +4860,219 @@ Continue with repository inventory/classification of orchestration artifacts and
 - Continuation notes:
   - No blocker remains for this cleanup batch.
   - If future provider orchestration is needed, use the standalone Northflow repository rather than reintroducing local AuraPoS runtime artifacts.
+
+## Plan: P0 Baseline Safety Net and Architecture Audit
+
+### Source
+
+- Tasklist: `roadmap/refactor/p0-baseline-safety-net.md`
+- User request: `Eksekusi roadmap/refactor/p0-baseline-safety-net.md`
+- Date started: 2026-06-08
+- Current status: Completed — baseline audit documented and validated; no production refactor performed in P0.
+
+### Goal
+
+Create a reliable baseline before architecture movement by documenting the current branch/commit, package structure, dependency leaks, risk files, validation results, and risk register. This batch must not move files, rename endpoints, alter DB schema, or change payment/order/inventory/KDS/CFD/offline behavior.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist: `roadmap/refactor/p0-baseline-safety-net.md`
+- [x] Relevant docs: `docs/comprehensive-architecture-analysis.md`, `docs/pos-architecture-analysis.md`, `docs/ORDER_LIFECYCLE.md`, `docs/OFFLINE_ARCHITECTURE.md`, `docs/dev/OFFLINE_ENGINE.md`, `docs/dev/IDEMPOTENCY.md`, `docs/dev/ORDER_QUERY_PLAN_CHECKS.md`, `design_guidelines.md`
+- [x] Relevant source files: required audit targets listed in the roadmap
+
+### Workstreams
+
+Subagents were not spawned because the platform instruction only permits spawning when explicitly requested by the user. Workstreams were simulated instead.
+
+#### Backend/API Workstream
+
+- Scope: Orders controller, route aggregation, DI container, API command/query risk boundaries.
+- Files inspected: `apps/api/src/http/controllers/OrdersController.ts`, `apps/api/src/routes.ts`, `apps/api/src/container.ts`.
+- Findings: Large controller and route surfaces are documented in the roadmap risk file table.
+- Tasks: Completed — controller/route risk files and behavior guardrails recorded.
+- Risks: Large controllers/routes mix transport, auth/session/device handling, SQL, pub/sub, and orchestration.
+- Validation: P0 baseline commands.
+
+#### Database/Schema Workstream
+
+- Scope: Shared schema boundary and DB/infrastructure imports from application layer.
+- Files inspected: `shared/schema.ts`, required application leak candidates.
+- Findings: Application-layer infrastructure/schema/Drizzle dependency leaks are documented in the roadmap.
+- Tasks: Completed — dependency leak list recorded without changing schema.
+- Risks: Application use cases currently depend on Drizzle schema/types/transactions directly.
+- Validation: P0 baseline commands.
+
+#### Frontend/UI Workstream
+
+- Scope: POS terminal page risk baseline.
+- Files inspected: `apps/pos-terminal-web/src/pages/pos.tsx`, POS architecture docs, design guidelines.
+- Findings: POS terminal page orchestration risk is documented in the roadmap risk file table.
+- Tasks: Completed — risk file size and API/offline/payment touchpoints recorded.
+- Risks: POS page coordinates cart, offline order submission, payment, KDS, CFD, printing, and fetch calls.
+- Validation: Terminal web type-check.
+
+#### Tests/Validation Workstream
+
+- Scope: Required P0 baseline commands.
+- Files inspected: workspace package manifests as needed for command availability.
+- Findings: All required P0 baseline commands passed.
+- Tasks: Completed — `pnpm type-check`, filtered API/web type-checks, offline tests, and API tests were run.
+- Risks: Failures must be documented as baseline and not hidden.
+- Validation: Required commands only unless follow-up inspection is needed.
+
+#### Documentation Workstream
+
+- Scope: Update roadmap and PLANS.md only.
+- Files inspected: `roadmap/refactor/p0-baseline-safety-net.md`, `PLANS.md`.
+- Findings: P0 deliverables are documentation/audit deliverables and are recorded in the roadmap.
+- Tasks: Completed — baseline findings, dependency leak list, risk register, and validation command results recorded.
+- Risks: Do not mark roadmap complete until validation is attempted and recorded.
+- Validation: Git diff review.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Tenant isolation and financial/order/inventory guardrails in audited files.
+- Files inspected: Required audit targets.
+- Findings: Tenant isolation and financial/order/inventory guardrails are recorded in the roadmap risk register.
+- Tasks: Completed — risks that must not regress in later phases recorded.
+- Risks: Tenant filters, row locks, idempotency, inventory policy, offline conflict handling, and session-derived tenant/device context.
+- Validation: P0 baseline commands.
+
+### Execution Order
+
+1. Read required startup files and active roadmap.
+2. Confirm branch/latest commit and package/app structure.
+3. Inspect required audit targets for dependency leaks and risk boundaries.
+4. Run required baseline validation commands.
+5. Update roadmap with baseline findings and risk register.
+6. Update this plan with results and continuation notes.
+7. Commit P0 documentation updates.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Required startup read and simulated workstream setup
+  - Files changed: `PLANS.md`
+  - Validation: Not applicable yet; planning step.
+  - Docs updated: `PLANS.md`
+
+#### Partially Completed
+
+- None.
+
+#### Blocked
+
+- None currently.
+
+#### Not Attempted
+
+- [ ] Task: Production refactor
+  - Reason: Explicitly out of scope for P0.
+
+### Validation Log
+
+- Command: `pnpm type-check`
+- Result: Pass
+- Notes: Turbo type-check passed for all 10 packages.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Pass
+- Notes: API `tsc --noEmit` completed successfully.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: Pass
+- Notes: Terminal web `tsc --noEmit` completed successfully.
+- Command: `pnpm --filter @pos/offline test`
+- Result: Pass
+- Notes: 2 tests passed, 0 failed.
+- Command: `pnpm --filter @pos/api test`
+- Result: Pass
+- Notes: 195 tests passed, 0 failed.
+
+### Documentation Updates
+
+- File: `PLANS.md`
+- Change: Added active P0 execution plan.
+
+### Checklist Updates
+
+- File: `roadmap/refactor/p0-baseline-safety-net.md`
+- Change: P0 status changed from planned to completed after required validation passed.
+
+### Continuation Notes
+
+P0 is complete. Continue with P1 only after this P0 phase is committed; preserve the risk-register guardrails when introducing ports/contracts.
+
+### P0 Batch Update — 2026-06-08
+
+#### Completed
+
+- [x] Task: Confirm branch and latest commit
+  - Files changed: `roadmap/refactor/p0-baseline-safety-net.md`
+  - Validation: `git status --short --branch`, `git log -1 --oneline`
+  - Docs updated: Baseline branch/commit recorded in roadmap.
+- [x] Task: Record current package/app structure
+  - Files changed: `roadmap/refactor/p0-baseline-safety-net.md`
+  - Validation: `rg --files -g 'package.json' -g '!node_modules'`, top-level directory inspection
+  - Docs updated: Workspace/app/package structure recorded in roadmap.
+- [x] Task: Record dependency leaks and risk files
+  - Files changed: `roadmap/refactor/p0-baseline-safety-net.md`
+  - Validation: Required source audit target inspection and import/DB marker scan
+  - Docs updated: Dependency leak list and risk file tables recorded in roadmap.
+- [x] Task: Run baseline validation commands
+  - Files changed: `roadmap/refactor/p0-baseline-safety-net.md`
+  - Validation: All required P0 commands passed.
+  - Docs updated: Validation result table recorded in roadmap.
+- [x] Task: Create risk register
+  - Files changed: `roadmap/refactor/p0-baseline-safety-net.md`
+  - Validation: Risk entries derived from inspected source and current passing baseline.
+  - Docs updated: Risk register recorded in roadmap.
+
+#### Partially Completed
+
+- None.
+
+#### Blocked
+
+- None.
+
+#### Not Attempted
+
+- [ ] Task: Production refactor / source movement / DB schema migration
+  - Reason: Explicitly forbidden by P0 hard rules.
+
+### Validation Log
+
+- Command: `pnpm type-check`
+- Result: Pass
+- Notes: Turbo type-check passed for 10 packages; 10 successful, 10 total; 1m45.573s.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Pass
+- Notes: API `tsc --noEmit` completed successfully.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: Pass
+- Notes: Terminal web `tsc --noEmit` completed successfully.
+- Command: `pnpm --filter @pos/offline test`
+- Result: Pass
+- Notes: 2 tests passed, 0 failed.
+- Command: `pnpm --filter @pos/api test`
+- Result: Pass
+- Notes: 195 tests passed across 39 suites, 0 failed.
+
+### Documentation Updates
+
+- File: `roadmap/refactor/p0-baseline-safety-net.md`
+- Change: Marked P0 baseline as completed and added branch/commit, package structure, source inspection findings, dependency leak list, risk register, validation results, and completion notes.
+- File: `PLANS.md`
+- Change: Added active P0 plan and final batch update.
+
+### Checklist Updates
+
+- File: `roadmap/refactor/p0-baseline-safety-net.md`
+- Change: P0 status changed from planned to completed after required validation passed.
+
+### Continuation Notes
+
+P0 is complete and ready to commit. Next safe batch is P1 port/contract introduction, starting with the highest-risk `packages/application` infrastructure/schema dependency leaks while preserving P0 risk-register guardrails.
