@@ -5224,3 +5224,143 @@ Add application-layer ports/contracts for shared transaction/time/id boundaries 
 ### Continuation Notes
 
 P1 S1-S3 is implemented and validated. Next safe batch is P2/P3 migration of selected use cases to these ports, keeping tenant isolation and payment/order integrity tests close to each migration.
+
+## Plan: P2 S1-S4 Application DB/Infrastructure Leak Removal
+
+### Source
+- Tasklist: `roadmap/refactor/p2-s1-s4-application-db-leak-removal.md`
+- User request: Execute P2 only; do not start P3; focus removing `@pos/infrastructure/database`, `@shared/schema`, and Drizzle leaks from `packages/application`, starting with RecordPayment, CreateAndPayOrder, orderNumberSequence, and SyncOfflineOrder.
+- Date started: 2026-06-08
+- Current status: Targeted P2 first batch implemented and validated for the four requested entry points; remaining non-target application leaks are documented for the next P2 batch.
+
+### Goal
+Remove database/schema/Drizzle imports from the requested application order/sync use cases while preserving endpoint contracts, DB schema, cash/standard payment behavior, and partial payment behavior.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist: `roadmap/refactor/p2-s1-s4-application-db-leak-removal.md`
+- [x] Relevant docs: `docs/ORDER_LIFECYCLE.md`, `docs/OFFLINE_ARCHITECTURE.md`, `docs/dev/IDEMPOTENCY.md`
+- [x] Relevant source files: targeted application use cases, application ports, infrastructure order/sync repositories, API container, affected API tests
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: Preserve controllers/endpoints while rewiring use cases through infrastructure adapters.
+- Files inspected: `apps/api/src/container.ts`, `apps/api/src/http/controllers/OrdersController.ts`, `apps/api/src/http/controllers/SyncController.ts`
+- Findings: Controllers already resolve use cases from the container, so endpoint behavior can stay unchanged by swapping constructor dependencies in the composition root.
+- Tasks: Wire RecordPayment, CreateAndPayOrder, and SyncOfflineOrder to Drizzle infrastructure adapters.
+- Risks: Tests that instantiate use cases directly need updated test adapters to reflect the new port boundary.
+- Validation: `pnpm --filter @pos/api type-check`, `pnpm --filter @pos/api test`
+
+#### Database/Schema Workstream
+- Scope: Move targeted raw SQL, Drizzle table access, and order number sequence allocation out of the targeted application files.
+- Files inspected: `packages/application/orders/RecordPayment.ts`, `packages/application/orders/CreateAndPayOrder.ts`, `packages/application/orders/orderNumberSequence.ts`, `packages/application/sync/SyncOfflineOrder.ts`, `packages/infrastructure/repositories/orders/*`, `packages/infrastructure/repositories/sync/*`
+- Findings: Targeted application files directly imported infrastructure DB types, shared schema tables, and Drizzle helpers before this batch.
+- Tasks: Add infrastructure Drizzle adapters and keep DB-specific mapping/locks/transactions there.
+- Risks: Inventory helper functions still contain application-layer DB leaks and are part of the remaining P2 inventory batch.
+- Validation: Targeted leak scan returned no DB/schema/Drizzle imports in the four requested application files.
+
+#### Frontend/UI Workstream
+- Scope: None for this P2 backend/application refactor.
+- Files inspected: Not applicable.
+- Findings: User explicitly requested no endpoint or payment behavior changes; no frontend work needed.
+- Tasks: None.
+- Risks: None.
+- Validation: Not applicable.
+
+#### Tests/Validation Workstream
+- Scope: Ensure order/payment/idempotency/inventory sync behavior remains intact.
+- Files inspected: `apps/api/src/__tests__/create-and-pay-stock-concurrency.test.ts`, `apps/api/src/__tests__/record-payment-idempotency.test.ts`
+- Findings: Tests directly instantiated application use cases with fake DBs; after the port boundary they need fake DBs wrapped in the same Drizzle adapters used by the container.
+- Tasks: Update tests to instantiate the application use cases through infrastructure adapters.
+- Risks: The refactor intentionally preserves behavior by moving the existing implementation rather than rewriting payment/order semantics.
+- Validation: API tests pass.
+
+#### Documentation Workstream
+- Scope: Update source roadmap and plan execution notes honestly.
+- Files inspected: `roadmap/refactor/p2-s1-s4-application-db-leak-removal.md`, `PLANS.md`
+- Findings: Roadmap was still marked planned before execution.
+- Tasks: Add P2 execution notes for completed targeted files, validation, and remaining leaks.
+- Risks: Do not mark all P2 done because catalog/inventory/seating/mappers leaks remain.
+- Validation: Documentation updated after code validation.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Preserve tenant filters and row locks in moved infrastructure code.
+- Files inspected: payment/order/sync adapter code and tests.
+- Findings: Tenant-scoped order row lock, tenant-filtered updates, idempotency replay, and sync conflict logging were preserved in the infrastructure implementations.
+- Tasks: Keep no endpoint/schema/payment behavior changes.
+- Risks: None identified in targeted batch.
+- Validation: API test suite passed, including tenant isolation and payment idempotency tests.
+
+### Execution Order
+1. Read tasklist/docs/source.
+2. Add application ports for targeted use cases.
+3. Move targeted DB/Drizzle implementation into infrastructure adapters.
+4. Rewire API container to `use case -> port -> infrastructure adapter`.
+5. Update direct-instantiation tests to use the same adapter boundary.
+6. Validate type-checks and API tests.
+7. Update roadmap/PLANS execution notes.
+
+### Progress
+
+#### Completed
+- [x] Task: Remove DB/schema/Drizzle imports from `RecordPayment`.
+  - Files changed: `packages/application/orders/RecordPayment.ts`, `packages/application/orders/ports/RecordPaymentRepositoryPort.ts`, `packages/infrastructure/repositories/orders/DrizzleRecordPaymentRepository.ts`, `apps/api/src/container.ts`
+  - Validation: `pnpm --filter @pos/application type-check`; `pnpm --filter @pos/infrastructure type-check`; `pnpm --filter @pos/api type-check`; `pnpm --filter @pos/api test`
+  - Docs updated: `PLANS.md`, roadmap execution notes
+- [x] Task: Remove DB/schema/Drizzle imports from `CreateAndPayOrder`.
+  - Files changed: `packages/application/orders/CreateAndPayOrder.ts`, `packages/application/orders/ports/CreateAndPayOrderRepositoryPort.ts`, `packages/infrastructure/repositories/orders/DrizzleCreateAndPayOrderRepository.ts`, `apps/api/src/container.ts`
+  - Validation: same as above
+  - Docs updated: `PLANS.md`, roadmap execution notes
+- [x] Task: Remove DB/schema/Drizzle imports from `orderNumberSequence`.
+  - Files changed: `packages/application/orders/orderNumberSequence.ts`, `packages/infrastructure/repositories/orders/orderNumberSequence.ts`, `packages/infrastructure/repositories/orders/OrderNumberSequenceRepository.ts`, `packages/infrastructure/repositories/orders/OrderRepository.ts`
+  - Validation: same as above
+  - Docs updated: `PLANS.md`, roadmap execution notes
+- [x] Task: Remove DB/schema/Drizzle imports from `SyncOfflineOrder`.
+  - Files changed: `packages/application/sync/SyncOfflineOrder.ts`, `packages/application/sync/ports/SyncOfflineOrderRepositoryPort.ts`, `packages/infrastructure/repositories/sync/DrizzleSyncOfflineOrderRepository.ts`, `apps/api/src/container.ts`
+  - Validation: same as above
+  - Docs updated: `PLANS.md`, roadmap execution notes
+
+#### Partially Completed
+- [ ] Task: Remove all remaining P2 leaks from `packages/application`.
+  - Completed: First requested order/payment/sync targets are clean.
+  - Remaining: Existing leaks remain in inventory helpers, catalog create/update, seating types, order list/create mappers.
+  - Reason: User requested to start from and focus this batch on RecordPayment, CreateAndPayOrder, orderNumberSequence, and SyncOfflineOrder; broader P2 remains the next batch.
+
+#### Blocked
+- [ ] Task: Push branch to remote.
+  - Blocker: Pending local validation/commit stage at this point in the plan; push attempted after commit if a remote is available.
+  - Required next step: Commit, inspect remote, push if configured.
+
+#### Not Attempted
+- [ ] Task: P3 work.
+  - Reason: User explicitly said do not start P3.
+
+### Validation Log
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: Targeted application files compile with port-only dependencies.
+- Command: `pnpm --filter @pos/infrastructure type-check`
+- Result: pass
+- Notes: New Drizzle adapters compile.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: Container wiring compiles.
+- Command: `pnpm --filter @pos/api test`
+- Result: pass
+- Notes: 195 tests passed.
+
+### Documentation Updates
+- File: `PLANS.md`
+- Change: Added P2 S1-S4 execution plan and progress notes.
+- File: `roadmap/refactor/p2-s1-s4-application-db-leak-removal.md`
+- Change: Added execution notes for targeted P2 batch.
+
+### Checklist Updates
+- File: `roadmap/refactor/p2-s1-s4-application-db-leak-removal.md`
+- Change: Targeted first-batch work marked as implemented/validated; remaining non-target leaks documented as not complete.
+
+### Continuation Notes
+Continue P2 only. Next safest batch: remove remaining application DB/schema/Drizzle leaks from `packages/application/inventory/inventoryPolicy.ts`, `packages/application/inventory/inventorySyncErrors.ts`, `packages/application/inventory/stockMovements.ts`, then `packages/application/catalog/CreateOrUpdateProduct.ts`; do not start P3 until P2 is validated complete.

@@ -20,3 +20,6 @@ export { db, type Database } from '../database';
 
 // Inventory repositories/adapters
 export * from './inventory';
+
+// Sync repositories/adapters
+export * from './sync';

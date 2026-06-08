@@ -20,7 +20,7 @@ import {
 import { eq, and, gte, lte, inArray, desc, sql } from 'drizzle-orm';
 import { toInsertOrderItemDb, toInsertOrderItemModifierDb, toDomainSelectedOption } from '../../../application/orders/mappers';
 import type { OrderItem as DomainOrderItem } from '@pos/domain/orders/types';
-import { nextOrderNumberForTenant } from '../../../application/orders/orderNumberSequence';
+import { nextOrderNumberForTenant } from './orderNumberSequence';
 
 export interface OrderFilters {
   status?: string[];

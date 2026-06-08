@@ -1,0 +1,139 @@
+/**
+ * RecordPayment Use Case (P1.2 hardening)
+ *
+ * Records a payment for an existing order.
+ * Supports partial payments.
+ *
+ * Transaction safety (P1.2):
+ *  - All reads and writes run inside a single DB transaction.
+ *  - The order row is locked (SELECT … FOR UPDATE) before computing remaining balance,
+ *    preventing concurrent payment race conditions.
+ *
+ * Idempotency:
+ *  - Caller can supply `idempotency_key`; this use case replays the existing
+ *    payment for the same order inside the transaction before inserting.
+ *  - `transaction_ref` remains a separate business reference.
+ */
+
+import type { Database } from '../../database';
+import {
+  orderPayments,
+  type InsertOrderPayment,
+} from '../../../../shared/schema';
+import { eq, and, sql } from 'drizzle-orm';
+
+import type { RecordPaymentInput, RecordPaymentOutput } from '@pos/application/orders/RecordPayment';
+
+export class DrizzleRecordPaymentRepository {
+  constructor(private readonly db: Database) {}
+
+  async recordPayment(input: RecordPaymentInput): Promise<RecordPaymentOutput> {
+    if (input.amount <= 0) {
+      throw new Error('Payment amount must be greater than zero');
+    }
+
+    // --------------------------------------------------------------------------
+    // Run everything inside a transaction with row lock on the order (P1.2)
+    // --------------------------------------------------------------------------
+    const result = await this.db.transaction(async (tx) => {
+      // Lock the order row for this tenant to prevent concurrent payment race
+      const lockedOrders = await tx.execute(sql`
+        SELECT id, tenant_id, status, payment_status, total, paid_amount
+        FROM orders
+        WHERE id = ${input.order_id}
+          AND tenant_id = ${input.tenant_id}
+        FOR UPDATE
+      `);
+
+      const orderRow = (lockedOrders as any).rows?.[0] ?? (lockedOrders as any)[0];
+
+      if (!orderRow) {
+        throw new Error('Order not found or access denied');
+      }
+
+      if (orderRow.status === 'cancelled') {
+        throw new Error('Cannot record payment for cancelled order');
+      }
+
+      const orderTotal = parseFloat(orderRow.total ?? '0');
+      const orderPaid = parseFloat(orderRow.paid_amount ?? '0');
+      const remaining = orderTotal - orderPaid;
+
+      if (input.idempotency_key) {
+        const existingPayments = await tx
+          .select()
+          .from(orderPayments)
+          .where(
+            and(
+              eq(orderPayments.orderId, input.order_id),
+              eq(orderPayments.idempotencyKey, input.idempotency_key)
+            )
+          )
+          .limit(1)
+          .for('update');
+
+        if (existingPayments[0]) {
+          return {
+            payment: existingPayments[0],
+            order: orderRow,
+            remainingAmount: Math.max(0, remaining),
+            idempotent_replay: true,
+          };
+        }
+      }
+
+      if (input.amount > remaining + 0.001) {
+        throw new Error(
+          `Payment amount (${input.amount}) exceeds remaining balance (${remaining.toFixed(2)})`
+        );
+      }
+
+      // Insert payment record
+      const paymentData: InsertOrderPayment = {
+        orderId: input.order_id,
+        amount: input.amount.toString(),
+        paymentMethod: input.payment_method as any,
+        paymentDate: new Date(),
+        referenceNumber: input.transaction_ref,
+        notes: input.notes,
+        idempotencyKey: input.idempotency_key,
+      };
+
+      const [createdPayment] = await tx.insert(orderPayments).values(paymentData).returning();
+
+      // Compute new payment status
+      const newPaidAmount = orderPaid + input.amount;
+      const newRemaining = orderTotal - newPaidAmount;
+
+      const newPaymentStatus: 'paid' | 'partial' | 'unpaid' =
+        newRemaining <= 0.001 ? 'paid' : newPaidAmount > 0 ? 'partial' : 'unpaid';
+
+      // Keep fulfillment/order lifecycle explicit: payment success must not
+      // automatically close order. This allows paid and unpaid orders to stay
+      // visible in operational queues until cashier/kitchen completes flow.
+      // Use raw SQL update to match DB column names (snake_case).
+      // Use NOW() for updated_at to avoid Date-object serialization issues
+      // with the postgres driver in raw sql template contexts.
+      const updatedOrders = await tx.execute(sql`
+        UPDATE orders
+        SET
+          paid_amount    = ${newPaidAmount.toString()},
+          payment_status = ${newPaymentStatus},
+          updated_at     = NOW()
+        WHERE id = ${input.order_id}
+          AND tenant_id = ${input.tenant_id}
+        RETURNING *
+      `);
+
+      const updatedOrder = (updatedOrders as any).rows?.[0] ?? (updatedOrders as any)[0];
+
+      return {
+        payment: createdPayment,
+        order: updatedOrder,
+        remainingAmount: Math.max(0, newRemaining),
+      };
+    });
+
+    return result;
+  }
+}

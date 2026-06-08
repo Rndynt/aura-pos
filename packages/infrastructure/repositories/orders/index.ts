@@ -11,3 +11,5 @@ export * from './KitchenTicketRepository';
 export { OrderRepository as DrizzleOrderRepository } from './OrderRepository';
 export { OrderPaymentRepository as DrizzleOrderPaymentRepository } from './OrderPaymentRepository';
 export { DrizzleOrderNumberSequenceRepository } from './OrderNumberSequenceRepository';
+export { DrizzleRecordPaymentRepository } from './DrizzleRecordPaymentRepository';
+export { DrizzleCreateAndPayOrderRepository } from './DrizzleCreateAndPayOrderRepository';
