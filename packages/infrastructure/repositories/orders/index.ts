@@ -8,3 +8,6 @@ export * from './OrderItemRepository';
 export * from './OrderItemModifierRepository';
 export * from './OrderPaymentRepository';
 export * from './KitchenTicketRepository';
+export { OrderRepository as DrizzleOrderRepository } from './OrderRepository';
+export { OrderPaymentRepository as DrizzleOrderPaymentRepository } from './OrderPaymentRepository';
+export { DrizzleOrderNumberSequenceRepository } from './OrderNumberSequenceRepository';

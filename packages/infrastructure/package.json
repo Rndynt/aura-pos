@@ -15,7 +15,11 @@
     "./repositories/seating/*": "./repositories/seating/*.ts",
     "./repositories/tenants/*": "./repositories/tenants/*.ts",
     "./seeders": "./seeders/index.ts",
-    "./seeders/*": "./seeders/*.ts"
+    "./seeders/*": "./seeders/*.ts",
+    "./repositories/inventory": "./repositories/inventory/index.ts",
+    "./repositories/inventory/*": "./repositories/inventory/*.ts",
+    "./unit-of-work": "./unit-of-work/index.ts",
+    "./unit-of-work/*": "./unit-of-work/*.ts"
   },
   "scripts": {
     "type-check": "tsc -p tsconfig.json --noEmit"
@@ -28,6 +32,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@pos/domain": "workspace:*"
+    "@pos/domain": "workspace:*",
+    "@pos/application": "workspace:*"
   }
 }

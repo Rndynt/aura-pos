@@ -87,3 +87,13 @@ export type {
   TransitionOrderFulfillmentStatusOutput,
   FulfillmentStatus,
 } from './TransitionOrderFulfillmentStatus';
+export type {
+  OrderDraft,
+  OrderFilters,
+  OrderInventoryPort,
+  OrderItemDraft,
+  OrderNumberSequencePort,
+  OrderPaymentDraft,
+  OrderPaymentRepositoryPort,
+  OrderRepositoryPort,
+} from './ports';

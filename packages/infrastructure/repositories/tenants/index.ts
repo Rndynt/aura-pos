@@ -6,3 +6,4 @@
 export * from './TenantRepository';
 export * from './TenantFeatureRepository';
 export * from './TenantModuleConfigRepository';
+export { TenantRepository as DrizzleTenantRepository } from './TenantRepository';

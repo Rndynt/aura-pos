@@ -5076,3 +5076,151 @@ P0 is complete. Continue with P1 only after this P0 phase is committed; preserve
 ### Continuation Notes
 
 P0 is complete and ready to commit. Next safe batch is P1 port/contract introduction, starting with the highest-risk `packages/application` infrastructure/schema dependency leaks while preserving P0 risk-register guardrails.
+
+## Plan: P1 S1-S3 — Introduce Application Ports and Contracts
+
+### Source
+
+- Tasklist: `roadmap/refactor/p1-s1-s3-ports-contracts.md`
+- User request: Execute P1 S1-S3 ports/contracts roadmap quickly, precisely, and according to the document.
+- Date started: 2026-06-08
+- Current status: Implemented and validated
+
+### Goal
+
+Add application-layer ports/contracts for shared transaction/time/id boundaries and high-risk order, catalog, tenant, and inventory domains without changing runtime behavior or migrating use cases wholesale.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs (`docs/comprehensive-architecture-analysis.md`, `docs/pos-architecture-analysis.md`)
+- [x] Relevant source files in `packages/application`, `packages/domain`, and `packages/infrastructure/repositories`
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: Application ports and infrastructure adapter names.
+- Files inspected: `packages/application/orders/*`, `packages/application/catalog/*`, `packages/application/tenants/*`, `packages/application/inventory/*`, `packages/infrastructure/repositories/*`.
+- Findings: Use-case-local interfaces exist but are fragmented; infrastructure repository classes have generic names without Drizzle-prefixed adapter aliases.
+- Tasks: Add additive ports; add Drizzle-prefixed adapter exports/aliases.
+- Risks: Avoid changing existing imports or runtime behavior.
+- Validation: `pnpm --filter @pos/application type-check`, `pnpm type-check`.
+
+#### Database/Schema Workstream
+
+- Scope: Ensure ports do not import Drizzle tables/schema.
+- Files inspected: `shared/schema.ts`, `packages/infrastructure/database.ts`, repository files.
+- Findings: Current app inventory helpers import infrastructure/db directly; P1 is additive and will not migrate these yet.
+- Tasks: Use domain/application DTO types and generic `TransactionContext`, no Drizzle imports in port files.
+- Risks: Do not claim migration is complete.
+- Validation: Type-check.
+
+#### Frontend/UI Workstream
+
+- Scope: Not affected.
+- Files inspected: README and architecture docs only.
+- Findings: No UI changes required.
+- Tasks: None.
+- Risks: None.
+- Validation: No screenshot required.
+
+#### Tests/Validation Workstream
+
+- Scope: Compile added contracts.
+- Files inspected: package scripts and tsconfig.
+- Findings: Application package uses `tsc -p tsconfig.json --noEmit`; root uses Turbo.
+- Tasks: Run requested validation commands.
+- Risks: Pre-existing workspace issues may surface in root type-check.
+- Validation: Record command results.
+
+#### Documentation Workstream
+
+- Scope: Roadmap checklist and PLANS.md.
+- Files inspected: `roadmap/refactor/p1-s1-s3-ports-contracts.md`, `PLANS.md`.
+- Findings: Checklist had planned status only.
+- Tasks: Update source roadmap status honestly after validation; update PLANS progress.
+- Risks: Do not mark complete until validation attempted.
+- Validation: Review diff.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Tenant-aware repository contracts.
+- Files inspected: domain order/product/tenant types and repository methods.
+- Findings: Tenant ID is already central in high-risk repository methods.
+- Tasks: Include tenantId arguments in tenant-owned reads/mutations and transaction context support.
+- Risks: Avoid ports that enable cross-tenant access by ID only.
+- Validation: Type-check.
+
+### Execution Order
+
+1. Create shared cross-cutting ports.
+2. Create order, catalog, tenant, and inventory ports with tenant-aware contracts.
+3. Add application package exports for nested port folders.
+4. Add Drizzle-prefixed infrastructure adapter aliases/classes without breaking current names.
+5. Update roadmap and PLANS status.
+6. Run validation commands and commit.
+
+### Progress
+
+#### Completed
+
+- [x] Task: S1 shared cross-cutting ports
+  - Files changed: `packages/application/shared/ports/*`
+  - Validation: `pnpm --filter @pos/application type-check`, `pnpm type-check`
+  - Docs updated: `roadmap/refactor/p1-s1-s3-ports-contracts.md`
+- [x] Task: S2 domain repository ports
+  - Files changed: `packages/application/orders/ports/*`, `packages/application/catalog/ports/*`, `packages/application/tenants/ports/*`, `packages/application/inventory/ports/*`, application package exports
+  - Validation: `pnpm --filter @pos/application type-check`, `pnpm type-check`
+  - Docs updated: `roadmap/refactor/p1-s1-s3-ports-contracts.md`
+- [x] Task: S3 adapter naming standard
+  - Files changed: `packages/infrastructure/repositories/**/index.ts`, `packages/infrastructure/repositories/orders/OrderNumberSequenceRepository.ts`, `packages/infrastructure/repositories/inventory/*`, `packages/infrastructure/unit-of-work/*`, infrastructure package exports
+  - Validation: `pnpm --filter @pos/infrastructure type-check`, `pnpm type-check`
+  - Docs updated: `roadmap/refactor/p1-s1-s3-ports-contracts.md`
+
+#### Partially Completed
+
+- [ ] Task: None yet
+  - Completed:
+  - Remaining:
+  - Reason:
+
+#### Blocked
+
+- [ ] Task: None yet
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+
+- [ ] Task: None yet
+  - Reason:
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/application type-check`
+- Result: Passed
+- Notes: Application ports compile.
+- Command: `pnpm --filter @pos/infrastructure type-check`
+- Result: Passed
+- Notes: Drizzle-prefixed adapters compile.
+- Command: `pnpm type-check`
+- Result: Passed
+- Notes: Turbo type-check completed for 10 workspace packages.
+
+### Documentation Updates
+
+- File: `roadmap/refactor/p1-s1-s3-ports-contracts.md`
+- Change: Marked P1 S1-S3 implemented and validated with execution notes.
+
+### Checklist Updates
+
+- File: `roadmap/refactor/p1-s1-s3-ports-contracts.md`
+- Change: Added completion checklist for S1, S2, and S3.
+
+### Continuation Notes
+
+P1 S1-S3 is implemented and validated. Next safe batch is P2/P3 migration of selected use cases to these ports, keeping tenant isolation and payment/order integrity tests close to each migration.

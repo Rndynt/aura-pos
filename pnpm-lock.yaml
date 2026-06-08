@@ -579,6 +579,9 @@ importers:
 
   packages/infrastructure:
     dependencies:
+      '@pos/application':
+        specifier: workspace:*
+        version: link:../application
       '@pos/domain':
         specifier: workspace:*
         version: link:../domain

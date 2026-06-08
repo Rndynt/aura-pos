@@ -42,3 +42,4 @@ export {
   calculateSelectedOptionsDelta,
   flattenSelectedOptions,
 } from './pricing';
+export type { ProductDraft, ProductFilters, ProductRepositoryPort } from './ports';

@@ -44,3 +44,9 @@ export {
 export type {
   BusinessTypeTemplate,
 } from './businessTypeTemplates';
+export type {
+  FeatureEntitlementGrant,
+  FeatureEntitlementPort,
+  TenantDraft,
+  TenantRepositoryPort,
+} from './ports';

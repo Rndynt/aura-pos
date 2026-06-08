@@ -6,3 +6,4 @@
 export * from './ProductRepository';
 export * from './ProductOptionGroupRepository';
 export * from './ProductOptionRepository';
+export { ProductRepository as DrizzleProductRepository } from './ProductRepository';

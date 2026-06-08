@@ -16,7 +16,17 @@
     "./tenants/*": "./tenants/*.ts",
     "./sync/*": "./sync/*.ts",
     "./inventory": "./inventory/index.ts",
-    "./inventory/*": "./inventory/*.ts"
+    "./inventory/*": "./inventory/*.ts",
+    "./shared/ports": "./shared/ports/index.ts",
+    "./shared/ports/*": "./shared/ports/*.ts",
+    "./orders/ports": "./orders/ports/index.ts",
+    "./orders/ports/*": "./orders/ports/*.ts",
+    "./catalog/ports": "./catalog/ports/index.ts",
+    "./catalog/ports/*": "./catalog/ports/*.ts",
+    "./tenants/ports": "./tenants/ports/index.ts",
+    "./tenants/ports/*": "./tenants/ports/*.ts",
+    "./inventory/ports": "./inventory/ports/index.ts",
+    "./inventory/ports/*": "./inventory/ports/*.ts"
   },
   "scripts": {
     "type-check": "tsc -p tsconfig.json --noEmit"

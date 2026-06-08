@@ -17,3 +17,6 @@ export * from './tenants';
 
 // Re-export database for convenience
 export { db, type Database } from '../database';
+
+// Inventory repositories/adapters
+export * from './inventory';
