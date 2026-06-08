@@ -8,6 +8,8 @@ process.env.BETTER_AUTH_SECRET ||= 'test-secret-with-at-least-32-characters';
 
 const { CreateAndPayOrder } = await import('@pos/application/orders/CreateAndPayOrder');
 const { SyncOfflineOrder } = await import('@pos/application/sync/SyncOfflineOrder');
+const { DrizzleCreateAndPayOrderRepository } = await import('@pos/infrastructure/repositories/orders/DrizzleCreateAndPayOrderRepository');
+const { DrizzleSyncOfflineOrderRepository } = await import('@pos/infrastructure/repositories/sync/DrizzleSyncOfflineOrderRepository');
 const { inventoryMovements, orderItems, orderPayments, orders, products, tenants, syncBatches, syncEvents, serverSyncConflicts, tables } = await import('@shared/schema');
 const { getBusinessDateForTimezone } = await import('@pos/application/orders/orderNumberSequence');
 
@@ -351,8 +353,8 @@ function buildUseCase(initialStockQty: number) {
   return {
     store,
     db,
-    useCase: new CreateAndPayOrder(db),
-    syncUseCase: new SyncOfflineOrder(db),
+    useCase: new CreateAndPayOrder(new DrizzleCreateAndPayOrderRepository(db)),
+    syncUseCase: new SyncOfflineOrder(new DrizzleSyncOfflineOrderRepository(db)),
   };
 }
 

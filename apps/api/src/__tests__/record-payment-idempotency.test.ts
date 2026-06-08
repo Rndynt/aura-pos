@@ -4,6 +4,7 @@ import { after, describe, it } from 'node:test';
 import http from 'node:http';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { RecordPayment } from '@pos/application/orders/RecordPayment';
+import { DrizzleRecordPaymentRepository } from '@pos/infrastructure/repositories/orders/DrizzleRecordPaymentRepository';
 import { orderPayments } from '../../../../shared/schema';
 
 process.env.DATABASE_URL ||= 'postgres://user:pass@127.0.0.1:5432/aurapos_test';
@@ -137,7 +138,7 @@ describe('POST /api/orders/:id/payments idempotency retry', async () => {
   const { recordPayment } = await import('../http/controllers/OrdersController');
 
   function buildApp(store: PaymentStore) {
-    (container as any).recordPayment = new RecordPayment(new FakePaymentDb(store) as any);
+    (container as any).recordPayment = new RecordPayment(new DrizzleRecordPaymentRepository(new FakePaymentDb(store) as any));
 
     const app = express();
     app.use(express.json());

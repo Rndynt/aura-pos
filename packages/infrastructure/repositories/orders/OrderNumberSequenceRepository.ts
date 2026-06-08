@@ -1,4 +1,4 @@
-import { nextOrderNumberForTenant } from '@pos/application/orders/orderNumberSequence';
+import { nextOrderNumberForTenant } from './orderNumberSequence';
 import type { OrderNumberSequencePort } from '@pos/application/orders/ports';
 import type { TransactionContext } from '@pos/application/shared/ports';
 import { db } from '../../database';

@@ -15,6 +15,9 @@ import { OrderItemModifierRepository } from '@pos/infrastructure/repositories/or
 import { OrderPaymentRepository } from '@pos/infrastructure/repositories/orders/OrderPaymentRepository';
 import { KitchenTicketRepository } from '@pos/infrastructure/repositories/orders/KitchenTicketRepository';
 import { OrderTypeRepository } from '@pos/infrastructure/repositories/orders/OrderTypeRepository';
+import { DrizzleCreateAndPayOrderRepository } from '@pos/infrastructure/repositories/orders/DrizzleCreateAndPayOrderRepository';
+import { DrizzleRecordPaymentRepository } from '@pos/infrastructure/repositories/orders/DrizzleRecordPaymentRepository';
+import { DrizzleSyncOfflineOrderRepository } from '@pos/infrastructure/repositories/sync/DrizzleSyncOfflineOrderRepository';
 import { TenantRepository } from '@pos/infrastructure/repositories/tenants/TenantRepository';
 import { TenantFeatureRepository } from '@pos/infrastructure/repositories/tenants/TenantFeatureRepository';
 import { TenantModuleConfigRepository } from '@pos/infrastructure/repositories/tenants/TenantModuleConfigRepository';
@@ -142,7 +145,7 @@ class Container {
       this.tenantRepository as any
     );
     // P1.2: transaction-safe record payment (wrapped in DB transaction + row lock)
-    this.recordPayment = new RecordPayment(db as any);
+    this.recordPayment = new RecordPayment(new DrizzleRecordPaymentRepository(db));
     this.createKitchenTicket = new CreateKitchenTicket(
       this.orderRepository as any,
       this.kitchenTicketRepository as any
@@ -168,10 +171,10 @@ class Container {
     );
 
     // P0.2: True atomic create-and-pay (single DB transaction)
-    this.createAndPayOrder = new CreateAndPayOrder(db);
+    this.createAndPayOrder = new CreateAndPayOrder(new DrizzleCreateAndPayOrderRepository(db));
 
     // Sprint 4: Batch offline sync
-    this.syncOfflineOrder = new SyncOfflineOrder(db);
+    this.syncOfflineOrder = new SyncOfflineOrder(new DrizzleSyncOfflineOrderRepository(db));
 
     // P0.3: Kitchen/KDS fulfillment-only transitions
     this.transitionOrderFulfillmentStatus = new TransitionOrderFulfillmentStatus(
