@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Layers, Trash2 } from "lucide-react";
 import { ToggleSwitch } from "@/components/ui/toggle-switch";
+import { ProductAvatar } from "@/components/ui/ProductAvatar";
 
 interface ProductListProps {
   products: any[];
@@ -91,13 +92,17 @@ export default function ProductList({
                         className="flex-1 min-w-0 flex items-center gap-4 cursor-pointer"
                       >
                         <div className="w-12 h-12 bg-slate-100 rounded-lg overflow-hidden flex-shrink-0 relative">
-                          {imageUrl && (
+                          {imageUrl ? (
                             <img
                               src={imageUrl}
                               className={`w-full h-full object-cover ${!isAvailable ? "grayscale" : ""}`}
                               alt={product.name}
+                              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; (e.currentTarget.nextElementSibling as HTMLElement | null)?.style.setProperty('display', 'flex'); }}
                             />
-                          )}
+                          ) : null}
+                          <div style={{ display: imageUrl ? 'none' : 'flex' }} className="w-full h-full">
+                            <ProductAvatar name={product.name} textClassName="text-base font-bold" />
+                          </div>
                           {!isAvailable && (
                             <div className="absolute inset-0 flex items-center justify-center bg-black/10">
                               <span className="bg-slate-800 text-white text-[8px] font-bold px-1 rounded">

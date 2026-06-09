@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { CartItem as CartItemType, ItemDiscount } from "@/hooks/useCart";
 import { getItemDiscountAmount } from "@/hooks/useCart";
 import { Minus, Plus, MessageSquare, Tag, X, Check } from "lucide-react";
+import { ProductAvatar } from "@/components/ui/ProductAvatar";
 
 type CartItemProps = {
   item: CartItemType;
@@ -61,10 +62,18 @@ export function CartItem({ item, onUpdateQty, onUpdateNote, getItemPrice, onSetD
       data-testid={`cart-item-${item.id}`}
     >
       {/* Thumbnail */}
-      <div className="w-9 h-9 rounded-lg bg-slate-100 overflow-hidden flex-shrink-0 mt-0.5">
-        {item.product.image_url && (
-          <img src={item.product.image_url} className="w-full h-full object-cover" alt={item.product.name} />
-        )}
+      <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 mt-0.5">
+        {item.product.image_url ? (
+          <img
+            src={item.product.image_url}
+            className="w-full h-full object-cover"
+            alt={item.product.name}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; (e.currentTarget.nextElementSibling as HTMLElement | null)?.style.setProperty('display', 'flex'); }}
+          />
+        ) : null}
+        <div style={{ display: item.product.image_url ? 'none' : 'flex' }} className="w-full h-full">
+          <ProductAvatar name={item.product.name} textClassName="text-sm font-bold" />
+        </div>
       </div>
 
       {/* Content */}

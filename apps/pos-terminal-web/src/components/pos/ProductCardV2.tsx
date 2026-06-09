@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Product } from "@pos/domain/catalog/types";
 import { SlidersHorizontal } from "lucide-react";
 import { formatIDR } from "@/lib/design-tokens";
+import { ProductAvatar } from "@/components/ui/ProductAvatar";
 
 type ProductCardProps = {
   product: Product;
@@ -36,9 +37,7 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
             onError={() => setImageFailed(true)}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-xs text-slate-400">
-            No Image
-          </div>
+          <ProductAvatar name={product.name} textClassName="text-2xl font-bold" />
         )}
 
         {/* Stock Badge - Top Left */}
