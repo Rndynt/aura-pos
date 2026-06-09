@@ -6103,3 +6103,189 @@ Extract Customer Facing Display (CFD) HTTP, WebSocket, tenant/device auth, messa
 ### Continuation Notes
 
 P5 S1-S3 is implemented. If continuing, first verify a real DB-backed API test environment and rerun `pnpm --filter @pos/api test`; do not start P6 until P5 is accepted.
+
+## Plan: P6 S1-S4 Frontend POS Feature Split
+
+### Source
+
+- Tasklist: `roadmap/refactor/prompts/p6-s1-s4-frontend-pos-feature-split-prompt.md`
+- User request: "Eksekusi secara bertahap, hati hati, sesuai dan relevan dan presisi roadmap/refactor/prompts/p6-s1-s4-frontend-pos-feature-split-prompt.md"
+- Date started: 2026-06-09
+- Current status: In progress
+
+### Goal
+
+Reduce `apps/pos-terminal-web/src/pages/pos.tsx` into a compatibility/page entry and move POS frontend responsibilities into `apps/pos-terminal-web/src/features/pos` without changing backend API contracts, payment/order semantics, offline behavior, KDS, CFD, receipt printer, feature flags, or UI behavior.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (`roadmap/refactor/prompts/p6-s1-s4-frontend-pos-feature-split-prompt.md`)
+- [x] Relevant docs/roadmap files (`roadmap/refactor/main.md`, `execution-protocol.md`, P3/P4/P5/P6 roadmap docs, `docs/pos-architecture-analysis.md`, `docs/OFFLINE_ARCHITECTURE.md`, `docs/ORDER_LIFECYCLE.md`, `apps/pos-terminal-web/src/hooks/README.md`)
+- [x] Relevant source files (`apps/pos-terminal-web/src/pages/pos.tsx`, `apps/pos-terminal-web/package.json`, current POS components/hooks/API references)
+
+### Workstreams
+
+#### Frontend/UI Workstream
+
+- Scope: POS feature folder, page wrapper, presentation sections.
+- Files inspected: `apps/pos-terminal-web/src/pages/pos.tsx`, POS components under `apps/pos-terminal-web/src/components/pos`, `OrderQueue`, `UnifiedBottomNav`.
+- Findings: `pos.tsx` currently owns rendering composition plus cart/product/order queue/payment/offline/KDS/CFD/printer flow details.
+- Tasks: Create feature folder, move page implementation, extract render sections/components, keep old route wrapper.
+- Risks: Accidental UI behavior drift from prop reshaping; keep components as thin wrappers over existing components.
+- Validation: POS terminal type-check/build.
+
+#### Backend/API Workstream
+
+- Scope: No backend behavior changes.
+- Files inspected: Roadmap constraints only; no backend edits intended.
+- Findings: P6 must preserve `/api/cfd/*`, `/ws/cfd`, order/payment endpoints, and P4/P5 semantics.
+- Tasks: Confirm no backend/application/infrastructure/schema diffs before commit.
+- Risks: None if scope is held.
+- Validation: `git diff -- apps/api packages/application packages/infrastructure shared/schema.ts`.
+
+#### Tests/Validation Workstream
+
+- Scope: Required P6 validation commands.
+- Files inspected: `apps/pos-terminal-web/package.json`.
+- Findings: Use pnpm filters from prompt.
+- Tasks: Run terminal-web type-check/build and workspace type-check; document failures precisely if baseline/environment-limited.
+- Risks: Workspace type-check may hit pre-existing backend DB-backed environment issues.
+- Validation: Required commands.
+
+#### Documentation Workstream
+
+- Scope: P6 roadmap execution notes and PLANS.md.
+- Files inspected: `roadmap/refactor/p6-s1-s4-frontend-pos-feature-split.md`.
+- Findings: Prompt requires execution notes/manual smoke results.
+- Tasks: Update roadmap with completed/validation/manual smoke and behavior preservation notes.
+- Risks: Must not overstate manual smoke in non-interactive environment.
+- Validation: Documentation diff review.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Preserve tenant/outlet context and avoid frontend-backend boundary violations.
+- Files inspected: `pos.tsx` tenant/outlet usage, API hooks imports.
+- Findings: Tenant ID comes from existing context/helpers; order queue SSE and print/kitchen local queues use active tenant.
+- Tasks: Keep tenant/outlet helpers in services/hooks; do not hardcode tenant IDs.
+- Risks: Moving fetch calls must preserve headers/credentials.
+- Validation: Type-check plus source review.
+
+### Execution Order
+
+1. Create POS feature folder structure.
+2. Extract deterministic mappers for cart/order, receipt, CFD, and kitchen-ticket payloads.
+3. Extract API/client side-effect services for order fetch/status/payment and printer queue/BT print.
+4. Extract feature hooks for CFD broadcasting, cart/order loading, order queue SSE invalidation, kitchen flow, and mobile drawer state where safe.
+5. Extract thin presentation sections and route compatibility wrapper.
+6. Update P6 roadmap notes and PLANS.md progress.
+7. Run required validation and no-backend/schema diff checks.
+8. Commit with required message and create PR.
+
+### Progress
+
+#### Completed
+
+- [ ] Task: P6 feature split implementation
+  - Files changed: Pending
+  - Validation: Pending
+  - Docs updated: Pending
+
+#### Partially Completed
+
+- [ ] Task: None yet
+  - Completed:
+  - Remaining:
+  - Reason:
+
+#### Blocked
+
+- [ ] Task: None yet
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+
+- [ ] Task: Manual browser smoke
+  - Reason: Non-interactive environment unless a runnable app/browser session is started successfully after implementation.
+
+### Validation Log
+
+- Command: Pending
+- Result: Pending
+- Notes: Pending
+
+### Documentation Updates
+
+- File: `PLANS.md`
+- Change: Added active P6 execution plan.
+
+### Checklist Updates
+
+- File: `roadmap/refactor/p6-s1-s4-frontend-pos-feature-split.md`
+- Change: Pending after implementation and validation.
+
+### Continuation Notes
+
+Continue inside P6 only. Do not start P7. Keep backend/API/schema unchanged.
+
+### Update — 2026-06-09 P6 S1-S4 implementation completed
+
+#### Completed
+
+- [x] Task: P6 feature split implementation
+  - Files changed: `apps/pos-terminal-web/src/pages/pos.tsx`, `apps/pos-terminal-web/src/features/pos/**`, `roadmap/refactor/p6-s1-s4-frontend-pos-feature-split.md`, `PLANS.md`
+  - Validation: `pnpm --filter @pos/terminal-web type-check` pass; `pnpm --filter @pos/terminal-web build` pass with Vite/PostCSS/chunk-size warnings; `pnpm type-check` pass; no backend/application/infrastructure/schema diff.
+  - Docs updated: P6 roadmap execution notes and this PLANS.md progress update.
+
+#### Partially Completed
+
+- [ ] Task: Manual browser smoke checklist
+  - Completed: Checklist added to roadmap execution notes with honest non-interactive status.
+  - Remaining: Run POS in a browser against a suitable API/test tenant and verify each manual workflow.
+  - Reason: This execution environment did not provide an interactive browser-backed POS session or test tenant data.
+
+#### Blocked
+
+- [ ] Task: None
+  - Blocker: N/A
+  - Required next step: N/A
+
+#### Not Attempted
+
+- [ ] Task: P7
+  - Reason: Strict P6 scope; roadmap prompt explicitly says not to start P7.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: Pass
+- Notes: POS terminal TypeScript validation passed.
+
+- Command: `pnpm --filter @pos/terminal-web build`
+- Result: Pass with warnings
+- Notes: Vite build succeeded; emitted existing PostCSS `from` option and large chunk warnings.
+
+- Command: `pnpm type-check`
+- Result: Pass
+- Notes: Turbo workspace type-check completed 10/10 packages successfully.
+
+- Command: `git diff -- apps/api packages/application packages/infrastructure shared/schema.ts`
+- Result: Pass
+- Notes: No backend/application/infrastructure/schema changes for P6.
+
+### Documentation Updates
+
+- File: `roadmap/refactor/p6-s1-s4-frontend-pos-feature-split.md`
+- Change: Added execution notes, validation results, manual smoke status, and behavior preservation summary.
+
+### Checklist Updates
+
+- File: `roadmap/refactor/p6-s1-s4-frontend-pos-feature-split.md`
+- Change: Marked P6 S1-S4 implementation items complete and left manual smoke as not run where appropriate.
+
+### Continuation Notes
+
+P6 S1-S4 is complete for this batch. Do not start P7 without explicit user approval. Recommended next action is manual browser smoke against a seeded/test tenant, then P7 only after approval.
