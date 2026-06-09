@@ -22,7 +22,15 @@ function pickColor(name: string): string {
 }
 
 export function ProductAvatar({ name, className = "", textClassName = "text-lg font-bold" }: Props) {
-  const initial = (name ?? "?").charAt(0).toUpperCase();
+  // const initial = (name ?? "?").charAt(0).toUpperCase();
+  const initial = (name ?? "?")
+  .split(" ")
+  .filter(word => word.length > 0)
+  .slice(0, 2)
+  .map(word => word.charAt(0))
+  .join("")
+  .toUpperCase();
+
   const color = pickColor(name ?? "");
   return (
     <div className={`w-full h-full flex items-center justify-center ${color} ${className}`}>
