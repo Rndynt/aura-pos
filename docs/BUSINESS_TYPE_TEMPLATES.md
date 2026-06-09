@@ -2,6 +2,8 @@
 
 This document describes the different business types supported by AuraPOS and their default configurations. Each business type has a specific set of features, order types, and module configurations that are optimized for that industry.
 
+> Phase 1B note: commercial entitlement defaults now come from `packages/application/entitlements/entitlementCatalog.ts`. Legacy feature examples in this document are historical onboarding/module guidance and must not be treated as independent commercial entitlement codes. Inventory report access is covered by `inventory_advanced_stock`, not a separate `inventory_reports` entitlement.
+
 ## Overview
 
 AuraPOS supports 5 main business types:

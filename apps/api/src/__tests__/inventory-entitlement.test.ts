@@ -12,6 +12,64 @@ const {
   hasEntitlement,
 } = await import('@pos/application/entitlements');
 
+const REMOVED_NON_COMMERCIAL_CODES = [
+  'orders_open_order',
+  'orders_cancel',
+  'orders_void',
+  'orders_refund',
+  'catalog_products',
+  'catalog_categories',
+  'catalog_variants',
+  'catalog_options',
+  'catalog_sku',
+  'catalog_barcode',
+  'payments_cash',
+  'payments_manual_qris',
+  'payments_manual_bank_transfer',
+  'receipt_standard',
+  'receipt_reprint',
+  'inventory_stock_adjustment',
+  'inventory_stock_movement_history',
+  'inventory_stock_opname',
+  'inventory_stock_transfer',
+  'inventory_low_stock_alert',
+  'inventory_reports',
+  'hardware_receipt_printer',
+  'hardware_cash_drawer',
+  'restaurant_table_management',
+  'restaurant_floor_layout',
+  'restaurant_kitchen_ticket',
+  'restaurant_kds',
+  'restaurant_kitchen_printer',
+  'reports_sales_basic',
+  'reports_inventory',
+  'reports_cashier',
+  'multi_location_outlets',
+  'multi_location_stock',
+  'multi_location_reports',
+] as const;
+
+const PHASE_1B_COMMERCIAL_CODES = [
+  'inventory_basic_stock',
+  'inventory_advanced_stock',
+  'payments_partial_payment',
+  'payments_multi_payment',
+  'payments_split_payment',
+  'receipt_compact',
+  'orders_queue',
+  'restaurant_table_service',
+  'restaurant_kitchen_ops',
+  'reports_advanced',
+  'reports_export',
+  'multi_location',
+  'hardware_label_printer',
+  'hardware_barcode_scanner',
+  'integrations_payment_gateway',
+  'integrations_accounting',
+  'integrations_webhook',
+  'integrations_api_access',
+] as const;
+
 describe('entitlement catalog and engine', () => {
   it('catalog exposes the required single SOT sections', () => {
     assert.deepEqual(Object.keys(ENTITLEMENT_CATALOG), [
@@ -22,6 +80,18 @@ describe('entitlement catalog and engine', () => {
       'offers',
       'businessTypes',
     ]);
+  });
+
+  it('catalog contains only Phase 1B commercial entitlement codes', () => {
+    assert.deepEqual(Object.keys(ENTITLEMENT_CATALOG.entitlements).sort(), [...PHASE_1B_COMMERCIAL_CODES].sort());
+  });
+
+  it('catalog does not contain base order, catalog, payment, receipt, or split inventory sub-capability codes', () => {
+    const entitlementCodes = new Set(Object.keys(ENTITLEMENT_CATALOG.entitlements));
+
+    for (const code of REMOVED_NON_COMMERCIAL_CODES) {
+      assert.equal(entitlementCodes.has(code), false, `non-commercial entitlement should be removed: ${code}`);
+    }
   });
 
   it('plans, offers, and business types reference valid entitlement keys', () => {
@@ -49,7 +119,8 @@ describe('entitlement catalog and engine', () => {
 
     for (const code of starter) assert.equal(growth.includes(code), true, `growth missing starter entitlement ${code}`);
     for (const code of growth) assert.equal(pro.includes(code), true, `pro missing growth entitlement ${code}`);
-    assert.equal(pro.includes('inventory_stock_transfer'), true);
+    assert.equal(pro.includes('inventory_advanced_stock'), true);
+    assert.equal(pro.includes('inventory_basic_stock'), true);
   });
 
   it('included plan entitlement does not require tenant_entitlements DB row', async () => {
@@ -88,18 +159,17 @@ describe('entitlement catalog and engine', () => {
     );
   });
 
-  it('offer requiredPlan rules are enforced by plan sortOrder', () => {
+  it('offer requiredPlan rules are enforced and included entitlements cannot be purchased again', () => {
     assert.equal(canPurchaseOffer({ offerCode: 'receipt_compact_monthly', planCode: 'starter' }), true);
-    assert.equal(canPurchaseOffer({ offerCode: 'receipt_compact_monthly', planCode: 'growth' }), true);
-    assert.equal(canPurchaseOffer({ offerCode: 'receipt_compact_monthly', planCode: 'pro' }), true);
     assert.equal(canPurchaseOffer({ offerCode: 'orders_queue_addon', planCode: 'starter' }), false);
-    assert.equal(canPurchaseOffer({ offerCode: 'orders_queue_addon', planCode: 'growth' }), true);
-    assert.equal(canPurchaseOffer({ offerCode: 'orders_queue_addon', planCode: 'pro' }), true);
+    assert.equal(canPurchaseOffer({ offerCode: 'orders_queue_addon', planCode: 'growth' }), false);
+    assert.equal(canPurchaseOffer({ offerCode: 'inventory_advanced_stock_addon', planCode: 'growth' }), true);
+    assert.equal(canPurchaseOffer({ offerCode: 'inventory_advanced_stock_addon', planCode: 'pro' }), false);
   });
 
-  it('business type defaults include Basic Stock from SOT', () => {
+  it('business type defaults include only Basic Stock from SOT by default', () => {
     for (const businessType of Object.keys(ENTITLEMENT_CATALOG.businessTypes) as Array<keyof typeof ENTITLEMENT_CATALOG.businessTypes>) {
-      assert.equal(getBusinessTypeDefaultEntitlements(businessType).includes('inventory_basic_stock'), true);
+      assert.deepEqual(getBusinessTypeDefaultEntitlements(businessType), ['inventory_basic_stock']);
     }
   });
 
@@ -108,11 +178,31 @@ describe('entitlement catalog and engine', () => {
     assert.equal(effective.has('inventory_basic_stock'), true);
   });
 
-  it('inventory routes use entitlement engine codes', () => {
+  it('base order lifecycle and catalog routes are not blocked by commercial entitlements', () => {
+    const orderRouteSource = readFileSync(new URL('../http/routes/orders.ts', import.meta.url), 'utf8');
+    const catalogRouteSource = readFileSync(new URL('../http/routes/catalog.ts', import.meta.url), 'utf8');
+
+    assert.doesNotMatch(orderRouteSource, /requireTenantEntitlement/);
+    assert.doesNotMatch(orderRouteSource, /orders_open_order|orders_cancel|orders_void|orders_refund/);
+    assert.doesNotMatch(catalogRouteSource, /requireTenantEntitlement/);
+    assert.doesNotMatch(catalogRouteSource, /catalog_products|catalog_categories|catalog_sku|catalog_barcode/);
+  });
+
+  it('inventory routes use coarse-grained entitlement engine codes', () => {
     const routeSource = readFileSync(new URL('../http/routes/inventory.ts', import.meta.url), 'utf8');
     assert.match(routeSource, /requireTenantEntitlement\(db, tenantId, 'inventory_basic_stock'\)/);
     assert.match(routeSource, /requireTenantEntitlement\(db, tenantId, 'inventory_advanced_stock'\)/);
     assert.doesNotMatch(routeSource, /resolveBasicStockEntitlement/);
     assert.doesNotMatch(routeSource, /tenantModuleConfigs/);
+    for (const removedInventoryCode of [
+      'inventory_stock_adjustment',
+      'inventory_stock_movement_history',
+      'inventory_stock_opname',
+      'inventory_stock_transfer',
+      'inventory_low_stock_alert',
+      'inventory_reports',
+    ]) {
+      assert.doesNotMatch(routeSource, new RegExp(removedInventoryCode));
+    }
   });
 });

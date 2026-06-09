@@ -7176,3 +7176,209 @@ Real subagents were not spawned because the higher-priority runtime instruction 
 ### Continuation Notes
 
 Phase 1 backend/application foundation is implemented. Next agent should start Phase 2 by converting legacy tenant feature/module repositories, tenant profile/check/toggle endpoints, featureGuard/outlet guards, seed scripts, and frontend marketplace/feature catalog to `ENTITLEMENT_CATALOG`, `tenant_entitlements`, and the entitlement engine; then remove temporary old-table schema exports and old migration references if the migration chain is reset.
+
+## Plan: Entitlement Phase 1B — Commercial Entitlement Cleanup
+
+### Source
+
+- Tasklist: `roadmap/entitlement/phase_1b.md`
+- User request: `Eksekusi roadmap/entitlement/phase_1b.md`
+- Date started: 2026-06-09
+- Current status: Completed with documented follow-up blocker
+
+### Goal
+
+Limit the entitlement SOT and engine usage to commercial tenant entitlements only, remove base POS operations from catalog/plans/offers/business type defaults, keep `tenant_entitlements` as the only entitlement storage table, update tests and documentation, then validate and commit.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist: `roadmap/entitlement/phase_1b.md`
+- [x] Relevant docs: `docs/billing-entitlement.md`, `docs/FEATURES_CHECKLIST.md`
+- [x] Relevant source files
+
+### Workstreams
+
+Real subagent spawning was not used because current developer instructions only allow subagents when explicitly requested. Workstreams are tracked here.
+
+#### Backend/API Workstream
+
+- Scope: Entitlement engine, API route guards, active commercial entitlement usage.
+- Files inspected: `packages/application/entitlements/entitlementCatalog.ts`, `packages/application/entitlements/entitlementEngine.ts`, `apps/api/src/http/routes/inventory.ts`, `apps/api/src/http/routes/orders.ts`, `apps/api/src/http/routes/catalog.ts`, compatibility wrappers, and focused tests.
+- Findings: Existing inventory guards already used coarse basic/advanced entitlement keys; SOT/plans/business defaults still contained base and overly granular commercial codes before cleanup.
+- Tasks: Ensure API guards use only allowed commercial codes and base lifecycle/catalog/basic payment routes are not entitlement-gated.
+- Risks: Removing a guard from a truly commercial route could weaken tenant monetization; leaving base operation guards could block core POS.
+- Validation: Focused tests plus package type-checks.
+
+#### Database/Schema Workstream
+
+- Scope: Confirm single `tenant_entitlements` model and no legacy table/runtime repair restoration.
+- Files inspected: entitlement helper, schema references, migrations, and hardcode audit output.
+- Findings: `tenant_entitlements` helper remains active; migration drop exists for legacy tables, but compatibility code still references legacy feature/module tables.
+- Tasks: Preserve existing table and avoid new compatibility/projection tables.
+- Risks: Historical docs may still mention legacy names; only active runtime references should be removed.
+- Validation: hardcode audit and `pnpm run db:check`.
+
+#### Frontend/UI Workstream
+
+- Scope: Terminal web entitlement references if any.
+- Files inspected: terminal-web type-check scope and hardcode audit output.
+- Findings: No Phase 1B terminal-web code change was required; legacy feature-code references remain outside commercial entitlement SOT.
+- Tasks: Update any UI entitlement key references to coarse commercial keys.
+- Risks: UI may gate base operations incorrectly.
+- Validation: terminal-web type-check.
+
+#### Tests/Validation Workstream
+
+- Scope: Catalog/engine/API tests required by roadmap.
+- Files inspected: `apps/api/src/__tests__/inventory-entitlement.test.ts` and route source files.
+- Findings: Focused tests needed stronger commercial-only assertions and offer double-charge coverage.
+- Tasks: Add/update tests for catalog cleanup, cumulative plan behavior, offer purchase checks, inventory route guard mapping, and base route non-gating where tests exist.
+- Risks: Existing test harness may not include all API route integration tests.
+- Validation: focused tests and required commands.
+
+#### Documentation Workstream
+
+- Scope: roadmap report and billing entitlement docs.
+- Files inspected: `docs/billing-entitlement.md`, `docs/FEATURES_CHECKLIST.md`.
+- Findings: Billing docs describe entitlement model and may need Phase 1B status sync.
+- Tasks: Create `roadmap/entitlement/phase_1b_report.md`; update source checklist/roadmap honestly.
+- Risks: Docs must not claim validations passed until run.
+- Validation: review markdown and final hardcode audit.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Ensure tenant entitlement grants remain tenant-filtered and read-only, no runtime self-heal.
+- Files inspected: entitlement helper, route guards, hardcode audit output, and legacy reference audit output.
+- Findings: Entitlement helper loads tenant-filtered active grants from `tenant_entitlements` and no runtime self-heal resolver was restored.
+- Tasks: Preserve tenant-aware reads and avoid adding writes during access checks.
+- Risks: Entitlement checks are access-control sensitive.
+- Validation: tests/type-check/hardcode audit.
+
+### Execution Order
+
+1. Inspect source and current tests.
+2. Update commercial-only SOT, wrappers, and type references.
+3. Correct API guard keys/removals.
+4. Add/update tests.
+5. Create Phase 1B report and update docs/checklist/plan.
+6. Run required validation.
+7. Commit with required message and create PR.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Read startup context and active roadmap.
+  - Files changed: `PLANS.md` planned update in progress.
+  - Validation: N/A.
+  - Docs updated: `PLANS.md`.
+
+#### Partially Completed
+
+- [x] Task: Phase 1B implementation.
+  - Completed: SOT cleanup, offer logic update, wrapper cleanup, focused tests, documentation, report, and validation.
+  - Remaining: Legacy compatibility subsystem removal remains a follow-up outside this batch.
+  - Reason: Active legacy compatibility references require a dedicated broader cleanup.
+
+#### Blocked
+
+- [ ] Task: Push commit.
+  - Blocker: Environment has no explicit remote/push confirmation yet; will commit locally as required and report if push is unavailable.
+  - Required next step: Inspect git remote before final.
+
+#### Not Attempted
+
+- [x] Task: Source code changes.
+  - Reason: Completed for Phase 1B SOT/engine/tests/docs scope.
+
+### Validation Log
+
+- Command: See Phase 1B Batch Update below.
+- Result: Required validation commands passed.
+- Notes: Legacy reference audit still has documented follow-up items.
+
+### Documentation Updates
+
+- File: `PLANS.md`
+- Change: Added active execution plan for Phase 1B.
+
+### Checklist Updates
+
+- File: `roadmap/entitlement/phase_1b.md`
+- Change: Added execution status and created `roadmap/entitlement/phase_1b_report.md`.
+
+### Continuation Notes
+
+Phase 1B SOT cleanup is complete. Continue with dedicated legacy feature/module compatibility removal if requested.
+
+### Phase 1B Batch Update — 2026-06-09
+
+#### Completed
+
+- [x] Commercial-only SOT cleanup.
+  - Files changed: `packages/application/entitlements/entitlementCatalog.ts`.
+  - Validation: focused entitlement test, application/api/root type-checks.
+  - Docs updated: `docs/billing-entitlement.md`, `roadmap/entitlement/phase_1b_report.md`.
+- [x] Offer double-charge prevention.
+  - Files changed: `packages/application/entitlements/entitlementEngine.ts`.
+  - Validation: `inventory-entitlement.test.ts` verifies included plan entitlement offers cannot be purchased again.
+  - Docs updated: report.
+- [x] Compatibility wrappers updated to use remaining commercial entitlement keys.
+  - Files changed: `packages/application/tenants/businessTypeTemplates.ts`, `apps/api/src/constants/planFeatureMap.ts`.
+  - Validation: package and root type-checks.
+  - Docs updated: report.
+- [x] Focused entitlement tests updated.
+  - Files changed: `apps/api/src/__tests__/inventory-entitlement.test.ts`.
+  - Validation: `pnpm --filter @pos/api exec tsx --test src/__tests__/inventory-entitlement.test.ts` passed.
+  - Docs updated: report.
+- [x] Documentation/report/checklist sync.
+  - Files changed: `docs/billing-entitlement.md`, `docs/BUSINESS_TYPE_TEMPLATES.md`, `roadmap/entitlement/phase_1b.md`, `roadmap/entitlement/phase_1b_report.md`, `PLANS.md`.
+  - Validation: review plus type/test validation of code changes.
+  - Docs updated: same files.
+
+#### Partially Completed
+
+- [ ] Legacy feature/module table runtime removal.
+  - Completed: Phase 1B did not restore legacy tables/resolver and documented audit results.
+  - Remaining: remove or isolate active compatibility references to `tenantFeatures`, `tenantModuleConfigs`, feature guard middleware, tenant admin sync, seeds, repositories, and old tests.
+  - Reason: Broad Phase 2-style subsystem removal beyond safe SOT cleanup batch.
+
+#### Blocked
+
+- [ ] Full legacy reference audit must be zero active refs.
+  - Blocker: Current codebase still contains active compatibility/schema/repository references outside Phase 1B SOT cleanup.
+  - Required next step: Plan a dedicated Phase 2 cleanup that replaces old feature/module APIs or formally marks them as non-entitlement compatibility.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/api exec tsx --test src/__tests__/inventory-entitlement.test.ts`
+- Result: Passed, 12 tests.
+- Notes: Focused commercial entitlement SOT/engine/route-source coverage.
+- Command: `pnpm check:boundaries`
+- Result: Passed.
+- Notes: Architecture boundary check scanned 392 source files.
+- Command: `pnpm --filter @pos/application type-check`
+- Result: Passed.
+- Notes: Application package type-check clean.
+- Command: `pnpm --filter @pos/infrastructure type-check`
+- Result: Passed.
+- Notes: Infrastructure package type-check clean.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Passed.
+- Notes: API package type-check clean.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: Passed.
+- Notes: Terminal web package type-check clean.
+- Command: `pnpm type-check`
+- Result: Passed.
+- Notes: Turbo type-check passed for 10 packages.
+- Command: `pnpm run db:check`
+- Result: Passed.
+- Notes: Drizzle check reported everything fine.
+
+### Continuation Notes
+
+Next safest batch: create a dedicated legacy feature/module compatibility removal plan. Start by mapping all live uses of `tenantFeatures`, `tenantModuleConfigs`, `featureGuard`, tenant admin module toggles, marketplace legacy feature display, and repository tests before changing schema exports or migrations.

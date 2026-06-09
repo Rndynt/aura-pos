@@ -731,3 +731,16 @@ Tests added/run:
 Commands run:
 Remaining blockers:
 ```
+
+---
+
+## Execution Status — 2026-06-09
+
+- [x] SOT catalog reduced to the Phase 1B commercial entitlement list.
+- [x] Plan included arrays cleaned so they contain only commercial entitlement keys and rely on cumulative plan hierarchy.
+- [x] Offers cleaned so they point only to commercial entitlements and `canPurchaseOffer` rejects entitlements already included in the tenant plan hierarchy.
+- [x] Business type defaults/recommendations cleaned so base POS/catalog/order/payment operations are not defaults.
+- [x] Inventory route guards verified to use coarse `inventory_basic_stock` and `inventory_advanced_stock` entitlement codes.
+- [x] Focused entitlement tests updated and passed.
+- [x] Full required validation completed for the listed commands in this run.
+- [ ] Legacy table/runtime reference audit still has active compatibility references outside the Phase 1B SOT cleanup path; see `roadmap/entitlement/phase_1b_report.md`.

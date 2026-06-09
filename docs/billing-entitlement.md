@@ -73,3 +73,30 @@ Inventory route access is now entitlement-code based:
 - Inventory movement and report routes require `inventory_advanced_stock`.
 
 The old Basic Stock runtime repair/self-heal resolver was removed; missing access should be fixed in SOT/purchase data, not repaired during request checks.
+
+## Phase 1B Commercial Scope
+
+Phase 1B limits the SOT to tenant-access-controlled commercial modules, features, add-ons, and integrations. Base POS operations, catalog primitives, base cash/manual payment methods, standard receipts, and order lifecycle actions are not commercial entitlements.
+
+Current commercial entitlement codes:
+
+- `inventory_basic_stock`
+- `inventory_advanced_stock`
+- `payments_partial_payment`
+- `payments_multi_payment`
+- `payments_split_payment`
+- `receipt_compact`
+- `orders_queue`
+- `restaurant_table_service`
+- `restaurant_kitchen_ops`
+- `reports_advanced`
+- `reports_export`
+- `multi_location`
+- `hardware_label_printer`
+- `hardware_barcode_scanner`
+- `integrations_payment_gateway`
+- `integrations_accounting`
+- `integrations_webhook`
+- `integrations_api_access`
+
+Inventory is intentionally coarse-grained: stock listing uses `inventory_basic_stock`, while movement history, manual movement ledger, advanced adjustment behavior, reports, audits, low-stock alerting, opname, and transfers belong under `inventory_advanced_stock` rather than separate commercial entitlement codes.
