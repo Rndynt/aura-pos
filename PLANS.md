@@ -5944,3 +5944,162 @@ Continue by implementing `ConfirmOrderWorkflow` and `CancelOrderWorkflow` in `pa
 ### Continuation Notes
 
 P4 S1-S3 implementation should be considered ready for review, with the only validation gap being the environment-dependent DB-backed record-payment idempotency test. Next safe action is to rerun API tests with `DATABASE_URL` configured; P5 must wait for user approval.
+
+## Plan: P5 S1-S3 Realtime CFD Module Split
+
+### Source
+
+- Tasklist: `roadmap/refactor/prompts/p5-s1-s3-realtime-cfd-module-split-prompt.md`
+- User request: Execute gradually, carefully, relevantly, and precisely against the P5 S1-S3 prompt.
+- Date started: 2026-06-09
+- Current status: Implemented with documented environment-limited API suite blocker.
+
+### Goal
+
+Extract Customer Facing Display (CFD) HTTP, WebSocket, tenant/device auth, message validation, latest-state, connection registry, and Redis pub/sub responsibilities from `apps/api/src/routes.ts` into `apps/api/src/realtime/cfd` without changing public CFD endpoint paths, WebSocket path, payload shapes, tenant/device mismatch protection, heartbeat cleanup, or pub/sub behavior.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs (`docs/CFD_SECURITY.md`, `docs/PRODUCTION_CACHE_PUBSUB.md`)
+- [x] Relevant source files (`apps/api/src/routes.ts`, `apps/api/src/container.ts`, `apps/api/src/http/controllers/OrdersController.ts`, `apps/api/src/__tests__/cfd.test.ts`)
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: CFD HTTP route registration and WebSocket server extraction.
+- Files inspected: `apps/api/src/routes.ts`, `apps/api/src/__tests__/cfd.test.ts`.
+- Findings: `routes.ts` owned CFD route handlers, token lookup, payload schema validation, local WS client maps, heartbeat cleanup, latest-state cache, and pub/sub subscription directly.
+- Tasks: Extracted CFD HTTP and WebSocket responsibilities into dedicated module files and kept `routes.ts` as high-level registration only.
+- Risks: Public CFD route paths and WebSocket close semantics must remain stable.
+- Validation: `pnpm --filter @pos/api type-check`, direct CFD tests, `pnpm type-check` passed.
+
+#### Database/Schema Workstream
+
+- Scope: Ensure P5 does not alter schema/migrations or unrelated DB repositories.
+- Files inspected: `shared/schema.ts`, `packages/infrastructure/db` via audit diff scope.
+- Findings: No P5 schema or migration change was required.
+- Tasks: No database/schema edits.
+- Risks: None introduced by this extraction.
+- Validation: Required no-unrelated-diff audit returned empty output.
+
+#### Frontend/UI Workstream
+
+- Scope: Confirm P5 did not touch POS frontend.
+- Files inspected: Prompt strict scope and git diff.
+- Findings: No frontend changes required.
+- Tasks: None.
+- Risks: None introduced.
+- Validation: `pnpm type-check` passed all workspace type checks.
+
+#### Tests/Validation Workstream
+
+- Scope: Run P5 validation commands and CFD direct tests.
+- Files inspected: `apps/api/src/__tests__/cfd.test.ts`.
+- Findings: CFD tenant isolation tests exist and cover cross-tenant update rejection, WS tenant mismatch, tenant-only broadcast, and schema/size rejection.
+- Tasks: Ran direct CFD tests, API type-check, API suite, and workspace type-check.
+- Risks: API full test suite still has known DB-backed `DATABASE_URL` blocker in `record-payment-idempotency.test.ts`.
+- Validation: Direct CFD tests passed; API full test suite passed 194/195 and failed only on known DB-backed blocker; workspace type-check passed.
+
+#### Documentation Workstream
+
+- Scope: Sync P5 roadmap execution notes and PLANS.md.
+- Files inspected: `roadmap/refactor/p5-s1-s3-realtime-cfd-module-split.md`, `roadmap/refactor/prompts/p5-s1-s3-realtime-cfd-module-split-prompt.md`.
+- Findings: Phase doc required execution notes with affected files, validation, compatibility, and behavior preservation notes.
+- Tasks: Added P5 execution notes and validation status.
+- Risks: None.
+- Validation: Documentation updated after implementation and validation.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Preserve CFD token tenant ownership checks and avoid secret logging.
+- Files inspected: `apps/api/src/routes.ts`, `apps/api/src/realtime/cfd/CfdAuthService.ts`, `apps/api/src/realtime/cfd/CfdHttpController.ts`, `apps/api/src/realtime/cfd/CfdWebSocketServer.ts`.
+- Findings: Tenant/device mismatch protection existed for HTTP `x-tenant-id` and WS `tenantId`; raw CFD tokens were hashed before lookup/storage and not logged.
+- Tasks: Moved those responsibilities without weakening mismatch rejection or secret handling.
+- Risks: Keep test coverage around tenant mismatch and invalid token paths.
+- Validation: Direct CFD tenant isolation tests passed.
+
+### Execution Order
+
+1. Safety/security/data-integrity/tenant-isolation blockers — completed.
+2. Build/type/test blockers — completed, with documented DB-backed API-suite blocker.
+3. Dependency prerequisites — completed.
+4. Highest priority actionable tasks — completed P5 S1-S3 extraction.
+5. Lower priority actionable tasks — not started; prompt forbids P6.
+6. Documentation sync — completed.
+7. Validation — completed.
+8. Final checklist update — completed in phase notes.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Audit current CFD/WebSocket/realtime responsibilities in route/server files.
+  - Files changed: `PLANS.md`, `roadmap/refactor/p5-s1-s3-realtime-cfd-module-split.md`
+  - Validation: CFD symbol search and source inspection completed.
+  - Docs updated: P5 execution notes.
+- [x] Task: Extract CFD connection registry/auth/message validation/state/pubsub/WS/HTTP responsibilities into `apps/api/src/realtime/cfd`.
+  - Files changed: `apps/api/src/realtime/cfd/*`, `apps/api/src/routes.ts`
+  - Validation: `pnpm --filter @pos/api type-check`, direct CFD tests, and `pnpm type-check` passed.
+  - Docs updated: P5 execution notes.
+- [x] Task: Keep `routes.ts` focused on high-level CFD registration.
+  - Files changed: `apps/api/src/routes.ts`
+  - Validation: Type-check and CFD tests passed.
+  - Docs updated: P5 execution notes.
+- [x] Task: Preserve CFD endpoint paths and WS path.
+  - Files changed: `apps/api/src/realtime/cfd/CfdHttpController.ts`, `apps/api/src/realtime/cfd/CfdWebSocketServer.ts`
+  - Validation: Direct CFD tests passed.
+  - Docs updated: P5 execution notes.
+
+#### Partially Completed
+
+- [ ] Task: Full API test suite green.
+  - Completed: P5-relevant CFD tests passed; API suite passed 194/195 tests.
+  - Remaining: DB-backed `record-payment-idempotency.test.ts` requires a usable `DATABASE_URL`.
+  - Reason: Known environment-limited DB blocker documented by P5 prompt.
+
+#### Blocked
+
+- [ ] Task: Make `pnpm --filter @pos/api test` fully green in this environment.
+  - Blocker: `[database] DATABASE_URL environment variable is not set. Exiting.` in `src/__tests__/record-payment-idempotency.test.ts`.
+  - Required next step: Provide a test database connection or run the DB-backed suite in an environment with `DATABASE_URL` configured.
+
+#### Not Attempted
+
+- [ ] Task: P6 or frontend POS refactor.
+  - Reason: Explicitly out of P5 strict scope.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Pass.
+- Notes: API TypeScript compilation succeeded.
+- Command: `pnpm --filter @pos/api exec node --test --import tsx src/__tests__/cfd.test.ts`
+- Result: Pass.
+- Notes: 4/4 CFD tenant isolation tests passed.
+- Command: `pnpm --filter @pos/api test`
+- Result: Fail due to known environment-limited DB-backed blocker; 194/195 tests passed.
+- Notes: `src/__tests__/record-payment-idempotency.test.ts` failed because `DATABASE_URL` was not set.
+- Command: `pnpm type-check`
+- Result: Pass.
+- Notes: Turbo type-check completed successfully for 10/10 packages.
+
+### Documentation Updates
+
+- File: `roadmap/refactor/p5-s1-s3-realtime-cfd-module-split.md`
+- Change: Added P5 S1-S3 execution notes, affected files, validation results, compatibility notes, and behavior-preservation notes.
+- File: `PLANS.md`
+- Change: Added active P5 execution plan and progress log.
+
+### Checklist Updates
+
+- File: `roadmap/refactor/p5-s1-s3-realtime-cfd-module-split.md`
+- Change: Added completed P5 checklist and documented environment-limited API test blocker.
+
+### Continuation Notes
+
+P5 S1-S3 is implemented. If continuing, first verify a real DB-backed API test environment and rerun `pnpm --filter @pos/api test`; do not start P6 until P5 is accepted.

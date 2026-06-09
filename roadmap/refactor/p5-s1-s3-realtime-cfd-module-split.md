@@ -87,3 +87,66 @@ If CFD tests exist, run them. If not, add a manual smoke checklist:
 - `routes.ts` no longer owns CFD implementation details.
 - CFD logic is isolated in `apps/api/src/realtime/cfd`.
 - Public CFD endpoints and WS behavior remain stable.
+
+## Execution notes — P5 S1-S3
+
+Status: implemented with documented environment-limited test skip
+Commit: a668f45
+Date: 2026-06-09
+
+### Affected files
+
+- `apps/api/src/routes.ts`
+- `apps/api/src/realtime/cfd/CfdConnectionRegistry.ts`
+- `apps/api/src/realtime/cfd/CfdAuthService.ts`
+- `apps/api/src/realtime/cfd/CfdMessageValidator.ts`
+- `apps/api/src/realtime/cfd/CfdStateStore.ts`
+- `apps/api/src/realtime/cfd/CfdPubSubBridge.ts`
+- `apps/api/src/realtime/cfd/CfdWebSocketServer.ts`
+- `apps/api/src/realtime/cfd/CfdHttpController.ts`
+- `apps/api/src/realtime/cfd/index.ts`
+- `PLANS.md`
+- `roadmap/refactor/p5-s1-s3-realtime-cfd-module-split.md`
+
+### Completed
+
+- [x] Audited current CFD/WebSocket/realtime responsibilities in route/server files.
+- [x] Extracted CFD connection registry/auth/message validation/state/pubsub/WS/HTTP responsibilities into `apps/api/src/realtime/cfd`.
+- [x] Kept `routes.ts` focused on high-level CFD registration.
+- [x] Preserved CFD HTTP endpoint paths and WebSocket path.
+- [x] Preserved tenant/device mismatch protection.
+- [x] Preserved heartbeat cleanup.
+- [x] Preserved Redis/pubsub propagation if configured.
+- [x] Did not touch P4 order workflows, payment, inventory, frontend POS, or DB schema.
+
+### Validation results
+
+- `pnpm --filter @pos/api type-check`: pass.
+- `pnpm --filter @pos/api exec node --test --import tsx src/__tests__/cfd.test.ts`: pass, 4/4 CFD tests passed.
+- `pnpm --filter @pos/api test`: fail due to known DB-backed environment blocker; 194/195 tests passed and `src/__tests__/record-payment-idempotency.test.ts` failed with `[database] DATABASE_URL environment variable is not set. Exiting.`
+- `pnpm type-check`: pass, 10/10 Turbo package type-check tasks succeeded.
+- Required no-unrelated-order/payment/inventory/schema audit diff: pass, empty diff for `apps/api/src/http/controllers/OrdersController.ts`, `packages/application/orders`, `packages/application/inventory`, `packages/application/sync`, `shared/schema.ts`, and `packages/infrastructure/db`.
+
+### Compatibility
+
+- `POST /api/cfd/session-token`: unchanged.
+- `POST /api/cfd/update`: unchanged.
+- `WS /ws/cfd`: unchanged.
+- Existing `tenantId`, `outletId`, `deviceId`, CFD token, `x-cfd-key`, query token, and WebSocket subprotocol token behavior was preserved.
+
+### Behavior preservation notes
+
+- API contract changed: no.
+- DB schema changed: no.
+- Cash payment affected: no.
+- Partial payment affected: no.
+- Offline/KDS/CFD affected: CFD implementation location changed only; public CFD behavior preserved by existing CFD tests.
+- Tenant/device mismatch protection: preserved for HTTP update and WebSocket subscribe.
+- Heartbeat cleanup: preserved in the extracted `CfdWebSocketServer`.
+- Redis/pubsub propagation: preserved through `CfdPubSubBridge` using the existing CFD cache channel and payload shape.
+- Secret handling: raw CFD API keys/session tokens are not logged; tokens are hashed before DB lookup/storage.
+
+### Follow-up risks
+
+- The full API test command needs a DB-backed environment with `DATABASE_URL` configured to run `src/__tests__/record-payment-idempotency.test.ts` successfully.
+- Do not start P6 until P5 is reviewed and accepted.
