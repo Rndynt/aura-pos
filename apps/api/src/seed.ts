@@ -97,10 +97,10 @@ async function createOwnerAccount(opts: {
         password: opts.password,
       },
     });
-    // Link user to their tenant via direct DB update
+    // Link user to their tenant via direct DB update, and set role to owner
     if (res?.user?.id) {
-      await db.execute(sql`UPDATE "user" SET tenant_id = ${opts.tenantId} WHERE id = ${res.user.id}`);
-      console.log(`   ✅ Account created & linked: ${opts.username} → tenant ${opts.tenantId}`);
+      await db.execute(sql`UPDATE "user" SET tenant_id = ${opts.tenantId}, role = 'owner' WHERE id = ${res.user.id}`);
+      console.log(`   ✅ Account created & linked: ${opts.username} → tenant ${opts.tenantId} (role: owner)`);
     }
     return res;
   } catch (err: any) {
@@ -120,7 +120,6 @@ async function seedThamada(createdOrderTypes: any[]) {
 
   // Tenant dulu, baru owner account agar tenantId sudah tersedia
   const [tenant] = await db.insert(tenants).values({
-    id: 'thamada',
     name: 'Thamada Coffee Shop',
     slug: 'thamada',
     businessType: 'CAFE_RESTAURANT',
@@ -172,8 +171,8 @@ async function seedThamada(createdOrderTypes: any[]) {
     enableKitchenTicket: true,
     enableLoyalty: false,
     enableDelivery: true,
-    enableInventory: false,
-    enableInventoryAdvanced: false,
+    enableInventory: true,
+    enableInventoryAdvanced: true,
     enableAppointments: false,
     enableMultiLocation: false,
   } as InsertTenantModuleConfig);
@@ -359,7 +358,7 @@ async function seedThamada(createdOrderTypes: any[]) {
       const sub = o.items.reduce((s, it) => s + parseFloat(it.p.basePrice) * it.qty, 0);
       const tax = Math.round(sub * TAX); const svc = Math.round(sub * SVC);
       const [order] = await db.insert(orders).values({
-        tenantId: tenant.id, orderTypeId: dineInOT.id,
+        tenantId: tenant.id, outletId: thamadaOutlet.id, orderTypeId: dineInOT.id,
         orderNumber: `#TH${String(i + 1).padStart(4, '0')}`,
         status: o.status, paymentStatus: 'unpaid',
         tableNumber: o.table, customerName: o.customer,
@@ -394,7 +393,6 @@ async function seedNusantara(createdOrderTypes: any[]) {
 
   // Tenant dulu, baru owner account
   const [tenant] = await db.insert(tenants).values({
-    id: 'kopinusantara',
     name: 'Warung Kopi Nusantara',
     slug: 'kopinusantara',
     businessType: 'CAFE_RESTAURANT',
@@ -620,7 +618,7 @@ async function seedNusantara(createdOrderTypes: any[]) {
       const sub = o.items.reduce((s, it) => s + parseFloat(it.p.basePrice) * it.qty, 0);
       const tax = Math.round(sub * TAX); const svc = Math.round(sub * SVC);
       const [order] = await db.insert(orders).values({
-        tenantId: tenant.id, orderTypeId: dineInOT.id,
+        tenantId: tenant.id, outletId: nusantaraOutlet.id, orderTypeId: dineInOT.id,
         orderNumber: `#NU${String(i + 1).padStart(4, '0')}`,
         status: o.status, paymentStatus: 'unpaid',
         tableNumber: o.table, customerName: o.customer,
@@ -653,7 +651,6 @@ async function seedFreeStarter(createdOrderTypes: any[]) {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   const [tenant] = await db.insert(tenants).values({
-    id: 'warung-bahagia',
     name: 'Warung Bahagia',
     slug: 'warung-bahagia',
     businessType: 'CAFE_RESTAURANT',
@@ -727,27 +724,27 @@ async function seedFreeStarter(createdOrderTypes: any[]) {
   }).returning();
 
   const menuItems = [
-    { categoryId: catMakanan.id, name: 'Nasi Goreng', price: '15000', desc: 'Nasi goreng spesial bumbu rumahan' },
-    { categoryId: catMakanan.id, name: 'Mie Goreng',  price: '13000', desc: 'Mie goreng dengan telur' },
-    { categoryId: catMakanan.id, name: 'Nasi Uduk',   price: '12000', desc: 'Nasi uduk + lauk pilihan' },
-    { categoryId: catMakanan.id, name: 'Gado-Gado',   price: '14000', desc: 'Gado-gado segar bumbu kacang' },
-    { categoryId: catMinuman.id, name: 'Es Teh Manis', price: '5000',  desc: 'Teh manis dingin segar' },
-    { categoryId: catMinuman.id, name: 'Es Jeruk',     price: '7000',  desc: 'Jeruk peras segar' },
-    { categoryId: catMinuman.id, name: 'Kopi Tubruk',  price: '8000',  desc: 'Kopi hitam tradisional' },
-    { categoryId: catMinuman.id, name: 'Air Mineral',  price: '3000',  desc: 'Aqua 600ml' },
+    { categoryId: catMakanan.id, category: 'Makanan', name: 'Nasi Goreng', price: '15000', desc: 'Nasi goreng spesial bumbu rumahan' },
+    { categoryId: catMakanan.id, category: 'Makanan', name: 'Mie Goreng',  price: '13000', desc: 'Mie goreng dengan telur' },
+    { categoryId: catMakanan.id, category: 'Makanan', name: 'Nasi Uduk',   price: '12000', desc: 'Nasi uduk + lauk pilihan' },
+    { categoryId: catMakanan.id, category: 'Makanan', name: 'Gado-Gado',   price: '14000', desc: 'Gado-gado segar bumbu kacang' },
+    { categoryId: catMinuman.id, category: 'Minuman', name: 'Es Teh Manis', price: '5000',  desc: 'Teh manis dingin segar' },
+    { categoryId: catMinuman.id, category: 'Minuman', name: 'Es Jeruk',     price: '7000',  desc: 'Jeruk peras segar' },
+    { categoryId: catMinuman.id, category: 'Minuman', name: 'Kopi Tubruk',  price: '8000',  desc: 'Kopi hitam tradisional' },
+    { categoryId: catMinuman.id, category: 'Minuman', name: 'Air Mineral',  price: '3000',  desc: 'Aqua 600ml' },
   ];
 
   for (const item of menuItems) {
     await db.insert(products).values({
       tenantId: tenant.id,
       categoryId: item.categoryId,
-      outletId: outlet.id,
+      category: item.category,
       name: item.name,
       description: item.desc,
       basePrice: item.price,
       isAvailable: true,
       hasVariants: false,
-      trackStock: false,
+      stockTrackingEnabled: false,
       displayOrder: 0,
     } as any);
   }
