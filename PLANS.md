@@ -6456,3 +6456,180 @@ Move Drizzle schema ownership from `shared/schema.ts` to infrastructure-owned sc
 ### Continuation Notes
 
 P7 S1-S3 is implemented and validated. Next safe future batch is P8 boundary enforcement planning/rules, if explicitly requested; do not start P8 in this P7 batch.
+
+## Plan: Post-P8.3 Inventory Traceability + Stock Listing Production Fix
+
+### Source
+
+- Tasklist: `roadmap/refactor/prompts/post-p8-3-inventory-traceability-and-stock-listing-production-fix-prompt.md`
+- User request: Eksekusi secara bertahap, hati hati, sesuai dan relevan dan presisi roadmap/refactor/prompts/post-p8-3-inventory-traceability-and-stock-listing-production-fix-prompt.md
+- Date started: 2026-06-09
+- Current status: Implemented and validated with type/boundary/db checks; manual browser smoke pending.
+
+### Goal
+
+Fix inventory stock listing so stock-tracked products are visible before movements and with zero/null stock, and add audit traceability fields/references to inventory movement rows without changing stock math.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: inventory routes, stock response shaping, movement writes.
+- Files inspected: `apps/api/src/http/routes/inventory.ts`, `apps/api/src/http/helpers/stockDeduction.ts`, order/create-and-pay repositories.
+- Findings: `/api/inventory/products` already starts from products but response shaping was inline and untested; movement traceability needed new columns and write paths.
+- Tasks: added `toStockListResponse`, returned tracking field, persisted movement references.
+- Risks: target DB must run migration before deploying code that writes new columns.
+- Validation: API type-check and focused API tests passed.
+
+#### Database/Schema Workstream
+
+- Scope: inventory movement schema/migrations.
+- Files inspected: `packages/infrastructure/db/schema/inventory.schema.ts`, `migrations/0017_inventory_movements_order_product_movement_unique.sql`, Drizzle journal.
+- Findings: `order_id` existed, but payment/reference metadata did not.
+- Tasks: added `payment_id`, `reference_type`, `reference_id`, `metadata`, indexes, and SQL migration/backfill.
+- Risks: migration journal in this repo has sparse historical entries; migration SQL is explicit and idempotent via `IF NOT EXISTS`.
+- Validation: `pnpm run db:check` passed.
+
+#### Frontend/UI Workstream
+
+- Scope: stock page hook types.
+- Files inspected: `apps/pos-terminal-web/src/pages/stock.tsx`, `apps/pos-terminal-web/src/hooks/api/useInventory.ts`.
+- Findings: stock page consumes API `items` directly and does not filter out zero/null stock itself.
+- Tasks: updated API hook types to include `stockTrackingEnabled` and traceability movement fields.
+- Risks: no visible UI change requiring screenshot; no frontend test harness added.
+- Validation: terminal-web type-check passed.
+
+#### Tests/Validation Workstream
+
+- Scope: regression coverage and required commands.
+- Files inspected: existing API tests for stock concurrency/idempotency.
+- Findings: package `test` script ignores extra file args and runs full glob; one unrelated DB-dependent test fails without `DATABASE_URL`.
+- Tasks: added stock listing unit tests and SALE traceability assertions.
+- Risks: full API test command needs database env for `record-payment-idempotency.test.ts`.
+- Validation: focused `tsx --test` passed; required type/boundary/db checks passed.
+
+#### Documentation Workstream
+
+- Scope: required Post-P8.3 report and plan tracking.
+- Files inspected: prompt and existing roadmap/report dirs.
+- Findings: required report did not exist.
+- Tasks: created `roadmap/refactor/reports/post-p8-3-inventory-traceability-stock-listing-report.md`; updated this plan.
+- Risks: manual smoke remains documented as pending.
+- Validation: report created with validation evidence.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: inventory tenant/outlet scoping and traceability.
+- Files inspected: inventory route filters, movement query filters, stock movement repository tenant filters.
+- Findings: inventory product listing filters by `products.tenantId`; movement history filters tenant and active outlet; stock movement row locks filter tenant.
+- Tasks: preserved tenant filters; tests document that response shaping does not merge caller-provided scoped rows.
+- Risks: product stock remains a tenant-level/global pool while movement rows are outlet-tagged, matching current documented behavior.
+- Validation: boundary check and tenant-aware tests passed.
+
+### Execution Order
+
+1. Safety/security/data-integrity/tenant-isolation blockers — completed.
+2. Build/type/test blockers — completed.
+3. Dependency prerequisites — completed.
+4. Highest priority actionable tasks — completed.
+5. Lower priority actionable tasks — completed where safe.
+6. Documentation sync — completed.
+7. Validation — completed except interactive manual smoke.
+8. Final checklist update — source prompt is immutable task prompt, not marked with checkbox statuses.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Inventory movement traceability schema and writes
+  - Files changed: `packages/infrastructure/db/schema/inventory.schema.ts`, `migrations/0019_inventory_movement_traceability.sql`, stock movement/order repositories, inventory routes.
+  - Validation: type-checks, db check, focused tests.
+  - Docs updated: Post-P8.3 report.
+
+- [x] Task: Stock page/API includes tracked products with null/zero stock
+  - Files changed: `apps/api/src/http/routes/inventory.ts`, `apps/api/src/http/helpers/inventoryStockListing.ts`, `apps/api/src/__tests__/inventory-stock-listing.test.ts`, `apps/pos-terminal-web/src/hooks/api/useInventory.ts`.
+  - Validation: focused API tests and terminal-web type-check.
+  - Docs updated: Post-P8.3 report.
+
+#### Partially Completed
+
+- [ ] Task: Required manual validation smoke
+  - Completed: documented exact steps and code-level regression evidence.
+  - Remaining: run browser/API/database scenario in an interactive environment.
+  - Reason: non-interactive environment; no running seeded local app/database smoke was available.
+
+#### Blocked
+
+- [ ] Task: DB-backed full API test command without DATABASE_URL
+  - Blocker: `record-payment-idempotency.test.ts` exits when `DATABASE_URL` is not set under package test glob.
+  - Required next step: provide a valid test `DATABASE_URL` or run focused non-DB tests with `tsx --test` as done in this batch.
+
+#### Not Attempted
+
+- [ ] Task: Frontend screenshot/manual UI smoke
+  - Reason: no perceptible UI change and no running browser app requested/available.
+
+### Validation Log
+
+- Command: `pnpm check:boundaries`
+- Result: pass
+- Notes: architecture boundary check passed.
+
+- Command: `pnpm --filter @pos/domain type-check`
+- Result: pass
+- Notes: TypeScript validation passed.
+
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: TypeScript validation passed.
+
+- Command: `pnpm --filter @pos/infrastructure type-check`
+- Result: pass
+- Notes: TypeScript validation passed.
+
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: TypeScript validation passed.
+
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: TypeScript validation passed.
+
+- Command: `pnpm type-check`
+- Result: pass
+- Notes: Turbo type-check passed for all 10 packages.
+
+- Command: `pnpm run db:check`
+- Result: pass
+- Notes: Drizzle check reported everything fine.
+
+- Command: `pnpm --filter @pos/api exec tsx --test src/__tests__/inventory-stock-listing.test.ts src/__tests__/create-and-pay-stock-concurrency.test.ts`
+- Result: pass
+- Notes: 11 focused tests passed.
+
+- Command: `pnpm --filter @pos/api test -- src/__tests__/inventory-stock-listing.test.ts src/__tests__/create-and-pay-stock-concurrency.test.ts`
+- Result: warning/fail due to environment/script behavior
+- Notes: package script still ran full glob; unrelated `record-payment-idempotency.test.ts` failed because `DATABASE_URL` was not set.
+
+### Documentation Updates
+
+- File: `roadmap/refactor/reports/post-p8-3-inventory-traceability-stock-listing-report.md`
+- Change: Added required production bug, traceability, tests, validation, and final decision report.
+
+### Checklist Updates
+
+- File: `roadmap/refactor/prompts/post-p8-3-inventory-traceability-and-stock-listing-production-fix-prompt.md`
+- Change: No checkbox mutation; prompt is the execution source and the created report records status honestly.
+
+### Continuation Notes
+
+Apply `migrations/0019_inventory_movement_traceability.sql` in the target DB, then run the manual smoke in the report: create/select a product, enable stock tracking, verify stock page visibility with no movement and zero stock, sell the product, and inspect movement references.

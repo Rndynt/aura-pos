@@ -327,6 +327,14 @@ export class DrizzleCreateAndPayOrderRepository {
             orderNumber: updatedOrder.orderNumber,
             outletId: outlet_id ?? null,
             terminalId: inventory_terminal_id ?? null,
+            paymentId: newPayment.id,
+            referenceType: 'sale_payment',
+            referenceId: transaction_ref ?? newPayment.id,
+            metadata: {
+              paymentMethod: payment_method,
+              idempotencyKey: idempotency_key ?? null,
+              transactionRef: transaction_ref ?? null,
+            },
           },
           { transaction: context, allowNegativeStock: false },
         );
@@ -347,6 +355,14 @@ export class DrizzleCreateAndPayOrderRepository {
         orderNumber: result.order.orderNumber,
         outletId: outlet_id ?? null,
         terminalId: inventory_terminal_id ?? null,
+        paymentId: result.payment?.id ?? null,
+        referenceType: 'sale_payment',
+        referenceId: transaction_ref ?? result.payment?.id ?? result.order.id,
+        metadata: {
+          paymentMethod: payment_method,
+          idempotencyKey: idempotency_key ?? null,
+          transactionRef: transaction_ref ?? null,
+        },
       };
 
       try {

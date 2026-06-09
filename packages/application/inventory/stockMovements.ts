@@ -20,6 +20,14 @@ export interface StockContext {
   outletId?: string | null;
   /** Optional terminal/device source metadata for synced/offline movements. */
   terminalId?: string | null;
+  /** Payment row that caused this movement, when available. */
+  paymentId?: string | null;
+  /** Stable reference category for operational traceability. */
+  referenceType?: string | null;
+  /** External or internal reference value, such as payment transaction ref. */
+  referenceId?: string | null;
+  /** Additional JSON-safe traceability details for audits/retries. */
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface StockMovementOptions {

@@ -29,6 +29,7 @@ export type StockProduct = {
   sku: string | null;
   stockQty: number;
   isActive: boolean;
+  stockTrackingEnabled: boolean;
   isLowStock: boolean;
   isOutOfStock: boolean;
   lowStockThreshold: number;
@@ -53,6 +54,10 @@ export type InventoryMovement = {
   notes: string | null;
   actorId: string | null;
   orderId: string | null;
+  paymentId: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  metadata: Record<string, unknown> | null;
   createdAt: string;
 };
 
@@ -158,7 +163,7 @@ export function useCreateMovement() {
   const tenantId = getActiveTenantId();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { productId: string; movementType: string; quantityDelta: number; notes?: string; unitCost?: string }) =>
+    mutationFn: (body: { productId: string; movementType: string; quantityDelta: number; notes?: string; unitCost?: string; referenceId?: string }) =>
       apiPost("/api/inventory/movements", body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/inventory/products", tenantId] });
