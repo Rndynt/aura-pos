@@ -727,3 +727,17 @@ Tests added/run:
 Commands run:
 Remaining blockers:
 ```
+
+---
+
+## Execution Status — 2026-06-09
+
+- [x] Created the single SOT file `packages/application/entitlements/entitlementCatalog.ts` with required sections, plans, billing intervals, entitlements, offers, and business types.
+- [x] Created the read-only entitlement engine `packages/application/entitlements/entitlementEngine.ts`.
+- [x] Added `tenant_entitlements` schema and `migrations/0022_single_tenant_entitlements.sql`.
+- [x] Removed `migrations/0021_repair_basic_stock_runtime_entitlement.sql` and runtime Basic Stock self-heal helper behavior.
+- [x] Converted registration to SOT default plan/default entitlements and stopped inserting `tenant_features` / `tenant_module_configs` / default `tenant_entitlements` rows.
+- [x] Converted inventory product, movement, and report guards to entitlement-code checks.
+- [x] Added/updated focused tests and validation.
+- [x] Created `roadmap/entitlement/phase_1_report.md`.
+- [ ] Phase 2 blocker: remove remaining legacy table exports/repositories/controllers/middleware/seed scripts/frontend marketplace hardcodes after converting those workflows to `tenant_entitlements` and the entitlement engine.

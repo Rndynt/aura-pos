@@ -1,102 +1,118 @@
 import '../../register-paths';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
 
 const {
-  BASIC_STOCK_DEFAULT_PLAN_TIERS,
-  getBasicStockEntitlementRepairAction,
-  hasAdvancedInventoryEntitlement,
-  hasBasicStockEntitlement,
-  isBasicStockDefaultPlanTier,
-} = await import('../http/helpers/inventoryEntitlement');
+  ENTITLEMENT_CATALOG,
+  canPurchaseOffer,
+  getBusinessTypeDefaultEntitlements,
+  getEffectiveEntitlements,
+  getPlanIncludedEntitlements,
+  hasEntitlement,
+} = await import('@pos/application/entitlements');
 
-const migrationSql = fs.readFileSync(new URL('../../../../migrations/0021_repair_basic_stock_runtime_entitlement.sql', import.meta.url), 'utf8');
-
-describe('inventory entitlement helpers', () => {
-  it('allows Basic Starter inventory products when Stok Dasar is active', () => {
-    assert.equal(hasBasicStockEntitlement({ enableInventory: true, enableInventoryAdvanced: false }), true);
+describe('entitlement catalog and engine', () => {
+  it('catalog exposes the required single SOT sections', () => {
+    assert.deepEqual(Object.keys(ENTITLEMENT_CATALOG), [
+      'meta',
+      'billingIntervals',
+      'plans',
+      'entitlements',
+      'offers',
+      'businessTypes',
+    ]);
   });
 
-  it('keeps /api/inventory/products gated for tenants without Stok Dasar and without default-plan policy', () => {
-    assert.equal(hasBasicStockEntitlement({ enableInventory: false, enableInventoryAdvanced: false }), false);
+  it('plans, offers, and business types reference valid entitlement keys', () => {
+    const entitlementCodes = new Set(Object.keys(ENTITLEMENT_CATALOG.entitlements));
+
+    for (const plan of Object.values(ENTITLEMENT_CATALOG.plans)) {
+      for (const code of plan.included) assert.equal(entitlementCodes.has(code), true, `invalid plan entitlement ${code}`);
+    }
+
+    for (const offer of Object.values(ENTITLEMENT_CATALOG.offers)) {
+      assert.equal(entitlementCodes.has(offer.entitlement), true, `invalid offer entitlement ${offer.entitlement}`);
+    }
+
+    for (const businessType of Object.values(ENTITLEMENT_CATALOG.businessTypes)) {
+      for (const code of [...businessType.defaultEntitlements, ...businessType.recommendedEntitlements]) {
+        assert.equal(entitlementCodes.has(code), true, `invalid business type entitlement ${code}`);
+      }
+    }
+  });
+
+  it('plan hierarchy is cumulative and pro receives starter plus growth plus pro', () => {
+    const starter = getPlanIncludedEntitlements('starter');
+    const growth = getPlanIncludedEntitlements('growth');
+    const pro = getPlanIncludedEntitlements('pro');
+
+    for (const code of starter) assert.equal(growth.includes(code), true, `growth missing starter entitlement ${code}`);
+    for (const code of growth) assert.equal(pro.includes(code), true, `pro missing growth entitlement ${code}`);
+    assert.equal(pro.includes('inventory_stock_transfer'), true);
+  });
+
+  it('included plan entitlement does not require tenant_entitlements DB row', async () => {
     assert.equal(
-      getBasicStockEntitlementRepairAction({
-        tenant: { isActive: true, planTier: 'enterprise' },
-        config: { enableInventory: false, enableInventoryAdvanced: false },
-        hasModuleConfig: true,
-      }),
-      null,
+      await hasEntitlement({ planCode: 'starter', businessType: 'CAFE_RESTAURANT', entitlementCode: 'inventory_basic_stock', grants: [] }),
+      true,
     );
   });
 
-  it('does not treat Basic Stock as Advanced Inventory', () => {
-    assert.equal(hasAdvancedInventoryEntitlement({ enableInventory: true, enableInventoryAdvanced: false }), false);
-  });
-
-  it('centralizes default Basic Stock plan aliases for onboarding/basic/starter tenants', () => {
-    assert.deepEqual([...BASIC_STOCK_DEFAULT_PLAN_TIERS], ['free', 'starter', 'basic', 'basic_starter']);
-    assert.equal(isBasicStockDefaultPlanTier('free'), true);
-    assert.equal(isBasicStockDefaultPlanTier('starter'), true);
-    assert.equal(isBasicStockDefaultPlanTier('basic'), true);
-    assert.equal(isBasicStockDefaultPlanTier('basic_starter'), true);
-    assert.equal(isBasicStockDefaultPlanTier('growth'), false);
-  });
-
-  it('repairs a missing tenant_module_configs row for active default-plan tenants', () => {
+  it('purchased active grants access while expired and cancelled grants do not', async () => {
     assert.equal(
-      getBasicStockEntitlementRepairAction({
-        tenant: { isActive: true, planTier: 'starter' },
-        config: undefined,
-        hasModuleConfig: false,
+      await hasEntitlement({
+        planCode: 'starter',
+        entitlementCode: 'integrations_api_access',
+        grants: [{ entitlementCode: 'integrations_api_access', status: 'active', expiresAt: new Date(Date.now() + 86_400_000) }],
       }),
-      'insert_missing_config',
+      true,
+    );
+
+    assert.equal(
+      await hasEntitlement({
+        planCode: 'starter',
+        entitlementCode: 'integrations_api_access',
+        grants: [{ entitlementCode: 'integrations_api_access', status: 'active', expiresAt: new Date(Date.now() - 86_400_000) }],
+      }),
+      false,
+    );
+
+    assert.equal(
+      await hasEntitlement({
+        planCode: 'starter',
+        entitlementCode: 'integrations_api_access',
+        grants: [{ entitlementCode: 'integrations_api_access', status: 'cancelled' }],
+      }),
+      false,
     );
   });
 
-  it('repairs stale enable_inventory=false for active default-plan tenants', () => {
-    assert.equal(
-      getBasicStockEntitlementRepairAction({
-        tenant: { isActive: true, planTier: 'basic' },
-        config: { enableInventory: false, enableInventoryAdvanced: false },
-        hasModuleConfig: true,
-      }),
-      'repair_stale_disabled',
-    );
+  it('offer requiredPlan rules are enforced by plan sortOrder', () => {
+    assert.equal(canPurchaseOffer({ offerCode: 'receipt_compact_monthly', planCode: 'starter' }), true);
+    assert.equal(canPurchaseOffer({ offerCode: 'receipt_compact_monthly', planCode: 'growth' }), true);
+    assert.equal(canPurchaseOffer({ offerCode: 'receipt_compact_monthly', planCode: 'pro' }), true);
+    assert.equal(canPurchaseOffer({ offerCode: 'orders_queue_addon', planCode: 'starter' }), false);
+    assert.equal(canPurchaseOffer({ offerCode: 'orders_queue_addon', planCode: 'growth' }), true);
+    assert.equal(canPurchaseOffer({ offerCode: 'orders_queue_addon', planCode: 'pro' }), true);
   });
 
-  it('does not repair inactive tenants or non-default paid plan tenants', () => {
-    assert.equal(
-      getBasicStockEntitlementRepairAction({
-        tenant: { isActive: false, planTier: 'starter' },
-        config: undefined,
-        hasModuleConfig: false,
-      }),
-      null,
-    );
-    assert.equal(
-      getBasicStockEntitlementRepairAction({
-        tenant: { isActive: true, planTier: 'growth' },
-        config: { enableInventory: false, enableInventoryAdvanced: false },
-        hasModuleConfig: true,
-      }),
-      null,
-    );
-  });
-});
-
-describe('0021 Basic Stock entitlement repair migration', () => {
-  it('inserts missing tenant_module_configs rows for active default-plan tenants', () => {
-    assert.match(migrationSql, /INSERT INTO tenant_module_configs/s);
-    assert.match(migrationSql, /FROM tenants t/s);
-    assert.match(migrationSql, /t\.is_active = true/s);
-    assert.match(migrationSql, /LOWER\(COALESCE\(t\.plan_tier, 'free'\)\) IN \('free', 'starter', 'basic', 'basic_starter'\)/s);
-    assert.match(migrationSql, /ON CONFLICT \(tenant_id\) DO UPDATE/s);
+  it('business type defaults include Basic Stock from SOT', () => {
+    for (const businessType of Object.keys(ENTITLEMENT_CATALOG.businessTypes) as Array<keyof typeof ENTITLEMENT_CATALOG.businessTypes>) {
+      assert.equal(getBusinessTypeDefaultEntitlements(businessType).includes('inventory_basic_stock'), true);
+    }
   });
 
-  it('updates stale Basic Stock without enabling Advanced Inventory', () => {
-    assert.match(migrationSql, /enable_inventory = true/s);
-    assert.match(migrationSql, /enable_inventory_advanced = tenant_module_configs\.enable_inventory_advanced/s);
-    assert.doesNotMatch(migrationSql, /enable_inventory_advanced\s*=\s*true/i);
+  it('new tenant effective entitlements include Basic Stock through SOT', async () => {
+    const effective = await getEffectiveEntitlements({ planCode: 'starter', businessType: 'RETAIL_MINIMARKET', grants: [] });
+    assert.equal(effective.has('inventory_basic_stock'), true);
+  });
+
+  it('inventory routes use entitlement engine codes', () => {
+    const routeSource = readFileSync(new URL('../http/routes/inventory.ts', import.meta.url), 'utf8');
+    assert.match(routeSource, /requireTenantEntitlement\(db, tenantId, 'inventory_basic_stock'\)/);
+    assert.match(routeSource, /requireTenantEntitlement\(db, tenantId, 'inventory_advanced_stock'\)/);
+    assert.doesNotMatch(routeSource, /resolveBasicStockEntitlement/);
+    assert.doesNotMatch(routeSource, /tenantModuleConfigs/);
   });
 });

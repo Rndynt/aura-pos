@@ -60,8 +60,8 @@ export type Tenant = {
   settings: Record<string, any> | null;
   
   // Subscription & billing
-  /** Values stored in DB: 'free' | 'growth' | 'pro' */
-  plan_tier: "free" | "growth" | "pro";
+  /** Values stored in DB: 'starter' | 'growth' | 'pro' */
+  plan_tier: "starter" | "growth" | "pro";
   subscription_status: "active" | "trial" | "suspended" | "cancelled";
   trial_ends_at?: Date;
   

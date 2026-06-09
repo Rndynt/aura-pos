@@ -26,7 +26,9 @@
     "./tenants/ports": "./tenants/ports/index.ts",
     "./tenants/ports/*": "./tenants/ports/*.ts",
     "./inventory/ports": "./inventory/ports/index.ts",
-    "./inventory/ports/*": "./inventory/ports/*.ts"
+    "./inventory/ports/*": "./inventory/ports/*.ts",
+    "./entitlements": "./entitlements/index.ts",
+    "./entitlements/*": "./entitlements/*.ts"
   },
   "scripts": {
     "type-check": "tsc -p tsconfig.json --noEmit"

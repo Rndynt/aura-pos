@@ -27,7 +27,7 @@ function mapTenantToDomain(dbTenant: Tenant): DomainTenant {
     business_email: dbTenant.businessEmail || undefined,
     business_type: dbTenant.businessType as import('@pos/core').BusinessType,
     settings: dbTenant.settings || null,
-    plan_tier: dbTenant.planTier as 'free' | 'growth' | 'pro',
+    plan_tier: (dbTenant.planTier === 'free' ? 'starter' : dbTenant.planTier) as 'starter' | 'growth' | 'pro',
     subscription_status: dbTenant.subscriptionStatus as 'active' | 'trial' | 'suspended' | 'cancelled',
     trial_ends_at: dbTenant.trialEndsAt || undefined,
     timezone: dbTenant.timezone,
@@ -52,7 +52,7 @@ export type CreateTenantInput = {
   business_email?: string;
   business_type: import('@pos/core').BusinessType;
   settings?: Record<string, any> | null;
-  plan_tier: 'free' | 'growth' | 'pro';
+  plan_tier: 'starter' | 'growth' | 'pro';
   subscription_status: 'active' | 'trial' | 'suspended' | 'cancelled';
   trial_ends_at?: Date;
   timezone?: string;

@@ -46,6 +46,42 @@ export const selectTenantSchema = createSelectSchema(tenants);
 export type InsertTenant = z.infer<typeof insertTenantSchema>;
 export type Tenant = typeof tenants.$inferSelect;
 
+
+export const tenantEntitlements = pgTable("tenant_entitlements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  entitlementCode: text("entitlement_code").notNull(),
+  source: varchar("source", { length: 50 }).notNull(),
+  status: varchar("status", { length: 50 }).notNull().default("active"),
+  startsAt: timestamp("starts_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  expiresAt: timestamp("expires_at"),
+  config: jsonb("config"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  tenantIdx: index("tenant_entitlements_tenant_idx").on(table.tenantId),
+  entitlementCodeIdx: index("tenant_entitlements_entitlement_code_idx").on(table.entitlementCode),
+  statusIdx: index("tenant_entitlements_status_idx").on(table.status),
+  expiresAtIdx: index("tenant_entitlements_expires_at_idx").on(table.expiresAt),
+  activeTenantEntitlementUnique: uniqueIndex("tenant_entitlements_active_tenant_entitlement_unique")
+    .on(table.tenantId, table.entitlementCode)
+    .where(sql`${table.status} = 'active'`),
+}));
+
+export const insertTenantEntitlementSchema = createInsertSchema(tenantEntitlements).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  source: z.enum(["purchase", "manual_grant", "trial"]),
+  status: z.enum(["active", "expired", "cancelled"]).optional(),
+  config: z.record(z.any()).nullable().optional(),
+});
+
+export const selectTenantEntitlementSchema = createSelectSchema(tenantEntitlements);
+export type InsertTenantEntitlement = z.infer<typeof insertTenantEntitlementSchema>;
+export type TenantEntitlement = typeof tenantEntitlements.$inferSelect;
+
 export const tenantModuleConfigs = pgTable("tenant_module_configs", {
   tenantId: uuid("tenant_id").primaryKey().references(() => tenants.id, { onDelete: "cascade" }),
   enableTableManagement: boolean("enable_table_management").notNull().default(false),

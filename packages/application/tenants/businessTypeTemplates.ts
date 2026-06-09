@@ -1,231 +1,101 @@
 /**
- * Business Type Templates
- * Defines default configurations for each business type.
+ * Compatibility wrapper for business type onboarding defaults.
  *
- * BILLING SAFETY RULE:
- * Business type templates determine default workflows, starter catalog, order types,
- * and UI recommendations — they must NEVER grant paid plan access.
- * Every template uses plan_tier: 'free'. Basic Stock (`enable_inventory`)
- * is included in onboarding; paid features/modules appear as locked/recommended
- * in Marketplace but are never seeded as active entitlements.
+ * The single source of truth is `packages/application/entitlements/entitlementCatalog.ts`.
+ * This module remains only because older registration/tests import
+ * `getBusinessTypeTemplate()` and `BUSINESS_TYPE_TEMPLATES` directly.
  */
 
 import type { BusinessType, OrderTypeCode, FeatureCode } from '@pos/core';
 import type { TenantModuleConfig } from '@pos/domain/tenants/types';
+import { ENTITLEMENT_CATALOG, type BusinessTypeCode, type EntitlementCode, type PlanCode } from '../entitlements/entitlementCatalog';
 
-/**
- * Template for a business type containing all default settings
- */
 export type BusinessTypeTemplate = {
   tenantDefaults: {
-    /** Plan tier for onboarding. Must always be 'free' — billing system upgrades separately. */
-    plan_tier: 'free' | 'starter' | 'professional' | 'enterprise';
+    plan_tier: PlanCode;
     subscription_status: 'active' | 'trial' | 'suspended' | 'cancelled';
     settings: Record<string, any>;
   };
-
   moduleConfig: Omit<TenantModuleConfig, 'tenant_id' | 'updated_at'>;
-
   features: Array<{
     feature_code: FeatureCode;
     source: 'plan_default' | 'purchase' | 'manual_grant' | 'trial';
     is_active: boolean;
   }>;
-
+  defaultEntitlements: EntitlementCode[];
+  recommendedEntitlements: EntitlementCode[];
   orderTypes: OrderTypeCode[];
 };
 
-/**
- * Template map keyed by business type.
- *
- * All templates use plan_tier: 'free' and only seed features allowed
- * by PLAN_FEATURE_MAP.free. Paid modules default to false — they appear
- * as upgrade recommendations in Marketplace only. Basic Stock is the free
- * default stock entitlement and is enabled for all onboarding templates.
- */
-export const BUSINESS_TYPE_TEMPLATES: Record<BusinessType, BusinessTypeTemplate> = {
-  CAFE_RESTAURANT: {
-    tenantDefaults: {
-      plan_tier: 'free',
-      subscription_status: 'active',
-      settings: {
-        default_tax_rate: 0.1,
-        default_service_charge_rate: 0.05,
-        enable_tips: true,
-      },
-    },
-    moduleConfig: {
-      enable_table_management: false,
-      enable_kitchen_ticket: false,
-      enable_loyalty: false,
-      enable_delivery: false,
-      enable_inventory: true,
-      enable_inventory_advanced: false,
-      enable_appointments: false,
-      enable_multi_location: false,
-      config: {
-        kitchen_display_auto_refresh: false,
-        table_layout_enabled: false,
-      },
-    },
-    features: [
-      { feature_code: 'receipt_printer',  source: 'plan_default', is_active: true },
-      { feature_code: 'order_queue',      source: 'plan_default', is_active: true },
-      { feature_code: 'product_variants', source: 'plan_default', is_active: true },
-      { feature_code: 'partial_payment',  source: 'plan_default', is_active: true },
-      { feature_code: 'discounts',        source: 'plan_default', is_active: true },
-      { feature_code: 'sales_reports',    source: 'plan_default', is_active: true },
-    ],
-    orderTypes: ['DINE_IN', 'TAKE_AWAY', 'DELIVERY'],
-  },
-
-  RETAIL_MINIMARKET: {
-    tenantDefaults: {
-      plan_tier: 'free',
-      subscription_status: 'active',
-      settings: {
-        default_tax_rate: 0.1,
-        enable_barcode_scanner: false,
-        low_stock_alert_enabled: false,
-      },
-    },
-    moduleConfig: {
-      enable_table_management: false,
-      enable_kitchen_ticket: false,
-      enable_loyalty: false,
-      enable_delivery: false,
-      enable_inventory: true,
-      enable_inventory_advanced: false,
-      enable_appointments: false,
-      enable_multi_location: false,
-      config: {
-        inventory_tracking_mode: 'manual',
-        low_stock_threshold: 10,
-      },
-    },
-    features: [
-      { feature_code: 'receipt_printer',  source: 'plan_default', is_active: true },
-      { feature_code: 'order_queue',      source: 'plan_default', is_active: true },
-      { feature_code: 'product_variants', source: 'plan_default', is_active: true },
-      { feature_code: 'partial_payment',  source: 'plan_default', is_active: true },
-      { feature_code: 'discounts',        source: 'plan_default', is_active: true },
-      { feature_code: 'sales_reports',    source: 'plan_default', is_active: true },
-    ],
-    orderTypes: ['WALK_IN'],
-  },
-
-  LAUNDRY: {
-    tenantDefaults: {
-      plan_tier: 'free',
-      subscription_status: 'active',
-      settings: {
-        default_tax_rate: 0.1,
-        enable_item_tagging: false,
-        default_turnaround_days: 3,
-      },
-    },
-    moduleConfig: {
-      enable_table_management: false,
-      enable_kitchen_ticket: false,
-      enable_loyalty: false,
-      enable_delivery: false,
-      enable_inventory: true,
-      enable_inventory_advanced: false,
-      enable_appointments: false,
-      enable_multi_location: false,
-      config: {
-        tag_label_printer_enabled: false,
-        pickup_reminder_enabled: false,
-      },
-    },
-    features: [
-      { feature_code: 'receipt_printer', source: 'plan_default', is_active: true },
-      { feature_code: 'order_queue',     source: 'plan_default', is_active: true },
-      { feature_code: 'discounts',       source: 'plan_default', is_active: true },
-      { feature_code: 'sales_reports',   source: 'plan_default', is_active: true },
-    ],
-    orderTypes: ['WALK_IN'],
-  },
-
-  SERVICE_APPOINTMENT: {
-    tenantDefaults: {
-      plan_tier: 'free',
-      subscription_status: 'active',
-      settings: {
-        default_tax_rate: 0.1,
-        appointment_duration_minutes: 60,
-        booking_buffer_minutes: 15,
-      },
-    },
-    moduleConfig: {
-      enable_table_management: false,
-      enable_kitchen_ticket: false,
-      enable_loyalty: false,
-      enable_delivery: false,
-      enable_inventory: true,
-      enable_inventory_advanced: false,
-      enable_appointments: false,
-      enable_multi_location: false,
-      config: {
-        online_booking_enabled: false,
-        calendar_sync_enabled: false,
-      },
-    },
-    features: [
-      { feature_code: 'receipt_printer',  source: 'plan_default', is_active: true },
-      { feature_code: 'order_queue',      source: 'plan_default', is_active: true },
-      { feature_code: 'product_variants', source: 'plan_default', is_active: true },
-      { feature_code: 'partial_payment',  source: 'plan_default', is_active: true },
-      { feature_code: 'discounts',        source: 'plan_default', is_active: true },
-      { feature_code: 'sales_reports',    source: 'plan_default', is_active: true },
-    ],
-    orderTypes: ['WALK_IN'],
-  },
-
-  DIGITAL_PPOB: {
-    tenantDefaults: {
-      plan_tier: 'free',
-      subscription_status: 'active',
-      settings: {
-        enable_digital_receipts: true,
-        auto_process_enabled: false,
-      },
-    },
-    moduleConfig: {
-      enable_table_management: false,
-      enable_kitchen_ticket: false,
-      enable_loyalty: false,
-      enable_delivery: false,
-      enable_inventory: true,
-      enable_inventory_advanced: false,
-      enable_appointments: false,
-      enable_multi_location: false,
-      config: {
-        api_integration_enabled: false,
-        transaction_fee_mode: 'percentage',
-      },
-    },
-    features: [
-      { feature_code: 'receipt_printer', source: 'plan_default', is_active: true },
-      { feature_code: 'order_queue',     source: 'plan_default', is_active: true },
-      { feature_code: 'sales_reports',   source: 'plan_default', is_active: true },
-    ],
-    orderTypes: ['WALK_IN'],
-  },
+const LEGACY_FEATURE_BY_ENTITLEMENT: Partial<Record<EntitlementCode, FeatureCode>> = {
+  catalog_variants: 'product_variants',
+  payments_partial_payment: 'partial_payment',
+  orders_queue: 'order_queue',
+  receipt_standard: 'receipt_printer',
+  reports_sales_basic: 'sales_reports',
+  restaurant_kitchen_printer: 'kitchen_printer',
+  restaurant_kds: 'kitchen_display',
+  restaurant_kitchen_ticket: 'kitchen_ticket',
+  inventory_advanced_stock: 'inventory_tracking',
+  inventory_reports: 'inventory_reports',
+  hardware_label_printer: 'label_printer',
+  hardware_barcode_scanner: 'barcode_scanner',
+  integrations_accounting: 'accounting_sync',
+  integrations_payment_gateway: 'payment_gateway',
+  integrations_api_access: 'api_integration',
 };
 
-/**
- * Get business type template by business type
- * @param businessType - The business type
- * @returns The template for the business type
- * @throws Error if business type is not found
- */
+function toModuleConfig(defaultEntitlements: readonly EntitlementCode[]): Omit<TenantModuleConfig, 'tenant_id' | 'updated_at'> {
+  const has = (code: EntitlementCode) => defaultEntitlements.includes(code);
+  return {
+    enable_table_management: has('restaurant_table_management'),
+    enable_kitchen_ticket: has('restaurant_kitchen_ticket'),
+    enable_loyalty: false,
+    enable_delivery: false,
+    enable_inventory: has('inventory_basic_stock'),
+    enable_inventory_advanced: has('inventory_advanced_stock'),
+    enable_appointments: false,
+    enable_multi_location: has('multi_location_outlets'),
+    config: {},
+  };
+}
+
+function toTemplate(code: BusinessTypeCode): BusinessTypeTemplate {
+  const businessType = ENTITLEMENT_CATALOG.businessTypes[code];
+  const planEntitlements = ENTITLEMENT_CATALOG.plans[businessType.defaultPlan].included;
+  const legacyFeatureCodes = new Set<FeatureCode>();
+
+  for (const entitlement of planEntitlements) {
+    const legacyFeature = LEGACY_FEATURE_BY_ENTITLEMENT[entitlement as EntitlementCode];
+    if (legacyFeature) legacyFeatureCodes.add(legacyFeature);
+  }
+
+  return {
+    tenantDefaults: {
+      plan_tier: businessType.defaultPlan,
+      subscription_status: 'active',
+      settings: businessType.settings,
+    },
+    moduleConfig: toModuleConfig(businessType.defaultEntitlements),
+    features: [...legacyFeatureCodes].map((feature_code) => ({
+      feature_code,
+      source: 'plan_default',
+      is_active: true,
+    })),
+    defaultEntitlements: [...businessType.defaultEntitlements] as EntitlementCode[],
+    recommendedEntitlements: [...businessType.recommendedEntitlements] as EntitlementCode[],
+    orderTypes: [...businessType.orderTypes] as OrderTypeCode[],
+  };
+}
+
+export const BUSINESS_TYPE_TEMPLATES = Object.fromEntries(
+  (Object.keys(ENTITLEMENT_CATALOG.businessTypes) as BusinessTypeCode[]).map((code) => [code, toTemplate(code)]),
+) as Record<BusinessType, BusinessTypeTemplate>;
+
 export function getBusinessTypeTemplate(businessType: BusinessType): BusinessTypeTemplate {
   const template = BUSINESS_TYPE_TEMPLATES[businessType];
-
   if (!template) {
     throw new Error(`No template found for business type: ${businessType}`);
   }
-
   return template;
 }

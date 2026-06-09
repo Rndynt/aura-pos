@@ -2,94 +2,74 @@
 
 ## Core Principle
 
-Business type selection configures a tenant's default workflows, starter catalog,
-order types, and UI recommendations. It **never** grants paid plan access.
+`packages/application/entitlements/entitlementCatalog.ts` is the single source of truth for commercial tenant entitlements. Business type selection configures onboarding defaults, recommended add-ons, order types, and UI guidance from that catalog; it must not persist plan-default or business-type-default entitlements as tenant grant rows.
+
+## Entitlement Storage
+
+AuraPoS now uses one grant table for purchased, trial, and manually granted entitlements:
+
+- `tenant_entitlements`
+
+The following legacy entitlement/config tables are removed by the Phase 1 cleanup migration and must not be written by new onboarding logic:
+
+- `tenant_features`
+- `tenant_module_configs`
+
+Plan-default and business-type-default access is computed at runtime from the catalog and the read-only entitlement engine. `tenant_entitlements` stores only explicit grants with `source` values `purchase`, `manual_grant`, or `trial`; expired and cancelled grants are ignored by effective entitlement checks.
 
 ## New Tenant Onboarding
 
-Every new tenant registered through `POST /api/register` always starts with:
+Every new tenant registered through `POST /api/register` starts from the selected business type's SOT default plan:
 
+```txt
+ENTITLEMENT_CATALOG.businessTypes[businessType].defaultPlan
 ```
-plan_tier         = 'free'
-subscription_status = 'active'
+
+The Phase 1 catalog sets all initial business types to `starter`, which includes Basic Stock (`inventory_basic_stock`) through the cumulative plan hierarchy and/or business type defaults. Registration no longer inserts `tenant_features`, `tenant_module_configs`, or `tenant_entitlements` rows for plan/business defaults.
+
+## Plan Hierarchy
+
+Plans are cumulative by `sortOrder`:
+
+```txt
+starter -> growth -> pro
 ```
 
-This is enforced in two places:
-
-1. **Business type templates** (`packages/application/tenants/businessTypeTemplates.ts`) —
-   all templates set `plan_tier: 'free'` and only include features from `PLAN_FEATURE_MAP.free`.
-
-2. **Registration service** (`apps/api/src/services/registrationService.ts`) —
-   `registerTenantOwner()` hard-codes `planTier: DEFAULT_ONBOARDING_PLAN_TIER` (`'free'`)
-   and validates that no template feature exceeds `PLAN_FEATURE_MAP.free`. A
-   `TEMPLATE_PLAN_MISMATCH` error is thrown if a template is misconfigured.
+A `pro` tenant receives `starter + growth + pro` included entitlements without duplicating lower-tier entries inside the `pro` plan definition.
 
 ## Plan Upgrade
 
-Plan tier changes are **only** allowed via a trusted internal billing/admin system.
+Plan tier changes remain restricted to a trusted internal billing/admin system.
 
 - Endpoint: `PATCH /api/tenants/plan`
 - Required header: `x-internal-billing-secret: <BILLING_INTERNAL_SECRET>`
-- If `BILLING_INTERNAL_SECRET` env var is not set, **all** plan-change requests return `403`.
-- Browser/client sessions can never upgrade a plan directly.
+- If `BILLING_INTERNAL_SECRET` is not set, plan-change requests return `403`.
 
-Response for unauthorized access:
+Phase 1 keeps older tenant feature/module endpoints as compatibility/Phase 2 follow-up areas unless they are inventory-route guards. New access checks should use entitlement codes and the entitlement engine rather than legacy module flags or `tenant_features` rows.
 
-```json
-{
-  "success": false,
-  "error": "Plan changes are restricted to the billing/admin system.",
-  "code": "BILLING_AUTH_REQUIRED"
-}
-```
+## Marketplace / Add-ons
 
-## Marketplace UI
+Marketplace and purchase flows should be generated from:
 
-The Marketplace page displays paid features and modules as locked upgrade recommendations.
-Clicking "Upgrade" shows an informational message — it does **not** call the plan endpoint.
-No browser action can mutate the tenant's plan tier.
+- `ENTITLEMENT_CATALOG.entitlements`
+- `ENTITLEMENT_CATALOG.offers`
+- `ENTITLEMENT_CATALOG.plans`
+- `ENTITLEMENT_CATALOG.businessTypes[*].recommendedEntitlements`
 
-## Feature Map
+Purchasing an offer must:
 
-The authoritative plan → feature mapping lives in:
-`apps/api/src/constants/planFeatureMap.ts`
+1. Verify the offer exists.
+2. Verify the tenant plan satisfies `offer.requiredPlan` by plan `sortOrder`.
+3. Avoid charging for entitlements already included by the tenant's cumulative plan.
+4. Insert `tenant_entitlements` only for actual purchased/trial/manual grants.
+5. Set `expires_at` when `offer.expires = true`.
 
-Free features:
-- `product_variants`, `partial_payment`, `discounts`, `order_queue`,
-  `receipt_printer`, `sales_reports`
+## Inventory Entitlement Guards
 
-Growth and Pro features are only activated after an authorized plan upgrade.
+Inventory route access is now entitlement-code based:
 
-## Module Defaults
+- `GET /api/inventory/products` requires `inventory_basic_stock`.
+- `PUT /api/inventory/products/:id/adjust` requires `inventory_basic_stock` and writes advanced movement logs only when `inventory_advanced_stock` is effective.
+- Inventory movement and report routes require `inventory_advanced_stock`.
 
-All paid modules default to `false` for new tenants:
-
-| Module                  | Required Plan |
-|-------------------------|---------------|
-| Table Management        | Growth+       |
-| Kitchen Ticket / KDS    | Growth+       |
-| Loyalty                 | Growth+       |
-| Delivery Management     | Growth+       |
-| Advanced Inventory      | Growth+       |
-| Appointments            | Growth+       |
-| Multi-Location          | Pro only      |
-
-Basic inventory / Stok Dasar (`enable_inventory`) is allowed on free/default onboarding plans and is now an onboarding default for new active tenants. It is stored in `tenant_module_configs`, not `tenant_features`. Runtime entitlement repair also treats active `free`, `starter`, `basic`, and `basic_starter` tenants as Basic Stock defaults so stale or missing module-config rows can be safely healed without granting Advanced Inventory. Advanced Inventory (`enable_inventory_advanced`) remains Growth+ and is not implied by Stok Dasar.
-
-## Seed Data Requirements
-
-Registration depends on these order types being present in the database:
-
-- `DINE_IN` — Cafe/Restaurant
-- `TAKE_AWAY` — Cafe/Restaurant
-- `DELIVERY` — Cafe/Restaurant
-- `WALK_IN` — Retail, Laundry, Service, PPOB
-
-Run `pnpm db:seed` to ensure all order types are present.
-
-Business type codes must match `packages/core/enums.ts`:
-- `CAFE_RESTAURANT`
-- `RETAIL_MINIMARKET`
-- `LAUNDRY`
-- `SERVICE_APPOINTMENT`
-- `DIGITAL_PPOB`
+The old Basic Stock runtime repair/self-heal resolver was removed; missing access should be fixed in SOT/purchase data, not repaired during request checks.

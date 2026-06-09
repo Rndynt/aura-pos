@@ -5,7 +5,7 @@
  *   GET  /api/inventory/products               — list produk yang stock tracking aktif
  *   PUT  /api/inventory/products/:id/adjust    — simple +/- qty (update langsung)
  *
- * ADVANCED (requires enable_inventory_advanced module):
+ * ADVANCED (requires inventory_advanced_stock entitlement):
  *   POST /api/inventory/movements              — catat pergerakan stok dengan tipe + catatan
  *   GET  /api/inventory/movements              — riwayat semua pergerakan (+ filter)
  *   GET  /api/inventory/movements/:productId   — riwayat per produk
@@ -16,7 +16,6 @@ import { Router } from 'express';
 import { db } from '@pos/infrastructure/database';
 import {
   products,
-  tenantModuleConfigs,
   inventoryMovements,
 } from '@pos/infrastructure/db/schema';
 import { eq, and, desc, asc, gte, lte, sql } from 'drizzle-orm';
@@ -24,25 +23,12 @@ import { asyncHandler, createError } from '../middleware/errorHandler';
 import { z } from 'zod';
 import { requireManager } from '../middleware/rbac';
 import { toStockListResponse } from '../helpers/inventoryStockListing';
-import { hasAdvancedInventoryEntitlement, resolveBasicStockEntitlement } from '../helpers/inventoryEntitlement';
+import { requireTenantEntitlement } from '../helpers/inventoryEntitlement';
 
 const router = Router();
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-async function isBasicInventoryEnabled(tenantId: string): Promise<boolean> {
-  const entitlement = await resolveBasicStockEntitlement(db, tenantId);
-  return entitlement.enabled;
-}
-
-async function isAdvancedInventoryEnabled(tenantId: string): Promise<boolean> {
-  const rows = await db
-    .select({ enableInventoryAdvanced: tenantModuleConfigs.enableInventoryAdvanced })
-    .from(tenantModuleConfigs)
-    .where(eq(tenantModuleConfigs.tenantId, tenantId))
-    .limit(1);
-  return hasAdvancedInventoryEntitlement(rows[0]);
-}
 
 /**
  * All recognised movement types.
@@ -75,13 +61,11 @@ function periodStart(days: number): Date {
  * GET /api/inventory/products
  * List all products with stock_tracking_enabled = true.
  * Returns current stock qty, sku, low-stock flag (threshold < 10 default).
- * Requires: enable_inventory (Stok Dasar)
+ * Requires: inventory_basic_stock entitlement
  */
 router.get('/products', asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
-  if (!(await isBasicInventoryEnabled(tenantId))) {
-    throw createError('Fitur ini memerlukan modul Stok Dasar. Aktifkan dari Marketplace.', 403, 'MODULE_REQUIRED');
-  }
+  await requireTenantEntitlement(db, tenantId, 'inventory_basic_stock');
   const LOW_STOCK_THRESHOLD = 10;
 
   const rows = await db
@@ -113,13 +97,11 @@ router.get('/products', asyncHandler(async (req, res) => {
 /**
  * PUT /api/inventory/products/:id/adjust
  * Simple direct adjustment — langsung update stock_qty.
- * Requires: enable_inventory (Stok Dasar). Also logs movement if Stok Lanjutan aktif.
+ * Requires: inventory_basic_stock entitlement. Also logs movement if Stok Lanjutan aktif.
  */
 router.put('/products/:id/adjust', requireManager, asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
-  if (!(await isBasicInventoryEnabled(tenantId))) {
-    throw createError('Fitur ini memerlukan modul Stok Dasar. Aktifkan dari Marketplace.', 403, 'MODULE_REQUIRED');
-  }
+  await requireTenantEntitlement(db, tenantId, 'inventory_basic_stock');
   const productId = req.params.id;
 
   const body = z.object({
@@ -148,7 +130,12 @@ router.put('/products/:id/adjust', requireManager, asyncHandler(async (req, res)
     .where(and(eq(products.id, productId), eq(products.tenantId, tenantId)));
 
   // Catat ke ledger jika modul advanced aktif
-  const advanced = await isAdvancedInventoryEnabled(tenantId);
+  let advanced = true;
+  try {
+    await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
+  } catch {
+    advanced = false;
+  }
   if (advanced) {
     const delta = after - before;
     const movementType: MovementType = delta >= 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT';
@@ -180,9 +167,7 @@ router.put('/products/:id/adjust', requireManager, asyncHandler(async (req, res)
 router.post('/movements', requireManager, asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
 
-  if (!(await isAdvancedInventoryEnabled(tenantId))) {
-    throw createError('Fitur ini memerlukan modul Advanced Inventory', 403, 'MODULE_REQUIRED');
-  }
+  await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
 
   const body = z.object({
     productId: z.string(),
@@ -244,9 +229,7 @@ router.post('/movements', requireManager, asyncHandler(async (req, res) => {
 router.get('/movements', asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
 
-  if (!(await isAdvancedInventoryEnabled(tenantId))) {
-    throw createError('Fitur ini memerlukan modul Advanced Inventory', 403, 'MODULE_REQUIRED');
-  }
+  await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
 
   const query = z.object({
     type: z.string().optional(),
@@ -323,9 +306,7 @@ router.get('/movements/:productId', asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
   const { productId } = req.params;
 
-  if (!(await isAdvancedInventoryEnabled(tenantId))) {
-    throw createError('Fitur ini memerlukan modul Advanced Inventory', 403, 'MODULE_REQUIRED');
-  }
+  await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
 
   const rows = await db
     .select()
@@ -354,9 +335,7 @@ router.get('/movements/:productId', asyncHandler(async (req, res) => {
 router.get('/report', asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
 
-  if (!(await isAdvancedInventoryEnabled(tenantId))) {
-    throw createError('Fitur ini memerlukan modul Advanced Inventory', 403, 'MODULE_REQUIRED');
-  }
+  await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
 
   const query = z.object({
     period: z.coerce.number().int().min(1).max(365).default(30),
