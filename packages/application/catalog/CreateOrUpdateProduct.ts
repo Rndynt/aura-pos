@@ -204,7 +204,7 @@ export class CreateOrUpdateProduct {
       }
 
       // Step 4: Execute all write operations within a transaction for atomicity
-      const result = await this.unitOfWork.runInTransaction(async (tx) => {
+      const result = await this.unitOfWork.transaction(async (tx) => {
         let product: Product;
 
         // Create or update product

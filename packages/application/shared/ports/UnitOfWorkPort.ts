@@ -1,18 +1,21 @@
 /**
  * Application transaction boundary contracts.
  *
- * Ports deliberately avoid Drizzle or infrastructure types. Infrastructure
- * adapters may attach their native transaction object behind this opaque
- * context while use cases depend only on the application contract.
+ * The transaction context is intentionally opaque. Application use cases may
+ * pass it between ports, but only infrastructure adapters are allowed to know
+ * what concrete database transaction object it contains.
  */
-export interface TransactionContext {
-  readonly kind: 'transaction';
-  readonly value: unknown;
-}
+export type TransactionContext = unknown;
 
 export interface UnitOfWorkPort {
   /**
    * Run the supplied callback inside one atomic transaction boundary.
    */
-  runInTransaction<T>(work: (context: TransactionContext) => Promise<T>): Promise<T>;
+  transaction<T>(work: (context: TransactionContext) => Promise<T>): Promise<T>;
+
+  /**
+   * @deprecated Use transaction(). Kept as a compatibility alias for older
+   * application use cases while the repository is migrated incrementally.
+   */
+  runInTransaction?<T>(work: (context: TransactionContext) => Promise<T>): Promise<T>;
 }

@@ -5524,3 +5524,210 @@ P2 continuation batch is validated. Next safe batch should continue only if more
 - Command: `pnpm type-check`
 - Result: pass, 10/10 Turbo tasks.
 - Notes: Workspace type-check passed.
+
+## Plan: P3 S1-S3 UnitOfWork and Transaction Boundary
+
+### Source
+
+- Tasklist: `roadmap/refactor/p3-s1-s3-unit-of-work-transaction-boundary.md`
+- User request: Kerjakan hanya P3; stabilize UnitOfWork/transaction boundary for CreateAndPayOrder, RecordPayment, SyncOfflineOrder, strict inventory path, and stock reversal; no endpoint/schema/cash/standard/partial-payment behavior changes; do not start P4; run validation; update P3 notes; commit/push.
+- Date started: 2026-06-09
+- Current status: In progress
+
+### Goal
+
+Stabilize the application-owned `UnitOfWorkPort` contract and ensure transactional order/payment/inventory paths keep atomic behavior behind infrastructure adapters without changing endpoints, database schema, cash/standard payment behavior, or partial payment semantics.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs: `docs/ORDER_LIFECYCLE.md`, `docs/dev/IDEMPOTENCY.md`, `docs/dev/OFFLINE_ENGINE.md`
+- [x] Relevant source files: UnitOfWork port/adapter, order payment/create-and-pay/sync use cases and adapters, inventory adapters, API container, existing payment/inventory tests
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: Composition root and use-case transaction boundaries only; no route/endpoint changes.
+- Files inspected: `apps/api/src/container.ts`, order/sync use cases, infrastructure adapters.
+- Findings: Existing endpoints already call use cases via the container; this batch should only adjust dependency wiring if needed.
+- Tasks: Preserve endpoint contract while stabilizing UnitOfWork API and adapter boundaries.
+- Risks: Regressing payment/partial-payment behavior if payment math is moved outside the transaction.
+- Validation: Application/infrastructure/API tests and type-checks.
+
+#### Database/Schema Workstream
+
+- Scope: Transaction adapter and repository context propagation; no schema or migration changes.
+- Files inspected: `packages/infrastructure/unit-of-work/DrizzleUnitOfWork.ts`, order/payment/inventory repositories.
+- Findings: Drizzle transactions are already used, but the application port method name differs from the P3 roadmap and repository transaction options should remain optional application contexts.
+- Tasks: Align UnitOfWork contract and keep Drizzle transaction object opaque to application code.
+- Risks: Nested/duplicated transactions if child repositories do not reuse context.
+- Validation: Type-checks and API tests.
+
+#### Frontend/UI Workstream
+
+- Scope: Not in P3 scope.
+- Files inspected: none.
+- Findings: User requested no endpoint/behavior/UI changes.
+- Tasks: none.
+- Risks: none.
+- Validation: Workspace type-check if it reaches frontend packages.
+
+#### Tests/Validation Workstream
+
+- Scope: Required P3 validation plus existing DB-backed payment/idempotency/inventory tests.
+- Files inspected: `apps/api/src/__tests__/record-payment-idempotency.test.ts`, `apps/api/src/__tests__/create-and-pay-stock-concurrency.test.ts`.
+- Findings: API tests include DB-backed record-payment idempotency and create-and-pay stock concurrency coverage.
+- Tasks: Run required commands and document results honestly.
+- Risks: Baseline environment/dependency failures may occur; inspect and distinguish related failures.
+- Validation: pending final command run.
+
+#### Documentation Workstream
+
+- Scope: P3 roadmap execution notes and `PLANS.md`.
+- Files inspected: `roadmap/refactor/p3-s1-s3-unit-of-work-transaction-boundary.md`, `PLANS.md`.
+- Findings: P3 roadmap was planned before this batch.
+- Tasks: Update P3 notes without marking P4 or unrelated work.
+- Risks: Over-claiming production DB concurrency proof; must note only tests that actually ran.
+- Validation: Documentation updated after code validation.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Tenant-scoped row locks, idempotency replay, order ownership, strict inventory transaction, stock reversal transaction.
+- Files inspected: payment/create-and-pay/sync/inventory repositories.
+- Findings: Tenant filters and row locks are present in critical paths and must be preserved.
+- Tasks: Avoid cross-tenant access by keeping tenant filters in all transaction-bound reads/writes.
+- Risks: Any removed tenant predicate or out-of-transaction payment math would be unsafe.
+- Validation: API tests include tenant/isolation/payment flows.
+
+### Execution Order
+
+1. Confirm current P3 implementation gaps.
+2. Stabilize UnitOfWorkPort contract and Drizzle adapter aliases/backward compatibility.
+3. Ensure transactional use cases/adapters compose through UnitOfWork where safe without endpoint/schema/payment behavior changes.
+4. Preserve strict inventory and reversal transaction context propagation.
+5. Run required validation.
+6. Update P3 roadmap and PLANS notes.
+7. Commit and push if remote allows.
+
+### Progress
+
+#### Completed
+
+- [ ] Task: pending implementation.
+  - Files changed: pending.
+  - Validation: pending.
+  - Docs updated: pending.
+
+#### Partially Completed
+
+- [ ] Task: pending.
+  - Completed: pending.
+  - Remaining: pending.
+  - Reason: pending.
+
+#### Blocked
+
+- [ ] Task: pending.
+  - Blocker: pending.
+  - Required next step: pending.
+
+#### Not Attempted
+
+- [ ] Task: P4.
+  - Reason: User explicitly said do not start P4.
+
+### Validation Log
+
+- Command: pending.
+- Result: pending.
+- Notes: pending.
+
+### Documentation Updates
+
+- File: pending.
+- Change: pending.
+
+### Checklist Updates
+
+- File: pending.
+- Change: pending.
+
+### Continuation Notes
+
+Continue with P3 only. Do not start P4.
+
+### Progress Update — completed 2026-06-09
+
+#### Completed
+
+- [x] Task: Stabilize `UnitOfWorkPort` and Drizzle adapter boundary.
+  - Files changed: `packages/application/shared/ports/UnitOfWorkPort.ts`, `packages/infrastructure/unit-of-work/DrizzleUnitOfWork.ts`, `packages/application/catalog/CreateOrUpdateProduct.ts`.
+  - Validation: application, infrastructure, API, and workspace type-checks passed.
+  - Docs updated: `roadmap/refactor/p3-s1-s3-unit-of-work-transaction-boundary.md`, `PLANS.md`.
+- [x] Task: Keep `RecordPayment`, `CreateAndPayOrder`, and `SyncOfflineOrder` on one shared UnitOfWork adapter boundary.
+  - Files changed: `packages/infrastructure/repositories/orders/DrizzleRecordPaymentRepository.ts`, `packages/infrastructure/repositories/orders/DrizzleCreateAndPayOrderRepository.ts`, `packages/infrastructure/repositories/sync/DrizzleSyncOfflineOrderRepository.ts`, `apps/api/src/container.ts`.
+  - Validation: type-checks passed; API tests attempted with one environment-limited DB-backed failure.
+  - Docs updated: P3 roadmap execution notes.
+- [x] Task: Make strict confirm inventory deduction and strict cancel stock reversal share the order mutation transaction.
+  - Files changed: `packages/application/orders/ConfirmOrder.ts`, `packages/application/orders/CancelOrder.ts`, `packages/infrastructure/repositories/orders/OrderRepository.ts`, `apps/api/src/http/controllers/OrdersController.ts`.
+  - Validation: type-checks passed.
+  - Docs updated: P3 roadmap execution notes.
+
+#### Partially Completed
+
+- [ ] Task: DB-backed payment idempotency/concurrency validation.
+  - Completed: `pnpm --filter @pos/api test` was run and 194/195 tests passed, including create-and-pay stock concurrency tests before the DB-backed record-payment test failed at process startup.
+  - Remaining: Re-run `record-payment-idempotency.test.ts` / full API suite with `DATABASE_URL` configured.
+  - Reason: The current environment does not set `DATABASE_URL` for that DB-backed test.
+
+#### Blocked
+
+- [ ] Task: Push branch to remote.
+  - Blocker: `git push` failed because this repository has no configured push destination/remote.
+  - Required next step: configure a remote (for example `git remote add <name> <url>`) or provide a branch upstream, then push.
+
+#### Not Attempted
+
+- [ ] Task: P4.
+  - Reason: User explicitly said do not start P4.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass.
+- Notes: Application transaction-port and use-case input changes compile.
+- Command: `pnpm --filter @pos/infrastructure type-check`
+- Result: pass.
+- Notes: Drizzle UnitOfWork adapter and transaction-aware repositories compile.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass.
+- Notes: API composition root and order controller orchestration compile.
+- Command: `pnpm --filter @pos/api test`
+- Result: warning / environment-limited failure.
+- Notes: 194/195 tests passed; `record-payment-idempotency.test.ts` failed because `DATABASE_URL` is not set.
+- Command: `pnpm type-check`
+- Result: pass.
+- Notes: 10/10 Turbo type-check tasks passed.
+- Command: `git push`
+- Result: blocked.
+- Notes: No configured push destination/remote is available for the current branch.
+
+### Documentation Updates
+
+- File: `roadmap/refactor/p3-s1-s3-unit-of-work-transaction-boundary.md`
+- Change: Added P3 execution notes, validation status, and pending DB-backed test requirement.
+- File: `PLANS.md`
+- Change: Added completed P3 progress update and validation log.
+
+### Checklist Updates
+
+- File: `roadmap/refactor/p3-s1-s3-unit-of-work-transaction-boundary.md`
+- Change: P3 batch marked partially implemented with explicit pending DB-backed record-payment validation; P4 remains not attempted.
+
+### Continuation Notes
+
+P3 code changes are complete for this batch. Next safe action is to re-run DB-backed API tests with `DATABASE_URL` configured. Do not start P4 unless explicitly requested.

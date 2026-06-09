@@ -9,7 +9,8 @@ import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { emitOrderQueueChanged, subscribeOrderQueue } from '../services/orderQueueEvents';
 import { deductStockForItems, reverseStockForItems, STOCK_DEDUCTED_STATES, type StockContext, type StockItem } from '../helpers/stockDeduction';
-import { resolveInventoryPolicy, recordInventorySyncError, errorMessage, type InventorySyncOperation } from '@pos/application/inventory';
+import { resolveInventoryPolicy, recordInventorySyncError, errorMessage, type InventoryPolicyResult, type InventorySyncOperation } from '@pos/application/inventory';
+import type { TransactionContext } from '@pos/application/shared/ports';
 
 
 function getIdempotencyKey(req: Request, bodyValue?: string): string | undefined {
@@ -39,13 +40,14 @@ async function applyOrderInventoryMovement(
   items: StockItem[],
   ctx: StockContext,
   operation: InventorySyncOperation,
+  options: { tx?: TransactionContext; policy?: InventoryPolicyResult } = {},
 ): Promise<{ policy: 'strict' | 'allow_negative'; syncErrorId?: string }> {
-  const policy = await resolveInventoryPolicy(tenantId);
+  const policy = options.policy ?? await resolveInventoryPolicy(tenantId, options.tx);
   const moveStock = operation === 'deduct_sale' ? deductStockForItems : reverseStockForItems;
 
   if (policy.policy === 'strict') {
     try {
-      await moveStock(tenantId, items, ctx, { allowNegativeStock: false });
+      await moveStock(tenantId, items, ctx, { tx: options.tx, allowNegativeStock: false });
       return { policy: policy.policy };
     } catch (error: any) {
       throw createError(
@@ -57,7 +59,7 @@ async function applyOrderInventoryMovement(
   }
 
   try {
-    await moveStock(tenantId, items, ctx, { allowNegativeStock: true });
+    await moveStock(tenantId, items, ctx, { tx: options.tx, allowNegativeStock: true });
     return { policy: policy.policy };
   } catch (error) {
     const record = await recordInventorySyncError({
@@ -75,6 +77,136 @@ async function applyOrderInventoryMovement(
     );
     return { policy: policy.policy, syncErrorId: record.id };
   }
+}
+
+function orderItemsForStock(order: any): StockItem[] {
+  return (order.items ?? []).map((item: any) => ({
+    productId: item.productId ?? item.product_id,
+    quantity: item.quantity ?? 1,
+  }));
+}
+
+function orderStockContext(order: any, outletId?: string | null): StockContext {
+  return {
+    orderId: order.id,
+    orderNumber: order.order_number ?? order.orderNumber,
+    outletId: outletId ?? null,
+  };
+}
+
+async function confirmOrderWithInventory(
+  orderId: string,
+  tenantId: string,
+  outletId?: string | null,
+) {
+  const policy = await resolveInventoryPolicy(tenantId);
+
+  if (policy.policy === 'strict') {
+    return container.unitOfWork.transaction(async (tx) => {
+      const result = await container.confirmOrder.execute({
+        order_id: orderId,
+        tenant_id: tenantId,
+        transaction: tx,
+      });
+
+      const items = orderItemsForStock(result.order);
+      if (items.length > 0) {
+        await applyOrderInventoryMovement(
+          tenantId,
+          items,
+          orderStockContext(result.order, outletId),
+          'deduct_sale',
+          { tx, policy },
+        );
+      }
+
+      return result;
+    });
+  }
+
+  const result = await container.confirmOrder.execute({
+    order_id: orderId,
+    tenant_id: tenantId,
+  });
+
+  const items = orderItemsForStock(result.order);
+  if (items.length > 0) {
+    await applyOrderInventoryMovement(
+      tenantId,
+      items,
+      orderStockContext(result.order, outletId),
+      'deduct_sale',
+      { policy },
+    );
+  }
+
+  return result;
+}
+
+async function cancelOrderWithInventory(
+  orderId: string,
+  tenantId: string,
+  cancellationReason?: string,
+  outletId?: string | null,
+) {
+  const policy = await resolveInventoryPolicy(tenantId);
+
+  if (policy.policy === 'strict') {
+    return container.unitOfWork.transaction(async (tx) => {
+      const orderBeforeCancel = await container.orderRepository.findById(orderId, tenantId, tx);
+      if (!orderBeforeCancel) {
+        throw createError('Order not found', 404, 'ORDER_NOT_FOUND');
+      }
+      if (outletId && orderBeforeCancel.outletId !== outletId) {
+        throw createError('Order not found for this outlet', 404, 'ORDER_NOT_FOUND');
+      }
+
+      const result = await container.cancelOrder.execute({
+        order_id: orderId,
+        tenant_id: tenantId,
+        cancellation_reason: cancellationReason,
+        transaction: tx,
+      });
+
+      if (STOCK_DEDUCTED_STATES.has(orderBeforeCancel.status) && orderBeforeCancel.items?.length) {
+        await applyOrderInventoryMovement(
+          tenantId,
+          orderItemsForStock(orderBeforeCancel),
+          orderStockContext(orderBeforeCancel, outletId),
+          'reverse_return',
+          { tx, policy },
+        );
+      }
+
+      return result;
+    });
+  }
+
+  const orderBeforeCancel =
+    (await assertOrderBelongsToOutlet(orderId, tenantId, outletId)) ??
+    (await container.orderRepository.findById(orderId, tenantId));
+
+  const result = await container.cancelOrder.execute({
+    order_id: orderId,
+    tenant_id: tenantId,
+    cancellation_reason: cancellationReason,
+  });
+
+  if (
+    orderBeforeCancel &&
+    STOCK_DEDUCTED_STATES.has(orderBeforeCancel.status) &&
+    orderBeforeCancel.items?.length
+  ) {
+    await applyOrderInventoryMovement(
+      tenantId,
+      orderItemsForStock(orderBeforeCancel),
+      orderStockContext(orderBeforeCancel, outletId),
+      'reverse_return',
+      { policy },
+    );
+  }
+
+  return result;
 }
 
 /**
@@ -273,22 +405,7 @@ export const createKitchenTicket = asyncHandler(async (req: Request, res: Respon
   // Auto-confirm draft orders before creating a kitchen ticket.
   // Silently skip if the order is already confirmed / in a later state.
   try {
-    const confirmResult = await container.confirmOrder.execute({ order_id: id, tenant_id: tenantId });
-    if (confirmResult.order.items?.length) {
-      await applyOrderInventoryMovement(
-        tenantId,
-        confirmResult.order.items.map((item: any) => ({
-          productId: item.productId ?? item.product_id,
-          quantity: item.quantity ?? 1,
-        })),
-        {
-          orderId: id,
-          orderNumber: confirmResult.order.order_number,
-          outletId: req.outletId ?? null,
-        },
-        'deduct_sale',
-      );
-    }
+    await confirmOrderWithInventory(id, tenantId, req.outletId);
     emitOrderQueueChanged(tenantId, { source: 'confirm_order', orderId: id });
   } catch (error: any) {
     if (error?.code === 'INVENTORY_MOVEMENT_REQUIRED' || error?.code === 'INSUFFICIENT_STOCK') {
@@ -491,28 +608,8 @@ export const confirmOrder = asyncHandler(async (req: Request, res: Response) => 
 
   await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
 
-  // Execute use case
-  const result = await container.confirmOrder.execute({
-    order_id: id,
-    tenant_id: tenantId,
-  });
-
-  // Deduct stock for tracked products — stock decreases on CONFIRMATION, not on payment
-  if (result.order.items?.length) {
-    await applyOrderInventoryMovement(
-      tenantId,
-      result.order.items.map((item: any) => ({
-        productId: item.productId ?? item.product_id,
-        quantity: item.quantity ?? 1,
-      })),
-      {
-        orderId: result.order.id,
-        orderNumber: result.order.order_number,
-        outletId: req.outletId ?? null,
-      },
-      'deduct_sale',
-    );
-  }
+  // Execute use case and strict inventory movement inside one transaction when required.
+  const result = await confirmOrderWithInventory(id, tenantId, req.outletId);
 
   emitOrderQueueChanged(tenantId, { source: 'confirm_order', orderId: result.order.id });
 
@@ -664,38 +761,13 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
-  // Fetch order BEFORE cancellation to know its current status and items, and enforce outlet ownership.
-  const orderBeforeCancel =
-    (await assertOrderBelongsToOutlet(id, tenantId, req.outletId)) ??
-    (await container.orderRepository.findById(id, tenantId));
-
-  // Execute use case
-  const result = await container.cancelOrder.execute({
-    order_id: id,
-    tenant_id: tenantId,
-    cancellation_reason: parsed.data.cancellation_reason,
-  });
-
-  // Reverse stock if order was in a state where stock had already been deducted
-  if (
-    orderBeforeCancel &&
-    STOCK_DEDUCTED_STATES.has(orderBeforeCancel.status) &&
-    orderBeforeCancel.items?.length
-  ) {
-    await applyOrderInventoryMovement(
-      tenantId,
-      orderBeforeCancel.items.map((item: any) => ({
-        productId: item.productId ?? item.product_id,
-        quantity: item.quantity ?? 1,
-      })),
-      {
-        orderId: id,
-        orderNumber: orderBeforeCancel.order_number,
-        outletId: req.outletId ?? null,
-      },
-      'reverse_return',
-    );
-  }
+  // Execute cancellation and strict stock reversal inside one transaction when required.
+  const result = await cancelOrderWithInventory(
+    id,
+    tenantId,
+    parsed.data.cancellation_reason,
+    req.outletId,
+  );
 
   emitOrderQueueChanged(tenantId, { source: 'cancel_order', orderId: result.order.id });
 

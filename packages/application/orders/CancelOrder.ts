@@ -4,12 +4,14 @@
  */
 
 import type { Order } from '@pos/domain/orders/types';
+import type { TransactionContext } from '../shared/ports/UnitOfWorkPort';
 import { assertTransition, canCancelOrder } from '@pos/domain/orders/OrderStateValidator';
 
 export interface CancelOrderInput {
   order_id: string;
   tenant_id: string;
   cancellation_reason?: string;
+  transaction?: TransactionContext;
 }
 
 export interface CancelOrderOutput {
@@ -17,8 +19,8 @@ export interface CancelOrderOutput {
 }
 
 export interface IOrderRepository {
-  findById(orderId: string, tenantId: string): Promise<any | null>;
-  update(orderId: string, updates: Record<string, any>, tenantId: string): Promise<any>;
+  findById(orderId: string, tenantId: string, context?: TransactionContext): Promise<any | null>;
+  update(orderId: string, updates: Record<string, any>, tenantId: string, context?: TransactionContext): Promise<any>;
 }
 
 export interface ITenantRepository {
@@ -43,7 +45,7 @@ export class CancelOrder {
       }
 
       // Validate order exists
-      const order = await this.orderRepository.findById(input.order_id, input.tenant_id);
+      const order = await this.orderRepository.findById(input.order_id, input.tenant_id, input.transaction);
       if (!order) {
         throw new Error('Order not found');
       }
@@ -86,10 +88,10 @@ export class CancelOrder {
         status: 'cancelled',
         cancellationReason: input.cancellation_reason,
         notes: updatedNotes || undefined,
-      }, input.tenant_id);
+      }, input.tenant_id, input.transaction);
 
       return {
-        order: updatedOrder,
+        order: { ...updatedOrder, items: updatedOrder.items ?? order.items },
       };
     } catch (error) {
       throw new Error(`Failed to cancel order: ${error instanceof Error ? error.message : 'Unknown error'}`);

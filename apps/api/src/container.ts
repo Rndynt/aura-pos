@@ -169,7 +169,7 @@ class Container {
       this.tenantRepository as any
     );
     // P1.2: transaction-safe record payment (wrapped in DB transaction + row lock)
-    this.recordPayment = new RecordPayment(new DrizzleRecordPaymentRepository(db));
+    this.recordPayment = new RecordPayment(new DrizzleRecordPaymentRepository(db, this.unitOfWork));
     this.createKitchenTicket = new CreateKitchenTicket(
       this.orderRepository as any,
       this.kitchenTicketRepository as any
@@ -195,10 +195,10 @@ class Container {
     );
 
     // P0.2: True atomic create-and-pay (single DB transaction)
-    this.createAndPayOrder = new CreateAndPayOrder(new DrizzleCreateAndPayOrderRepository(db));
+    this.createAndPayOrder = new CreateAndPayOrder(new DrizzleCreateAndPayOrderRepository(db, this.unitOfWork));
 
     // Sprint 4: Batch offline sync
-    this.syncOfflineOrder = new SyncOfflineOrder(new DrizzleSyncOfflineOrderRepository(db));
+    this.syncOfflineOrder = new SyncOfflineOrder(new DrizzleSyncOfflineOrderRepository(db, this.unitOfWork));
 
     // P0.3: Kitchen/KDS fulfillment-only transitions
     this.transitionOrderFulfillmentStatus = new TransitionOrderFulfillmentStatus(

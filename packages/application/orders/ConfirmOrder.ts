@@ -4,11 +4,13 @@
  */
 
 import type { Order } from '@pos/domain/orders/types';
+import type { TransactionContext } from '../shared/ports/UnitOfWorkPort';
 import { assertTransition, canConfirmOrder } from '@pos/domain/orders/OrderStateValidator';
 
 export interface ConfirmOrderInput {
   order_id: string;
   tenant_id: string;
+  transaction?: TransactionContext;
 }
 
 export interface ConfirmOrderOutput {
@@ -16,8 +18,8 @@ export interface ConfirmOrderOutput {
 }
 
 export interface IOrderRepository {
-  findById(orderId: string, tenantId: string): Promise<any | null>;
-  update(orderId: string, updates: Record<string, any>, tenantId: string): Promise<any>;
+  findById(orderId: string, tenantId: string, context?: TransactionContext): Promise<any | null>;
+  update(orderId: string, updates: Record<string, any>, tenantId: string, context?: TransactionContext): Promise<any>;
 }
 
 export interface ITenantRepository {
@@ -42,7 +44,7 @@ export class ConfirmOrder {
       }
 
       // Validate order exists
-      const order = await this.orderRepository.findById(input.order_id, input.tenant_id);
+      const order = await this.orderRepository.findById(input.order_id, input.tenant_id, input.transaction);
       if (!order) {
         throw new Error('Order not found');
       }
@@ -70,10 +72,10 @@ export class ConfirmOrder {
       // Update order status to confirmed
       const updatedOrder = await this.orderRepository.update(input.order_id, {
         status: 'confirmed',
-      }, input.tenant_id);
+      }, input.tenant_id, input.transaction);
 
       return {
-        order: updatedOrder,
+        order: { ...updatedOrder, items: updatedOrder.items ?? order.items },
       };
     } catch (error) {
       throw new Error(

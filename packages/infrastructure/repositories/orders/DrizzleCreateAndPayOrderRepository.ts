@@ -58,11 +58,13 @@ export class DrizzleCreateAndPayOrderRepository {
   private readonly inventoryPolicyRepository: DrizzleInventoryPolicyRepository;
   private readonly inventorySyncErrorRepository: DrizzleInventorySyncErrorRepository;
   private readonly stockMovementRepository: DrizzleStockMovementRepository;
+  private readonly unitOfWork: DrizzleUnitOfWork;
 
-  constructor(private readonly db: Database) {
+  constructor(private readonly db: Database, unitOfWork?: DrizzleUnitOfWork) {
     this.inventoryPolicyRepository = new DrizzleInventoryPolicyRepository(db);
     this.inventorySyncErrorRepository = new DrizzleInventorySyncErrorRepository(db);
     this.stockMovementRepository = new DrizzleStockMovementRepository(db);
+    this.unitOfWork = unitOfWork ?? new DrizzleUnitOfWork(db);
   }
 
   async createAndPay(input: CreateAndPayOrderInput): Promise<CreateAndPayOrderOutput> {
@@ -181,7 +183,8 @@ export class DrizzleCreateAndPayOrderRepository {
     // ------------------------------------------------------------------
     // TRUE ATOMIC TRANSACTION (P0.2)
     // ------------------------------------------------------------------
-    const result = await this.db.transaction(async (tx) => {
+    const result = await this.unitOfWork.transaction(async (context) => {
+      const tx = DrizzleUnitOfWork.fromContext(context)!;
       // 0. Idempotency check inside transaction (prevents race condition)
       if (idempotency_key) {
         const existing = await tx
@@ -325,7 +328,7 @@ export class DrizzleCreateAndPayOrderRepository {
             outletId: outlet_id ?? null,
             terminalId: inventory_terminal_id ?? null,
           },
-          { transaction: DrizzleUnitOfWork.toContext(tx), allowNegativeStock: false },
+          { transaction: context, allowNegativeStock: false },
         );
       }
 

@@ -21,6 +21,8 @@ import { eq, and, gte, lte, inArray, desc, sql } from 'drizzle-orm';
 import { toInsertOrderItemDb, toInsertOrderItemModifierDb, toDomainSelectedOption } from '../../../application/orders/mappers';
 import type { OrderItem as DomainOrderItem } from '@pos/domain/orders/types';
 import { nextOrderNumberForTenant } from './orderNumberSequence';
+import type { TransactionContext } from '@pos/application/shared/ports';
+import { DrizzleUnitOfWork } from '../../unit-of-work';
 
 export interface OrderFilters {
   status?: string[];
@@ -58,10 +60,10 @@ export interface IOrderRepository {
     tenantId: string,
     filters?: Omit<OrderFilters, 'limit' | 'offset'>
   ): Promise<number>;
-  findById(id: string, tenantId: string): Promise<any | null>;
+  findById(id: string, tenantId: string, context?: TransactionContext): Promise<any | null>;
   findByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<any | null>;
   create(order: InsertOrder, orderItems: OrderItemInput[], tenantId: string): Promise<Order>;
-  update(id: string, order: Partial<InsertOrder>, tenantId: string): Promise<Order>;
+  update(id: string, order: Partial<InsertOrder>, tenantId: string, context?: TransactionContext): Promise<Order>;
   updateWithItems(
     id: string,
     orderUpdates: Partial<InsertOrder>,
@@ -220,10 +222,11 @@ export class OrderRepository
   /**
    * Find complete order by ID with all relations (items, modifiers, payments)
    */
-  async findById(id: string, tenantId: string): Promise<any | null> {
+  async findById(id: string, tenantId: string, context?: TransactionContext): Promise<any | null> {
     try {
+      const client = DrizzleUnitOfWork.fromContext(context) ?? this.db;
       // Get the order
-      const orderResult = await this.db
+      const orderResult = await client
         .select()
         .from(orders)
         .where(and(eq(orders.id, id), eq(orders.tenantId, tenantId)))
@@ -236,7 +239,7 @@ export class OrderRepository
       const order = orderResult[0];
 
       // Get order items
-      const items = await this.db
+      const items = await client
         .select()
         .from(orderItems)
         .where(eq(orderItems.orderId, id));
@@ -245,14 +248,14 @@ export class OrderRepository
       let modifiers: OrderItemModifier[] = [];
       if (items.length > 0) {
         const itemIds = items.map((item) => item.id);
-        modifiers = await this.db
+        modifiers = await client
           .select()
           .from(orderItemModifiers)
           .where(inArray(orderItemModifiers.orderItemId, itemIds));
       }
 
       // Get payments
-      const payments = await this.db
+      const payments = await client
         .select()
         .from(orderPayments)
         .where(eq(orderPayments.orderId, id));
@@ -395,12 +398,13 @@ export class OrderRepository
   async update(
     id: string,
     order: Partial<InsertOrder>,
-    tenantId: string
+    tenantId: string,
+    context?: TransactionContext
   ): Promise<Order> {
     try {
-      await this.ensureTenantAccess(id, tenantId);
+      const client = DrizzleUnitOfWork.fromContext(context) ?? this.db;
 
-      const result = await this.db
+      const result = await client
         .update(orders)
         .set({ ...order, updatedAt: new Date() })
         .where(and(eq(orders.id, id), eq(orders.tenantId, tenantId)))
