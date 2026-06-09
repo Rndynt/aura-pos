@@ -10,6 +10,10 @@ export interface StockContext {
   orderNumber?: string;
   outletId?: string | null;
   terminalId?: string | null;
+  paymentId?: string | null;
+  referenceType?: string | null;
+  referenceId?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface StockMovementPortOptions {

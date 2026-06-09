@@ -399,6 +399,10 @@ describe('CreateAndPayOrder stock concurrency', () => {
     assert.equal(store.movements.length, 1);
     assert.equal(store.movements[0].quantityBefore, 1);
     assert.equal(store.movements[0].quantityAfter, 0);
+    assert.equal(store.movements[0].orderId, store.orders[0].id);
+    assert.equal(store.movements[0].paymentId, store.payments[0].id);
+    assert.equal(store.movements[0].referenceType, 'sale_payment');
+    assert.equal(store.movements[0].referenceId, store.payments[0].id);
   });
 
 
@@ -513,6 +517,9 @@ describe('CreateAndPayOrder stock concurrency', () => {
     assert.equal(store.movements[0].quantityBefore, 5);
     assert.equal(store.movements[0].quantityAfter, 3);
     assert.equal(store.movements[0].terminalId, 'terminal-sync-1');
+    assert.equal(store.movements[0].orderId, store.orders[0].id);
+    assert.equal(store.movements[0].paymentId, store.payments[0].id);
+    assert.equal(store.movements[0].referenceType, 'sale_payment');
   });
 
 });

@@ -23,6 +23,7 @@ import { eq, and, desc, asc, gte, lte, sql } from 'drizzle-orm';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { z } from 'zod';
 import { requireManager } from '../middleware/rbac';
+import { toStockListResponse } from '../helpers/inventoryStockListing';
 
 const router = Router();
 
@@ -96,6 +97,7 @@ router.get('/products', asyncHandler(async (req, res) => {
       sku: products.sku,
       stockQty: products.stockQty,
       isActive: products.isActive,
+      stockTrackingEnabled: products.stockTrackingEnabled,
     })
     .from(products)
     .where(
@@ -106,21 +108,9 @@ router.get('/products', asyncHandler(async (req, res) => {
     )
     .orderBy(asc(products.category), asc(products.name));
 
-  const items = rows.map((p) => ({
-    ...p,
-    stockQty: p.stockQty ?? 0,
-    isLowStock: (p.stockQty ?? 0) < LOW_STOCK_THRESHOLD,
-    isOutOfStock: (p.stockQty ?? 0) <= 0,
-    lowStockThreshold: LOW_STOCK_THRESHOLD,
-  }));
+  const data = toStockListResponse(rows, LOW_STOCK_THRESHOLD);
 
-  const summary = {
-    total: items.length,
-    lowStock: items.filter((i) => i.isLowStock && !i.isOutOfStock).length,
-    outOfStock: items.filter((i) => i.isOutOfStock).length,
-  };
-
-  res.json({ success: true, data: { items, summary } });
+  res.json({ success: true, data });
 }));
 
 /**
@@ -140,6 +130,7 @@ router.put('/products/:id/adjust', requireManager, asyncHandler(async (req, res)
     mode: z.enum(['set', 'delta']).default('set'),
     notes: z.string().optional(),
     actorId: z.string().optional(),
+    referenceId: z.string().optional(),
   }).parse(req.body);
 
   const [product] = await db
@@ -174,6 +165,9 @@ router.put('/products/:id/adjust', requireManager, asyncHandler(async (req, res)
       quantityAfter: after,
       notes: body.notes ?? 'Manual adjustment',
       actorId: body.actorId ?? null,
+      referenceType: 'manual_adjustment',
+      referenceId: productId,
+      metadata: { mode: body.mode, source: 'basic_adjust' },
     });
   }
 
@@ -200,6 +194,7 @@ router.post('/movements', requireManager, asyncHandler(async (req, res) => {
     unitCost: z.string().optional(),
     notes: z.string().optional(),
     actorId: z.string().optional(),
+    referenceId: z.string().optional(),
   }).parse(req.body);
 
   const [product] = await db
@@ -229,6 +224,9 @@ router.post('/movements', requireManager, asyncHandler(async (req, res) => {
     unitCost: body.unitCost,
     notes: body.notes,
     actorId: body.actorId,
+    referenceType: body.movementType.startsWith('ADJUSTMENT') ? 'manual_adjustment' : 'manual_movement',
+    referenceId: body.referenceId ?? body.productId,
+    metadata: { source: 'advanced_movement' },
   }).returning();
 
   res.status(201).json({ success: true, data: { movement, before, after } });
@@ -304,6 +302,10 @@ router.get('/movements', asyncHandler(async (req, res) => {
       notes: inventoryMovements.notes,
       actorId: inventoryMovements.actorId,
       orderId: inventoryMovements.orderId,
+      paymentId: inventoryMovements.paymentId,
+      referenceType: inventoryMovements.referenceType,
+      referenceId: inventoryMovements.referenceId,
+      metadata: inventoryMovements.metadata,
       createdAt: inventoryMovements.createdAt,
     })
     .from(inventoryMovements)

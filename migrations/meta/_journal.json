@@ -64,6 +64,13 @@
       "when": 1780358400001,
       "tag": "0018_order_query_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781008309361,
+      "tag": "0019_inventory_movement_traceability",
+      "breakpoints": true
     }
   ]
 }

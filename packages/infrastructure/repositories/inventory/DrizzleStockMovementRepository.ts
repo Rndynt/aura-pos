@@ -37,7 +37,7 @@ export class DrizzleStockMovementRepository implements StockMovementPort {
     ctx: StockContext = {},
     options: StockMovementPortOptions = {},
   ): Promise<void> {
-    const { orderId, orderNumber, outletId, terminalId } = ctx;
+    const { orderId, orderNumber, outletId, terminalId, paymentId, referenceType, referenceId, metadata } = ctx;
     const { allowNegativeStock = false } = options;
     if (!items.length) return;
 
@@ -104,6 +104,10 @@ export class DrizzleStockMovementRepository implements StockMovementPort {
           tenantId,
           productId: product.id,
           orderId: orderId ?? null,
+          paymentId: paymentId ?? null,
+          referenceType: referenceType ?? 'sale',
+          referenceId: referenceId ?? paymentId ?? orderId ?? null,
+          metadata: metadata ?? null,
           outletId: outletId ?? null,
           terminalId: terminalId ?? null,
           movementType: 'SALE',
@@ -122,7 +126,7 @@ export class DrizzleStockMovementRepository implements StockMovementPort {
     ctx: StockContext = {},
     options: StockMovementPortOptions = {},
   ): Promise<void> {
-    const { orderId, orderNumber, outletId, terminalId } = ctx;
+    const { orderId, orderNumber, outletId, terminalId, paymentId, referenceType, referenceId, metadata } = ctx;
     if (!items.length) return;
 
     const productIds = [...new Set(items.map((i) => i.productId).filter(Boolean))];
@@ -165,6 +169,10 @@ export class DrizzleStockMovementRepository implements StockMovementPort {
           tenantId,
           productId: product.id,
           orderId: orderId ?? null,
+          paymentId: paymentId ?? null,
+          referenceType: referenceType ?? 'return',
+          referenceId: referenceId ?? paymentId ?? orderId ?? null,
+          metadata: metadata ?? null,
           outletId: outletId ?? null,
           terminalId: terminalId ?? null,
           movementType: 'RETURN',

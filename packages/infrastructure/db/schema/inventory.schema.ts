@@ -13,6 +13,10 @@ export const inventoryMovements = pgTable("inventory_movements", {
   outletId: uuid("outlet_id").references(() => outlets.id, { onDelete: "set null" }),
   productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
   orderId: uuid("order_id").references(() => orders.id, { onDelete: "set null" }),
+  paymentId: uuid("payment_id"),
+  referenceType: varchar("reference_type", { length: 50 }),
+  referenceId: text("reference_id"),
+  metadata: jsonb("metadata"),
   terminalId: varchar("terminal_id", { length: 255 }),
   movementType: varchar("movement_type", { length: 30 }).notNull(),
   quantityDelta: integer("quantity_delta").notNull(),
@@ -27,6 +31,8 @@ export const inventoryMovements = pgTable("inventory_movements", {
   outletIdx: index("inventory_movements_outlet_idx").on(table.outletId),
   productIdx: index("inventory_movements_product_idx").on(table.productId),
   orderIdx: index("inventory_movements_order_idx").on(table.orderId),
+  paymentIdx: index("inventory_movements_payment_idx").on(table.paymentId),
+  referenceIdx: index("inventory_movements_reference_idx").on(table.referenceType, table.referenceId),
   orderProductMovementUnique: uniqueIndex("inventory_movements_order_product_movement_unique")
     .on(table.orderId, table.productId, table.movementType)
     .where(sql`${table.orderId} IS NOT NULL`),
