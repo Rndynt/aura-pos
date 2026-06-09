@@ -28,16 +28,10 @@ export type BusinessTypeTemplate = {
 };
 
 const LEGACY_FEATURE_BY_ENTITLEMENT: Partial<Record<EntitlementCode, FeatureCode>> = {
-  catalog_variants: 'product_variants',
   payments_partial_payment: 'partial_payment',
   orders_queue: 'order_queue',
-  receipt_standard: 'receipt_printer',
-  reports_sales_basic: 'sales_reports',
-  restaurant_kitchen_printer: 'kitchen_printer',
-  restaurant_kds: 'kitchen_display',
-  restaurant_kitchen_ticket: 'kitchen_ticket',
+  restaurant_kitchen_ops: 'kitchen_ticket',
   inventory_advanced_stock: 'inventory_tracking',
-  inventory_reports: 'inventory_reports',
   hardware_label_printer: 'label_printer',
   hardware_barcode_scanner: 'barcode_scanner',
   integrations_accounting: 'accounting_sync',
@@ -48,14 +42,14 @@ const LEGACY_FEATURE_BY_ENTITLEMENT: Partial<Record<EntitlementCode, FeatureCode
 function toModuleConfig(defaultEntitlements: readonly EntitlementCode[]): Omit<TenantModuleConfig, 'tenant_id' | 'updated_at'> {
   const has = (code: EntitlementCode) => defaultEntitlements.includes(code);
   return {
-    enable_table_management: has('restaurant_table_management'),
-    enable_kitchen_ticket: has('restaurant_kitchen_ticket'),
+    enable_table_management: has('restaurant_table_service'),
+    enable_kitchen_ticket: has('restaurant_kitchen_ops'),
     enable_loyalty: false,
     enable_delivery: false,
     enable_inventory: has('inventory_basic_stock'),
     enable_inventory_advanced: has('inventory_advanced_stock'),
     enable_appointments: false,
-    enable_multi_location: has('multi_location_outlets'),
+    enable_multi_location: has('multi_location'),
     config: {},
   };
 }

@@ -102,5 +102,8 @@ export function canPurchaseOffer(input: CanPurchaseOfferInput): boolean {
   const offer = ENTITLEMENT_CATALOG.offers[input.offerCode];
   const tenantPlan = ENTITLEMENT_CATALOG.plans[input.planCode];
   const requiredPlan = ENTITLEMENT_CATALOG.plans[offer.requiredPlan];
+  if (getPlanIncludedEntitlements(input.planCode).includes(offer.entitlement as EntitlementCode)) {
+    return false;
+  }
   return tenantPlan.sortOrder >= requiredPlan.sortOrder;
 }
