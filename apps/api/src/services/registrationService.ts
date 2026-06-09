@@ -1,15 +1,13 @@
 import { eq, inArray, sql } from 'drizzle-orm';
 import type { BusinessType } from '@pos/core';
 import { getBusinessTypeTemplate } from '@pos/application/tenants';
-import { PLAN_FEATURE_MAP } from '../constants/planFeatureMap';
+import { getBusinessTypeDefaultEntitlements, getPlanIncludedEntitlements } from '@pos/application/entitlements';
 import { db } from '@pos/infrastructure/database';
 import {
   orderTypes,
   outlets,
   productCategories,
   products,
-  tenantFeatures,
-  tenantModuleConfigs,
   tenantOrderTypes,
   tenants,
   userOutletAssignments,
@@ -70,7 +68,7 @@ export class RegistrationError extends Error {
  * what the business-type template specifies. Only the billing/admin system
  * may upgrade a tenant to a paid tier after payment is confirmed.
  */
-const DEFAULT_ONBOARDING_PLAN_TIER = 'free' as const;
+const DEFAULT_ONBOARDING_PLAN_TIER = 'starter' as const;
 
 type RegistrationDeps = {
   baseDomain: string;
@@ -218,22 +216,6 @@ const isDuplicateEmailError = (error: unknown): boolean => {
   );
 };
 
-const toDbModuleConfig = (tenantId: string, businessType: BusinessType) => {
-  const template = getBusinessTypeTemplate(businessType);
-  return {
-    tenantId,
-    enableTableManagement: template.moduleConfig.enable_table_management,
-    enableKitchenTicket: template.moduleConfig.enable_kitchen_ticket,
-    enableLoyalty: template.moduleConfig.enable_loyalty,
-    enableDelivery: template.moduleConfig.enable_delivery,
-    enableInventory: template.moduleConfig.enable_inventory,
-    enableInventoryAdvanced: template.moduleConfig.enable_inventory_advanced,
-    enableAppointments: template.moduleConfig.enable_appointments,
-    enableMultiLocation: template.moduleConfig.enable_multi_location,
-    config: template.moduleConfig.config ?? null,
-  };
-};
-
 const createDefaultDeps = (baseDomain: string): RegistrationDeps => ({
   baseDomain,
   generateId: () => crypto.randomUUID(),
@@ -269,8 +251,6 @@ const createDefaultDeps = (baseDomain: string): RegistrationDeps => ({
       await db.delete(userOutletAssignments).where(inArray(userOutletAssignments.outletId, outletIds));
     }
 
-    await db.delete(tenantFeatures).where(eq(tenantFeatures.tenantId, tenantId));
-    await db.delete(tenantModuleConfigs).where(eq(tenantModuleConfigs.tenantId, tenantId));
     await db.delete(outlets).where(eq(outlets.tenantId, tenantId));
     await db.delete(tenants).where(eq(tenants.id, tenantId));
   },
@@ -289,14 +269,7 @@ export async function registerTenantOwner(
       const tenantId = deps.generateId();
       const template = getBusinessTypeTemplate(businessType);
 
-      // BILLING SAFETY: ignore any plan_tier from the template — always start free.
-      // Only a trusted billing/admin flow may upgrade after payment is confirmed.
-      if (template.tenantDefaults.plan_tier !== 'free') {
-        console.warn(
-          `[register] Template for ${businessType} specifies plan_tier='${template.tenantDefaults.plan_tier}'; ` +
-          `forcing '${DEFAULT_ONBOARDING_PLAN_TIER}' for onboarding safety.`,
-        );
-      }
+      const defaultPlan = template.tenantDefaults.plan_tier ?? DEFAULT_ONBOARDING_PLAN_TIER;
 
       const [tenant] = await tx
         .insert(tenants)
@@ -307,7 +280,7 @@ export async function registerTenantOwner(
           businessName: input.businessName,
           businessType,
           settings: template.tenantDefaults.settings,
-          planTier: DEFAULT_ONBOARDING_PLAN_TIER,
+          planTier: defaultPlan,
           subscriptionStatus: 'active',
           timezone: input.timezone ?? 'Asia/Jakarta',
           currency: input.currency ?? 'IDR',
@@ -329,37 +302,10 @@ export async function registerTenantOwner(
         })
         .returning();
 
-      await tx.insert(tenantModuleConfigs).values(toDbModuleConfig(tenant.id, businessType));
-
-      const now = new Date();
-      const featureCodes = template.features.map((feature) => feature.feature_code);
-
-      // Safety guard: validate that every feature in the template is allowed
-      // under the FREE plan. Registration always onboards to free regardless of
-      // what the template declares, so features must never exceed free entitlements.
-      const allowedForOnboardingPlan: string[] = PLAN_FEATURE_MAP.free;
-      const outOfPlan = featureCodes.filter((code) => !allowedForOnboardingPlan.includes(code));
-      if (outOfPlan.length > 0) {
-        throw new RegistrationError(
-          `Template seeds features that exceed the free onboarding plan: ${outOfPlan.join(', ')}. ` +
-          `Fix the template — paid features must not be active defaults.`,
-          'TEMPLATE_PLAN_MISMATCH',
-          500,
-        );
-      }
-
-      if (template.features.length > 0) {
-        await tx.insert(tenantFeatures).values(
-          template.features.map((feature) => ({
-            tenantId: tenant.id,
-            featureCode: feature.feature_code,
-            activatedAt: now,
-            expiresAt: null,
-            source: feature.source,
-            isActive: feature.is_active,
-          })),
-        );
-      }
+      const featureCodes = [...new Set([
+        ...getPlanIncludedEntitlements(defaultPlan),
+        ...getBusinessTypeDefaultEntitlements(businessType),
+      ])];
 
       const orderTypeRows = template.orderTypes.length > 0
         ? await tx

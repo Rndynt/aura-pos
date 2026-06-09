@@ -6998,3 +6998,181 @@ Fix the production-shaped Basic Starter/onboarding tenant runtime 403 on `GET /a
 ### Continuation Notes
 
 After deployment, run manual/staging validation using tenant `101a55c4-fabd-4832-afe8-22a1d941ed22` or an equivalent active `starter`/`basic`/`basic_starter`/`free` tenant with missing/stale `tenant_module_configs`. Confirm `GET /api/inventory/products` returns 200, tracked products with `stockTrackingEnabled=true` appear even with `stockQty` null/0, the tenant module config is repaired, and Advanced Inventory endpoints still return 403 when `enable_inventory_advanced=false`.
+
+## Plan: Entitlement Phase 1 — Single SOT + Single Entitlement Table Cleanup
+
+### Source
+
+- Tasklist: `roadmap/entitlement/phase_1.md`
+- User request: `Eksekusi roadmap/entitlement/phase_1.md`
+- Date started: 2026-06-09
+- Current status: In progress
+
+### Goal
+
+Implement the Phase 1 entitlement cleanup by introducing the single SOT catalog, adding a read-only entitlement engine, moving registration and inventory guards onto SOT/engine behavior, creating the destructive entitlement-table migration, updating tests/docs, and documenting any remaining old-table references honestly as Phase 2 blockers.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist: `roadmap/entitlement/phase_1.md`
+- [x] Relevant docs: `docs/billing-entitlement.md`, `docs/BUSINESS_TYPE_TEMPLATES.md`
+- [x] Relevant source files: entitlement constants/templates, registration service, inventory routes/helper, tenant schema, tenant controller, tests
+
+### Workstreams
+
+Real subagents were not spawned because the higher-priority runtime instruction only permits subagents when the user explicitly asks for delegation. Workstreams are tracked here as simulated workstreams.
+
+#### Backend/API Workstream
+
+- Scope: Registration and inventory entitlement guards.
+- Files inspected: `apps/api/src/services/registrationService.ts`, `apps/api/src/http/routes/inventory.ts`, `apps/api/src/http/helpers/inventoryEntitlement.ts`, `apps/api/src/http/controllers/TenantsController.ts`.
+- Findings: Registration currently inserts `tenant_module_configs` and `tenant_features`; inventory uses runtime repair helper and module flags.
+- Tasks: Use catalog-derived defaults in registration without inserting old entitlement tables; replace inventory guards with engine-backed `requireEntitlement` checks; document remaining tenant controller endpoints as Phase 2 if not safely converted in this batch.
+- Risks: Widespread legacy controller/repository imports require a focused Phase 1 wrapper strategy to preserve type-check while migration drops physical tables.
+- Validation: Application/API type-checks and focused tests.
+
+#### Database/Schema Workstream
+
+- Scope: `tenant_entitlements` schema and migration.
+- Files inspected: `packages/infrastructure/db/schema/tenants.schema.ts`, `migrations/0021_repair_basic_stock_runtime_entitlement.sql`, migration list.
+- Findings: Old table schema is exported and widely imported; migration 0021 implements runtime repair.
+- Tasks: Add `tenant_entitlements`; add migration 0022 that drops old tables and creates new grants table; remove 0021 repair migration.
+- Risks: Earlier baseline migrations still mention old tables as historical migrations; report must distinguish historical baseline references from active model.
+- Validation: `pnpm run db:check`.
+
+#### Frontend/UI Workstream
+
+- Scope: Marketplace/feature catalog SOT duplication.
+- Files inspected: `apps/pos-terminal-web/src/lib/featureCatalog.ts`, `apps/pos-terminal-web/src/pages/marketplace.tsx`.
+- Findings: Frontend still has a hardcoded plan/feature catalog; full UI conversion is Phase 2-sized and needs careful UX sync.
+- Tasks: Document as Phase 2 blocker if not safely converted in this batch.
+- Risks: Large UI changes without screenshots/visual validation could destabilize POS flow.
+- Validation: Terminal web type-check if touched.
+
+#### Tests/Validation Workstream
+
+- Scope: Catalog/engine and registration tests.
+- Files inspected: existing Node test patterns under `apps/api/src/__tests__` and terminal web catalog tests.
+- Findings: Tests can run with `tsx --test`; many full API tests require DB/env.
+- Tasks: Add focused entitlement engine/catalog tests and update registration tests for no old-table inserts.
+- Risks: Full test suite may be blocked by unavailable Postgres.
+- Validation: Required validation commands attempted.
+
+#### Documentation Workstream
+
+- Scope: Roadmap report and doc synchronization.
+- Files inspected: `roadmap/entitlement/phase_1.md`, `docs/billing-entitlement.md`, `docs/BUSINESS_TYPE_TEMPLATES.md`.
+- Findings: Existing docs describe old `free`/`tenant_features`/`tenant_module_configs` behavior.
+- Tasks: Add required report and update billing docs for starter SOT/onboarding behavior.
+- Risks: Need honest remaining-reference inventory.
+- Validation: Report includes `rg` output summary.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Tenant-owned entitlement grant reads and inventory access.
+- Files inspected: inventory routes and schema.
+- Findings: Inventory product reads already filter by tenant; entitlement reads must filter by tenant and active status.
+- Tasks: Engine ignores expired/cancelled grants and API helper loads only current tenant grants.
+- Risks: Remaining old endpoints must not be claimed complete.
+- Validation: Engine tests for expired/cancelled and route static assertions.
+
+### Execution Order
+
+1. Create catalog and engine.
+2. Add tenant entitlement schema/migration and remove repair migration.
+3. Convert registration to SOT-derived plan/defaults and stop old inserts.
+4. Convert inventory guards to entitlement engine.
+5. Add/update focused tests.
+6. Update docs, roadmap report, and this plan.
+7. Run validation and commit.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Create single SOT catalog and derived compatibility wrappers.
+  - Files changed: `packages/application/entitlements/entitlementCatalog.ts`, `packages/application/entitlements/index.ts`, `packages/application/package.json`, `packages/application/tenants/businessTypeTemplates.ts`, `apps/api/src/constants/planFeatureMap.ts`
+  - Validation: Application/API type-checks and focused tests passed.
+  - Docs updated: `roadmap/entitlement/phase_1_report.md`, `docs/billing-entitlement.md`
+- [x] Task: Create read-only entitlement engine.
+  - Files changed: `packages/application/entitlements/entitlementEngine.ts`
+  - Validation: Focused entitlement engine tests passed.
+  - Docs updated: `roadmap/entitlement/phase_1_report.md`
+- [x] Task: Add new entitlement table migration and remove repair migration.
+  - Files changed: `packages/infrastructure/db/schema/tenants.schema.ts`, `migrations/0022_single_tenant_entitlements.sql`; removed `migrations/0021_repair_basic_stock_runtime_entitlement.sql`
+  - Validation: Infrastructure type-check and `pnpm run db:check` passed.
+  - Docs updated: `roadmap/entitlement/phase_1_report.md`, `docs/billing-entitlement.md`
+- [x] Task: Convert registration and inventory route guards.
+  - Files changed: `apps/api/src/services/registrationService.ts`, `apps/api/src/http/helpers/inventoryEntitlement.ts`, `apps/api/src/http/routes/inventory.ts`
+  - Validation: API type-check and focused registration/inventory tests passed.
+  - Docs updated: `roadmap/entitlement/phase_1_report.md`, `docs/billing-entitlement.md`
+- [x] Task: Add/update focused tests and roadmap report.
+  - Files changed: `apps/api/src/__tests__/inventory-entitlement.test.ts`, `apps/api/src/__tests__/registration-service.test.ts`, `apps/api/src/__tests__/full-journey-registration.test.ts`, `roadmap/entitlement/phase_1_report.md`, `roadmap/entitlement/phase_1.md`
+  - Validation: Focused API tests passed.
+  - Docs updated: roadmap status/report.
+
+#### Partially Completed
+
+- [ ] Task: Remove every old-table code reference.
+  - Completed: Inventory routes, registration, repair helper/migration, and SOT wrappers were converted.
+  - Remaining: Tenant controllers/use cases/repositories, feature middleware, seed scripts, outlet guard, frontend feature catalog/marketplace, historical migration/meta references.
+  - Reason: Converting all old feature/module workflows is broader than safe Phase 1 inventory/registration scope and is documented as Phase 2 blockers.
+
+#### Blocked
+
+- [ ] Task: Full marketplace/purchase conversion to SOT.
+  - Blocker: Frontend marketplace and legacy feature endpoints still depend on old feature/module concepts.
+  - Required next step: Phase 2 should convert marketplace rendering and purchase APIs to `ENTITLEMENT_CATALOG.offers` and `tenant_entitlements` writes.
+
+#### Not Attempted
+
+- [ ] Task: Full billing provider integration.
+  - Reason: Explicit non-goal in roadmap.
+
+### Validation Log
+
+- Command: `pnpm check:boundaries`
+- Result: Passed
+- Notes: Architecture boundary scan passed.
+- Command: `pnpm --filter @pos/domain type-check`
+- Result: Passed
+- Notes: Domain type-check passed.
+- Command: `pnpm --filter @pos/application type-check`
+- Result: Passed
+- Notes: Application type-check passed.
+- Command: `pnpm --filter @pos/infrastructure type-check`
+- Result: Passed
+- Notes: Infrastructure type-check passed.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Passed
+- Notes: API type-check passed.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: Passed
+- Notes: Terminal web type-check passed.
+- Command: `pnpm run db:check`
+- Result: Passed
+- Notes: Drizzle check passed.
+- Command: `pnpm --dir apps/api exec tsx --test src/__tests__/inventory-entitlement.test.ts src/__tests__/registration-service.test.ts src/__tests__/full-journey-registration.test.ts src/__tests__/plan-upgrade-flow.test.ts`
+- Result: Passed
+- Notes: 65 focused tests passed.
+
+### Documentation Updates
+
+- File: `docs/billing-entitlement.md`
+- Change: Rewritten for SOT, `tenant_entitlements`, registration, plan hierarchy, marketplace, and inventory guard behavior.
+- File: `roadmap/entitlement/phase_1_report.md`
+- Change: Added required implementation report with remaining reference inventory.
+- File: `roadmap/entitlement/phase_1.md`
+- Change: Appended honest execution status.
+
+### Checklist Updates
+
+- File: `roadmap/entitlement/phase_1.md`
+- Change: Added execution status and Phase 2 blocker note.
+
+### Continuation Notes
+
+Phase 1 backend/application foundation is implemented. Next agent should start Phase 2 by converting legacy tenant feature/module repositories, tenant profile/check/toggle endpoints, featureGuard/outlet guards, seed scripts, and frontend marketplace/feature catalog to `ENTITLEMENT_CATALOG`, `tenant_entitlements`, and the entitlement engine; then remove temporary old-table schema exports and old migration references if the migration chain is reset.

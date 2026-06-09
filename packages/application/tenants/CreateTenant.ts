@@ -28,7 +28,7 @@ type RepositoryCreateTenantInput = {
   business_email?: string;
   business_type: BusinessType;
   settings?: Record<string, any> | null;
-  plan_tier: 'free' | 'starter' | 'professional' | 'enterprise';
+  plan_tier: 'starter' | 'growth' | 'pro';
   subscription_status: 'active' | 'trial' | 'suspended' | 'cancelled';
   trial_ends_at?: Date;
   timezone?: string;
