@@ -16,6 +16,7 @@
  */
 
 import type { Database } from '../../database';
+import { DrizzleUnitOfWork } from '../../unit-of-work';
 import {
   orderPayments,
   type InsertOrderPayment,
@@ -25,7 +26,11 @@ import { eq, and, sql } from 'drizzle-orm';
 import type { RecordPaymentInput, RecordPaymentOutput } from '@pos/application/orders/RecordPayment';
 
 export class DrizzleRecordPaymentRepository {
-  constructor(private readonly db: Database) {}
+  private readonly unitOfWork: DrizzleUnitOfWork;
+
+  constructor(private readonly db: Database, unitOfWork?: DrizzleUnitOfWork) {
+    this.unitOfWork = unitOfWork ?? new DrizzleUnitOfWork(db);
+  }
 
   async recordPayment(input: RecordPaymentInput): Promise<RecordPaymentOutput> {
     if (input.amount <= 0) {
@@ -35,7 +40,8 @@ export class DrizzleRecordPaymentRepository {
     // --------------------------------------------------------------------------
     // Run everything inside a transaction with row lock on the order (P1.2)
     // --------------------------------------------------------------------------
-    const result = await this.db.transaction(async (tx) => {
+    const result = await this.unitOfWork.transaction(async (context) => {
+      const tx = DrizzleUnitOfWork.fromContext(context)!;
       // Lock the order row for this tenant to prevent concurrent payment race
       const lockedOrders = await tx.execute(sql`
         SELECT id, tenant_id, status, payment_status, total, paid_amount

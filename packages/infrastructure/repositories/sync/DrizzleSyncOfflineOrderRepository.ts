@@ -29,6 +29,7 @@ import { ConflictType } from '@pos/application/sync/conflictTypes';
 
 import type { SyncBatchInput, SyncBatchOutput, SyncItemStatus, SyncOrderItemResult } from '@pos/application/sync/SyncOfflineOrder';
 import { DrizzleCreateAndPayOrderRepository } from '../orders/DrizzleCreateAndPayOrderRepository';
+import { DrizzleUnitOfWork } from '../../unit-of-work';
 
 interface LegacySyncOrderItemInput {
   local_order_id: string;
@@ -73,8 +74,8 @@ function classifyError(error: unknown): { status: SyncItemStatus; message: strin
 export class DrizzleSyncOfflineOrderRepository {
   private readonly createAndPay: CreateAndPayOrder;
 
-  constructor(private readonly db: Database) {
-    this.createAndPay = new CreateAndPayOrder(new DrizzleCreateAndPayOrderRepository(db));
+  constructor(private readonly db: Database, unitOfWork?: DrizzleUnitOfWork) {
+    this.createAndPay = new CreateAndPayOrder(new DrizzleCreateAndPayOrderRepository(db, unitOfWork));
   }
 
   async syncOfflineOrder(input: SyncBatchInput): Promise<SyncBatchOutput> {
