@@ -17,6 +17,7 @@
     "start": "NODE_ENV=production node apps/api/dist/index.js",
     "check": "turbo run type-check",
     "type-check": "turbo run type-check",
+    "check:boundaries": "tsx scripts/validate-boundaries.ts",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "db:push": "drizzle-kit push",
