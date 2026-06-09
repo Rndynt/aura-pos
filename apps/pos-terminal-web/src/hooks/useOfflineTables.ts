@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTenant } from "@/context/TenantContext";
 import { getCachedTables, saveCachedTables, getTablesCachedAt } from "@pos/offline";
-import type { Table } from "@shared/schema";
+import type { Table } from "@pos/domain/seating";
 import { buildApiHeaders } from "@/lib/outlet";
 
 export type OfflineTableStatus = "available" | "occupied" | "reserved" | "unknown";

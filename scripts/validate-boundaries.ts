@@ -38,32 +38,9 @@ interface AllowlistEntry {
 // Every entry MUST have a reason and an expiry phase.
 // Remove each entry once the referenced migration is complete.
 
-const ALLOWLIST: AllowlistEntry[] = [
-  {
-    file: 'apps/pos-terminal-web/src/hooks/useOfflineTables.ts',
-    importPattern: '@shared/schema',
-    reason:
-      'P7 compatibility: shared/schema.ts is a re-export wrapper for @pos/infrastructure/db/schema. ' +
-      'This file imports Table type-only. Remove once @pos/domain/seating exports a pure Table domain type.',
-    expiryPhase: 'Post-P8 — when @pos/domain exports Table domain type',
-  },
-  {
-    file: 'apps/pos-terminal-web/src/lib/api/tableHooks.ts',
-    importPattern: '@shared/schema',
-    reason:
-      'P7 compatibility: shared/schema.ts is a re-export wrapper. ' +
-      'Type-only import of Table. Remove once @pos/domain/seating exports a pure Table domain type.',
-    expiryPhase: 'Post-P8 — when @pos/domain exports Table domain type',
-  },
-  {
-    file: 'apps/pos-terminal-web/src/pages/tables-management.tsx',
-    importPattern: '@shared/schema',
-    reason:
-      'P7 compatibility: shared/schema.ts is a re-export wrapper. ' +
-      'Type-only import of Table. Remove once @pos/domain/seating exports a pure Table domain type.',
-    expiryPhase: 'Post-P8 — when @pos/domain exports Table domain type',
-  },
-];
+// Post-P8.1: All 3 @shared/schema Table type exceptions removed.
+// Frontend files now import Table from @pos/domain/seating.
+const ALLOWLIST: AllowlistEntry[] = [];
 
 function isAllowed(relFilePath: string, specifier: string): boolean {
   const normalised = relFilePath.replace(/\\/g, '/');

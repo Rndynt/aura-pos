@@ -206,3 +206,35 @@ All in `apps/pos-terminal-web/src`:
 ### Continuation
 
 P8 is complete. Refactor roadmap can be marked complete after user approval.
+
+---
+
+## Post-P8.1 cleanup — Table boundary exceptions removed
+
+Status: implemented and validated
+
+- [x] Added pure `Table` domain type under `@pos/domain/seating`.
+- [x] Replaced frontend `@shared/schema` Table imports with `@pos/domain/seating` type imports.
+- [x] Removed 3 temporary allowlist entries from `scripts/validate-boundaries.ts`.
+- [x] `pnpm check:boundaries` passes with 0 violations and 0 temporary exceptions.
+- [x] No DB schema or runtime behavior changes.
+
+### Validation results
+
+- `pnpm check:boundaries`: **pass** — 381 files, 0 violations, 0 temporary exceptions
+- `pnpm --filter @pos/domain type-check`: **pass**
+- `pnpm --filter @pos/terminal-web type-check`: **pass**
+- `pnpm type-check`: **pass** — 10/10 Turbo tasks successful
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `packages/domain/seating/Table.ts` | New — pure domain `Table` interface |
+| `packages/domain/seating/index.ts` | New — barrel export |
+| `packages/domain/package.json` | Added `./seating` export map entries |
+| `packages/domain/index.ts` | Added `export * from './seating'` |
+| `apps/pos-terminal-web/src/hooks/useOfflineTables.ts` | Import from `@pos/domain/seating` |
+| `apps/pos-terminal-web/src/lib/api/tableHooks.ts` | Import from `@pos/domain/seating` |
+| `apps/pos-terminal-web/src/pages/tables-management.tsx` | Import from `@pos/domain/seating` |
+| `scripts/validate-boundaries.ts` | Emptied ALLOWLIST |

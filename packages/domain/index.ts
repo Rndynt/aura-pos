@@ -7,3 +7,4 @@ export * from './catalog';
 export * from './orders';
 export * from './tenants';
 export * from './pricing';
+export * from './seating';

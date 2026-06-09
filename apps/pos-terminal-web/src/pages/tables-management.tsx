@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { UnifiedBottomNav } from "@/components/navigation/UnifiedBottomNav";
-import type { Table } from "@shared/schema";
+import type { Table } from "@pos/domain/seating";
 
 // ─── Status helpers ────────────────────────────────────────────────────────────
 type TableStatus = "available" | "occupied" | "reserved" | "maintenance";

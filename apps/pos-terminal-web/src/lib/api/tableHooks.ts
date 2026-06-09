@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTenant } from "@/context/TenantContext";
 import { buildApiHeaders, getActiveOutletId } from "@/lib/outlet";
-import type { Table } from "@shared/schema";
+import type { Table } from "@pos/domain/seating";
 import { saveCachedTables } from "@pos/offline";
 
 interface TablesResponse {
