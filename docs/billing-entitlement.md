@@ -74,7 +74,7 @@ All paid modules default to `false` for new tenants:
 | Appointments            | Growth+       |
 | Multi-Location          | Pro only      |
 
-Basic inventory / Stok Dasar (`enable_inventory`) is allowed on free plans and is now an onboarding default for new active tenants. It is stored in `tenant_module_configs`, not `tenant_features`. Advanced Inventory (`enable_inventory_advanced`) remains Growth+ and is not implied by Stok Dasar.
+Basic inventory / Stok Dasar (`enable_inventory`) is allowed on free/default onboarding plans and is now an onboarding default for new active tenants. It is stored in `tenant_module_configs`, not `tenant_features`. Runtime entitlement repair also treats active `free`, `starter`, `basic`, and `basic_starter` tenants as Basic Stock defaults so stale or missing module-config rows can be safely healed without granting Advanced Inventory. Advanced Inventory (`enable_inventory_advanced`) remains Growth+ and is not implied by Stok Dasar.
 
 ## Seed Data Requirements
 

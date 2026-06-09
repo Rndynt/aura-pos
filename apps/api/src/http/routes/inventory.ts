@@ -24,19 +24,15 @@ import { asyncHandler, createError } from '../middleware/errorHandler';
 import { z } from 'zod';
 import { requireManager } from '../middleware/rbac';
 import { toStockListResponse } from '../helpers/inventoryStockListing';
-import { hasAdvancedInventoryEntitlement, hasBasicStockEntitlement } from '../helpers/inventoryEntitlement';
+import { hasAdvancedInventoryEntitlement, resolveBasicStockEntitlement } from '../helpers/inventoryEntitlement';
 
 const router = Router();
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 async function isBasicInventoryEnabled(tenantId: string): Promise<boolean> {
-  const rows = await db
-    .select({ enableInventory: tenantModuleConfigs.enableInventory })
-    .from(tenantModuleConfigs)
-    .where(eq(tenantModuleConfigs.tenantId, tenantId))
-    .limit(1);
-  return hasBasicStockEntitlement(rows[0]);
+  const entitlement = await resolveBasicStockEntitlement(db, tenantId);
+  return entitlement.enabled;
 }
 
 async function isAdvancedInventoryEnabled(tenantId: string): Promise<boolean> {

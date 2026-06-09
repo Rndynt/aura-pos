@@ -6822,3 +6822,179 @@ Fix the Basic Starter Stok Dasar entitlement blocker, keep Advanced Inventory se
 ### Continuation Notes
 
 Next agent should rehearse `0015_native_uuid_alignment.sql` and `0020_basic_stock_default_entitlement.sql` on a production-like database copy containing a legacy `tenants.id = 'thamada'`, then manually smoke a Basic Starter tenant stock page in a browser/staging environment.
+
+
+## Plan: Post-P8.4B — Fix Basic Stock Runtime Entitlement 403
+
+### Source
+
+- Tasklist: `roadmap/refactor/prompts/post-p8-4b-fix-basic-stock-entitlement-runtime-403-prompt.md`
+- User request: "Eksekusi secara bertahap, hati hati, sesuai dan relevan dan presisi roadmap/refactor/prompts/post-p8-4b-fix-basic-stock-entitlement-runtime-403-prompt.md"
+- Date started: 2026-06-09
+- Current status: Implemented and validated with automated/static checks; manual production/staging smoke remains follow-up.
+
+### Goal
+
+Fix the production-shaped Basic Starter/onboarding tenant runtime 403 on `GET /api/inventory/products` without weakening tenant isolation or granting Advanced Inventory. Add a backend Basic Stock entitlement source of truth, idempotent DB repair migration, focused tests, and a report.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs (`docs/billing-entitlement.md`, previous P8.4 report)
+- [x] Relevant source files (inventory routes/helpers, registration, business templates, tenant schema, migration 0020, POS stock/marketplace pages)
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: Basic/Advanced inventory entitlement checks for `/api/inventory/*`.
+- Files inspected: `apps/api/src/http/routes/inventory.ts`, `apps/api/src/http/helpers/inventoryEntitlement.ts`.
+- Findings: Basic route checked only `tenant_module_configs.enable_inventory`; missing/stale rows returned false before product listing could run.
+- Tasks: Completed reusable resolver with Basic Stock default plan policy and runtime self-heal; wired Basic endpoints to resolver; preserved Advanced checks.
+- Risks: Self-heal only selects/repairs the current request tenant and only for active default-plan aliases.
+- Validation: Focused API helper tests and API type-check passed.
+
+#### Database/Schema Workstream
+
+- Scope: `tenant_module_configs` backfill repair after migration 0020.
+- Files inspected: `packages/infrastructure/db/schema/tenants.schema.ts`, `migrations/0020_basic_stock_default_entitlement.sql`.
+- Findings: `tenant_module_configs.tenant_id` is primary key; 0020 only updates existing active free/starter rows.
+- Tasks: Added 0021 idempotent insert/update migration for active default Basic Stock plan tiers, preserving Advanced Inventory.
+- Risks: Migration avoids inactive tenants and does not set `enable_inventory_advanced = true`.
+- Validation: Static migration regression tests and `pnpm run db:check` passed.
+
+#### Frontend/UI Workstream
+
+- Scope: POS stock/marketplace entitlement messaging source mismatch.
+- Files inspected: `apps/pos-terminal-web/src/pages/stock.tsx`, `apps/pos-terminal-web/src/pages/marketplace.tsx`.
+- Findings: Frontend can indicate Stok Dasar active while backend rejects if backend only trusts a stale/missing module config. This batch fixes backend source of truth and repairs the DB row frontend/profile should read; no UI change was needed.
+- Tasks: Documented mismatch/root cause in the P8.4B report.
+- Risks: Did not mask backend 403 with empty frontend state.
+- Validation: Terminal web type-check passed.
+
+#### Tests/Validation Workstream
+
+- Scope: Focused helper/migration tests plus requested type/boundary/db checks.
+- Files inspected: `apps/api/src/__tests__/inventory-entitlement.test.ts`, `apps/api/src/__tests__/inventory-stock-listing.test.ts`, migration tests.
+- Findings: Existing tests covered pure booleans and stock list normalization, but not runtime self-heal policy/migration 0021.
+- Tasks: Added missing/stale/default policy and advanced separation tests.
+- Risks: Full DB route tests require a live `DATABASE_URL`; a mis-forwarded package test command ran all API tests and hit an unrelated DB-required test.
+- Validation: Focused tests passed; unrelated all-API run failed on missing `DATABASE_URL` and is documented.
+
+#### Documentation Workstream
+
+- Scope: Required report and billing entitlement docs.
+- Files inspected: `docs/billing-entitlement.md`, previous P8.4 report.
+- Findings: Docs already said Basic Stock is free/onboarding default in `tenant_module_configs`; they did not mention runtime repair/default aliases.
+- Tasks: Created `post-p8-4b-basic-stock-runtime-entitlement-report.md`; updated billing entitlement wording for runtime repair aliases.
+- Risks: Report does not claim live staging/manual validation.
+- Validation: Documentation reviewed against code/tests.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Ensure self-heal only affects current tenant row and default active plan policy.
+- Files inspected: inventory route tenant filters and tenant schema.
+- Findings: Product queries already filter by `products.tenant_id`; self-heal selects/repairs by request tenant id only.
+- Tasks: Completed tenant-scoped resolver and non-policy denial tests.
+- Risks: Explicit disabled Basic Stock for default-plan active tenants is repaired because current product policy treats Basic Stock mandatory/default for onboarding/default aliases.
+- Validation: Tests for non-policy tenant denial and advanced separation passed.
+
+### Execution Order
+
+1. [x] Add reusable Basic Stock entitlement policy/resolver and route integration.
+2. [x] Add 0021 idempotent migration.
+3. [x] Add/update focused tests for resolver and migration.
+4. [x] Create required report and update plan/checklist status honestly.
+5. [x] Run requested validation commands as far as the environment allows.
+6. [ ] Commit and open PR.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Runtime Basic Stock entitlement resolver with self-heal.
+  - Files changed: `apps/api/src/http/helpers/inventoryEntitlement.ts`, `apps/api/src/http/routes/inventory.ts`
+  - Validation: Focused tests and API/root type-check passed.
+  - Docs updated: P8.4B report and billing entitlement doc.
+- [x] Task: Migration/backfill repair for missing/stale config rows.
+  - Files changed: `migrations/0021_repair_basic_stock_runtime_entitlement.sql`
+  - Validation: Static migration tests and `pnpm run db:check` passed.
+  - Docs updated: P8.4B report.
+- [x] Task: Focused regression tests.
+  - Files changed: `apps/api/src/__tests__/inventory-entitlement.test.ts`
+  - Validation: `pnpm --filter @pos/api exec tsx --test src/__tests__/inventory-entitlement.test.ts src/__tests__/inventory-stock-listing.test.ts` passed.
+  - Docs updated: P8.4B report command log.
+- [x] Task: Documentation/report sync.
+  - Files changed: `roadmap/refactor/reports/post-p8-4b-basic-stock-runtime-entitlement-report.md`, `docs/billing-entitlement.md`, `PLANS.md`
+  - Validation: Reviewed against implementation and validation output.
+  - Docs updated: Required report created.
+
+#### Partially Completed
+
+- [ ] Task: Manual/staging production-shaped tenant smoke.
+  - Completed: Code path and migration cover the production shape; automated/static checks passed.
+  - Remaining: Run against tenant `101a55c4-fabd-4832-afe8-22a1d941ed22` or a production-shaped clone.
+  - Reason: No live/staging API URL or production-shaped DB credentials are available in this environment.
+
+#### Blocked
+
+- [ ] Task: Live production row answers for exact tenant.
+  - Blocker: No production database access in this environment.
+  - Required next step: Query the exact tenant in staging/production after deploy and confirm `tenant_module_configs` repair.
+
+#### Not Attempted
+
+- [ ] Task: Browser screenshot/manual UI smoke.
+  - Reason: This backend/data repair did not make a perceptible runnable web UI change, and no running app/staging tenant was available.
+
+### Validation Log
+
+- Command: `pnpm check:boundaries`
+- Result: Passed.
+- Notes: Architecture boundary check passed.
+- Command: `pnpm --filter @pos/domain type-check`
+- Result: Passed.
+- Notes: Domain type-check passed.
+- Command: `pnpm --filter @pos/application type-check`
+- Result: Passed.
+- Notes: Application type-check passed.
+- Command: `pnpm --filter @pos/infrastructure type-check`
+- Result: Passed.
+- Notes: Infrastructure type-check passed.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Passed.
+- Notes: API type-check passed.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: Passed.
+- Notes: Terminal web type-check passed.
+- Command: `pnpm type-check`
+- Result: Passed.
+- Notes: Turbo type-check passed for all 10 packages.
+- Command: `pnpm run db:check`
+- Result: Passed.
+- Notes: Drizzle schema check passed.
+- Command: `pnpm --filter @pos/api exec tsx --test src/__tests__/inventory-entitlement.test.ts src/__tests__/inventory-stock-listing.test.ts`
+- Result: Passed.
+- Notes: 13 focused tests passed.
+- Command: `pnpm --filter @pos/api test -- --test-name-pattern='inventory entitlement|0021 Basic Stock'`
+- Result: Failed due to environment/command limitation.
+- Notes: Package script forwarded the pattern incorrectly and executed all API tests; unrelated `record-payment-idempotency.test.ts` exited because `DATABASE_URL` was not set.
+
+### Documentation Updates
+
+- File: `roadmap/refactor/reports/post-p8-4b-basic-stock-runtime-entitlement-report.md`
+- Change: Added required production case, root cause answers, implementation details, tests, command results, and final decision.
+- File: `docs/billing-entitlement.md`
+- Change: Clarified Basic Stock runtime repair aliases and Advanced Inventory separation.
+
+### Checklist Updates
+
+- File: `roadmap/refactor/prompts/post-p8-4b-fix-basic-stock-entitlement-runtime-403-prompt.md`
+- Change: Prompt has no markdown checkbox list; execution status tracked in this plan and required report.
+
+### Continuation Notes
+
+After deployment, run manual/staging validation using tenant `101a55c4-fabd-4832-afe8-22a1d941ed22` or an equivalent active `starter`/`basic`/`basic_starter`/`free` tenant with missing/stale `tenant_module_configs`. Confirm `GET /api/inventory/products` returns 200, tracked products with `stockTrackingEnabled=true` appear even with `stockQty` null/0, the tenant module config is repaired, and Advanced Inventory endpoints still return 403 when `enable_inventory_advanced=false`.
