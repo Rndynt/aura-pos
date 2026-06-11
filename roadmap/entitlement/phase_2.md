@@ -1,4 +1,4 @@
-# Entitlement Phase 2 — Remove Active Legacy References
+# Entitlement Phase 2 — End-to-End Legacy Cleanup and UI Gating Alignment
 
 ## Context
 
@@ -12,35 +12,69 @@ tenant_entitlements table
 
 Phase 1B corrected the SOT scope so `entitlementCatalog.ts` contains only real commercial tenant entitlements, not base POS/order/catalog/payment primitives.
 
-However, Phase 1B report still recorded active legacy references outside the SOT path:
+However, the codebase still has old entitlement/feature/module systems in active code paths. This phase must remove them end-to-end, not partially.
+
+Known active legacy areas from repo inspection include:
 
 ```txt
-tenantFeatures
-tenant_features
-tenantModuleConfigs
-tenant_module_configs
-enableInventory
-enableInventoryAdvanced
+apps/pos-terminal-web/src/lib/featureCatalog.ts
+apps/pos-terminal-web/src/__tests__/hub-sidebar-gating.test.ts
+apps/api/src/constants/planFeatureMap.ts
+packages/application/tenants/businessTypeTemplates.ts
+active references to tenantFeatures / tenant_features
+active references to tenantModuleConfigs / tenant_module_configs
+active references to enableInventory / enableInventoryAdvanced / enable_table_management / enable_kitchen_ticket / enable_multi_location
+frontend/sidebar/hub/menu gating based on old MODULE_REQUIRED_PLAN / FEATURE_REQUIRED_PLAN / moduleConfig / activeFeatures
 ```
 
-These must be cleaned. Do not leave old tables, old flags, old wrappers, or old hardcode active.
+This must be cleaned in one Phase 2 execution.
 
 ## Objective
 
-Execute **Entitlement Phase 2 — Remove Active Legacy References**.
+Execute **Entitlement Phase 2 — End-to-End Legacy Cleanup and UI Gating Alignment**.
 
 Goal:
 
 ```txt
 1. Fully remove active runtime/code references to tenant_features.
 2. Fully remove active runtime/code references to tenant_module_configs.
-3. Fully remove active runtime/code references to enableInventory / enableInventoryAdvanced commercial gating.
-4. Ensure all commercial access checks use entitlementEngine + tenant_entitlements + entitlementCatalog only.
-5. Ensure plan/business/marketplace/registration data comes only from entitlementCatalog.ts.
-6. Keep SOT commercial-only from Phase 1B.
+3. Fully remove active commercial gating references to enableInventory / enableInventoryAdvanced / enable_table_management / enable_kitchen_ticket / enable_multi_location.
+4. Delete or replace old frontend featureCatalog.ts hardcode.
+5. Ensure marketplace reads only from entitlementCatalog.ts / backend entitlement catalog API.
+6. Ensure sidebar, hub menu, bottom nav, and page-level frontend gating use effective entitlement codes only.
+7. Ensure backend API guards use entitlementEngine + tenant_entitlements + entitlementCatalog only.
+8. Ensure registration uses entitlementCatalog.ts only.
+9. Ensure no duplicate SOT remains.
+10. Keep Phase 1B commercial-only entitlement list intact.
 ```
 
-## Non-negotiable rules
+## Non-negotiable execution rule
+
+This phase must be completed as a single coherent cleanup.
+
+Do not split into:
+
+```txt
+Phase 2A
+Phase 2B
+mini patch
+follow-up patch
+later frontend patch
+later marketplace patch
+later sidebar patch
+```
+
+If a file is part of entitlement/feature/module/plan/marketplace/sidebar/hub access behavior, it is in scope for this phase.
+
+Do not stop after backend cleanup while leaving frontend hardcode active.
+
+Do not stop after SOT cleanup while leaving sidebar/hub/menu gating on old module flags.
+
+Do not leave `featureCatalog.ts` as an active independent SOT.
+
+Do not leave `phase_2_report.md` saying "remaining Phase 3 blocker" for active legacy gating unless there is a hard external blocker that makes completion impossible. A normal refactor cascade is not a blocker; fix it.
+
+## Non-negotiable architecture rules
 
 Do not recreate legacy compatibility mapping.
 
@@ -62,55 +96,21 @@ Do not add catalog/order/payment/base receipt as commercial entitlements.
 
 Do not duplicate SOT in other files.
 
-Do not hide old references by renaming variable names only while still preserving old behavior.
+Do not hide old references by renaming variables while preserving old behavior.
 
 Do not keep wrappers with independent hardcoded feature/module config.
 
-## Read first
+Do not keep frontend `PLAN_RANK`, `MODULE_CATALOG_DATA`, `FEATURE_CATALOG_DATA`, `MODULE_REQUIRED_PLAN`, or `FEATURE_REQUIRED_PLAN` as independent data.
+
+## Single SOT
+
+The only SOT remains:
 
 ```txt
-roadmap/entitlement/phase_1.md
-roadmap/entitlement/phase_1_report.md
-roadmap/entitlement/phase_1b.md
-roadmap/entitlement/phase_1b_report.md
 packages/application/entitlements/entitlementCatalog.ts
-packages/application/entitlements/entitlementEngine.ts
-packages/infrastructure/db/schema/tenants.schema.ts
-migrations/0022_single_tenant_entitlements.sql
 ```
 
-## Required audit commands
-
-Run these before editing:
-
-```bash
-rg -n "tenantFeatures|tenant_features|tenantModuleConfigs|tenant_module_configs|enableInventory|enableInventoryAdvanced|resolveBasicStockEntitlement|repairBasicStockEntitlement|BASIC_STOCK_DEFAULT_PLAN_TIERS" apps packages shared migrations docs roadmap
-
-rg -n "planFeatureMap|PLAN_FEATURE_MAP|businessTypeTemplates|BUSINESS_TYPE_TEMPLATES|featureCatalog|moduleConfig|enable_inventory|enable_inventory_advanced" apps packages shared migrations docs roadmap
-
-rg -n "orders_open_order|orders_cancel|orders_void|orders_refund|catalog_products|catalog_categories|catalog_variants|catalog_options|catalog_sku|catalog_barcode|payments_cash|payments_manual_qris|payments_manual_bank_transfer|receipt_standard|receipt_reprint|inventory_stock_adjustment|inventory_stock_movement_history|inventory_stock_opname|inventory_stock_transfer|inventory_low_stock_alert|inventory_reports|hardware_receipt_printer|hardware_cash_drawer" apps packages shared migrations docs roadmap
-```
-
-Classify every match into:
-
-```txt
-active runtime code
-active schema/migration
-active test
-active docs/report historical reference
-```
-
-Only historical docs/report references may remain.
-
-## Scope boundary
-
-This phase is cleanup/refactor, not new product design.
-
-Do not change pricing unless required to remove old hardcode.
-
-Do not change the final Phase 1B commercial entitlement list unless a test proves a typo/missing key prevents current app behavior.
-
-The allowed commercial entitlement list remains:
+The allowed Phase 1B commercial entitlement list remains exactly:
 
 ```txt
 inventory_basic_stock
@@ -133,13 +133,67 @@ integrations_webhook
 integrations_api_access
 ```
 
-## Part A — Remove schema exports for old tables
+Do not add base operation codes such as:
+
+```txt
+orders_open_order
+orders_cancel
+orders_void
+orders_refund
+catalog_products
+catalog_categories
+catalog_variants
+catalog_options
+catalog_sku
+catalog_barcode
+payments_cash
+payments_manual_qris
+payments_manual_bank_transfer
+receipt_standard
+receipt_reprint
+inventory_stock_adjustment
+inventory_stock_movement_history
+inventory_stock_opname
+inventory_stock_transfer
+inventory_low_stock_alert
+inventory_reports
+hardware_receipt_printer
+hardware_cash_drawer
+```
+
+## Required audit before editing
+
+Run these before editing and save summarized results for the report:
+
+```bash
+rg -n "tenantFeatures|tenant_features|tenantModuleConfigs|tenant_module_configs|enableInventory|enableInventoryAdvanced|enable_inventory|enable_inventory_advanced|enable_table_management|enable_kitchen_ticket|enable_multi_location|resolveBasicStockEntitlement|repairBasicStockEntitlement|BASIC_STOCK_DEFAULT_PLAN_TIERS" apps packages shared migrations docs roadmap
+
+rg -n "planFeatureMap|PLAN_FEATURE_MAP|businessTypeTemplates|BUSINESS_TYPE_TEMPLATES|featureCatalog|MODULE_CATALOG_DATA|FEATURE_CATALOG_DATA|MODULE_REQUIRED_PLAN|FEATURE_REQUIRED_PLAN|PLAN_RANK|moduleConfig|activeFeatures|hasModule|hasFeature|useFeatures" apps packages shared migrations docs roadmap
+
+rg -n "orders_open_order|orders_cancel|orders_void|orders_refund|catalog_products|catalog_categories|catalog_variants|catalog_options|catalog_sku|catalog_barcode|payments_cash|payments_manual_qris|payments_manual_bank_transfer|receipt_standard|receipt_reprint|inventory_stock_adjustment|inventory_stock_movement_history|inventory_stock_opname|inventory_stock_transfer|inventory_low_stock_alert|inventory_reports|hardware_receipt_printer|hardware_cash_drawer" apps packages shared migrations docs roadmap
+```
+
+Classify every match into:
+
+```txt
+active runtime code
+active frontend gating code
+active schema/migration
+active test
+historical docs/report reference
+```
+
+Only historical docs/report references and explicit tests proving absence may remain.
+
+## Part A — Schema cleanup
 
 Inspect:
 
 ```txt
 packages/infrastructure/db/schema/tenants.schema.ts
 packages/infrastructure/db/schema/index.ts
+packages/infrastructure/db/schema/**
+shared/schema.ts if applicable
 ```
 
 Remove active Drizzle schema definitions for:
@@ -162,7 +216,7 @@ TenantModuleConfig
 InsertTenantModuleConfig
 ```
 
-Keep:
+Keep only:
 
 ```txt
 tenants
@@ -170,20 +224,41 @@ businessTypes
 tenantEntitlements
 ```
 
-If `tenantEntitlements` was added in another schema file, keep only that new table and ensure it is exported from schema barrel.
+Ensure the schema barrel exports only the current entitlement table, not old tables.
 
-## Part B — Remove old table usage from API/backend
+## Part B — Migration cleanup
 
-Find and remove imports of:
+Confirm `migrations/0022_single_tenant_entitlements.sql` is complete and destructive:
+
+```txt
+creates tenant_entitlements
+drops tenant_features
+drops tenant_module_configs
+```
+
+No later migration may recreate or reference:
+
+```txt
+tenant_features
+tenant_module_configs
+```
+
+If migration code/docs still describe old tables as active, update them.
+
+Historical migration comments are allowed only if they clearly describe dropped/removed tables.
+
+## Part C — Backend runtime cleanup
+
+Find and remove imports/usages of:
 
 ```txt
 tenantFeatures
 tenantModuleConfigs
+enableInventory
+enableInventoryAdvanced
 ```
 
-Replace with entitlement engine usage.
-
-Allowed API guard pattern:
+Replace commercial access checks with entitlement engine usage:
 
 ```ts
 await requireTenantEntitlement({
@@ -192,9 +267,9 @@ await requireTenantEntitlement({
 });
 ```
 
-Or equivalent that calls the shared entitlement engine.
+or equivalent that calls `requireEntitlement` / `hasEntitlement` from the shared entitlement engine.
 
-Disallowed patterns:
+Disallowed runtime patterns:
 
 ```ts
 tenantModuleConfigs.enableInventory
@@ -204,7 +279,7 @@ if (enableInventory) {}
 if (enableInventoryAdvanced) {}
 ```
 
-Routes that must be verified:
+Routes/services/controllers that must be verified and cleaned:
 
 ```txt
 apps/api/src/http/routes/inventory.ts
@@ -213,39 +288,15 @@ apps/api/src/services/registrationService.ts
 apps/api/src/routes.ts
 apps/api/src/middleware/**
 apps/api/src/services/**
+apps/api/src/repositories/**
+apps/api/src/storage/**
 ```
 
-If a route needs access gating, use entitlement code.
+If a route needs commercial access gating, use entitlement code.
 
 If a route is base functionality, remove commercial entitlement gating.
 
-## Part C — Remove old wrappers / hardcode generators
-
-The following files must not remain as independent SOT:
-
-```txt
-apps/api/src/constants/planFeatureMap.ts
-packages/application/tenants/businessTypeTemplates.ts
-featureCatalog.ts if present
-```
-
-Preferred Phase 2 approach:
-
-```txt
-Delete planFeatureMap.ts if all imports can be migrated safely.
-Delete businessTypeTemplates.ts if all imports can be migrated safely.
-```
-
-If deletion causes a huge unrelated cascade, they may temporarily remain as thin wrappers only if:
-
-```txt
-1. They import from entitlementCatalog.ts.
-2. They contain no independent hardcoded plan/feature/module list.
-3. They are clearly marked @deprecated and point to entitlementCatalog.ts.
-4. They are listed in phase_2_report.md as Phase 3 removal blockers.
-```
-
-But there must be no duplicate SOT data.
+Order open/cancel/void/refund and catalog CRUD must not be commercially entitlement-gated in this phase.
 
 ## Part D — Registration cleanup
 
@@ -257,37 +308,44 @@ ENTITLEMENT_CATALOG.plans
 entitlementEngine helpers
 ```
 
-Registration must not insert:
+Registration must not insert or update:
 
 ```txt
 tenant_features
 tenant_module_configs
 ```
 
-Registration must only create:
+Registration must not persist plan-default or business-default entitlements into DB.
+
+Tenant registration should set:
 
 ```txt
-tenants
-outlets
-order types/catalog seed/default business setup
+tenants.planTier
+tenants.businessType
+normal tenant/outlet/business setup
 ```
 
-Plan default and business type default entitlements are computed at runtime from SOT.
+Default entitlements are derived from SOT at runtime.
 
-Do not persist plan-default or business-default entitlements into DB.
-
-## Part E — Tenant/admin/marketplace cleanup
-
-Any tenant profile/me endpoint that previously returned:
+Expected behavior:
 
 ```txt
-moduleConfig
-features from tenant_features
+New starter tenant with businessType RETAIL_MINIMARKET has inventory_basic_stock through effective entitlement calculation, without tenant_entitlements row.
 ```
 
-must now return effective entitlement data from the entitlement engine.
+## Part E — Entitlement API contract
 
-Preferred API response shape:
+Add or standardize backend endpoint(s) for frontend consumption.
+
+Preferred endpoint:
+
+```txt
+GET /api/me/entitlements
+```
+
+or if existing tenant profile endpoint is used, it must include the same shape.
+
+Required response shape:
 
 ```json
 {
@@ -299,14 +357,145 @@ Preferred API response shape:
   "entitlements": {
     "inventory_basic_stock": true,
     "inventory_advanced_stock": false,
-    "orders_queue": false
+    "orders_queue": false,
+    "restaurant_kitchen_ops": false,
+    "multi_location": false
   },
-  "plans": {},
-  "offers": {}
+  "catalog": {
+    "plans": {},
+    "entitlements": {},
+    "offers": {},
+    "businessTypes": {}
+  }
 }
 ```
 
-Frontend must not rely on `moduleConfig.enable_inventory` or old `tenant_features`.
+The frontend must not reconstruct plan hierarchy from a separate frontend catalog.
+
+The frontend must consume backend/effective entitlements or a shared package import from the same SOT.
+
+## Part F — Frontend SOT cleanup
+
+Delete or replace:
+
+```txt
+apps/pos-terminal-web/src/lib/featureCatalog.ts
+```
+
+It must not remain as an active independent SOT.
+
+If a file with that name remains for import stability, it must be a thin adapter generated from `packages/application/entitlements/entitlementCatalog.ts` or API response types only, with no hardcoded:
+
+```txt
+PLAN_RANK
+MODULE_CATALOG_DATA
+FEATURE_CATALOG_DATA
+MODULE_REQUIRED_PLAN
+FEATURE_REQUIRED_PLAN
+free/growth/pro duplicate plan ranking
+moduleConfigKey
+featureCode plan hardcode
+```
+
+Preferred outcome:
+
+```txt
+Remove featureCatalog.ts entirely and replace usages with entitlement-aware hooks/helpers.
+```
+
+## Part G — Frontend hooks/context cleanup
+
+Find and refactor:
+
+```txt
+useFeatures
+TenantContext.hasModule
+TenantContext moduleConfig
+hasFeature
+hasModule
+activeFeatures
+moduleConfig
+```
+
+Create/standardize one frontend access helper:
+
+```txt
+useEntitlements()
+can(entitlementCode)
+requireEntitlementForPage(entitlementCode)
+```
+
+It must use effective entitlements from backend or shared entitlement engine/SOT, not frontend hardcode.
+
+Allowed frontend check examples:
+
+```ts
+can("inventory_basic_stock")
+can("inventory_advanced_stock")
+can("restaurant_table_service")
+can("restaurant_kitchen_ops")
+can("multi_location")
+can("reports_advanced")
+```
+
+Disallowed frontend checks:
+
+```ts
+hasModule("enable_inventory")
+hasModule("enable_kitchen_ticket")
+hasModule("enable_table_management")
+hasModule("enable_multi_location")
+hasFeature("inventory_reports")
+hasFeature("analytics_dashboard")
+planAllows(plan, "growth")
+MODULE_REQUIRED_PLAN[...]
+FEATURE_REQUIRED_PLAN[...]
+```
+
+## Part H — Sidebar, hub menu, bottom nav, and page guard cleanup
+
+Audit and update all navigation and page visibility code, especially:
+
+```txt
+apps/pos-terminal-web/src/components/pos/Sidebar.tsx
+apps/pos-terminal-web/src/components/layout/MainLayout.tsx
+apps/pos-terminal-web/src/components/navigation/** if present
+apps/pos-terminal-web/src/components/**/UnifiedBottomNav.tsx if present
+apps/pos-terminal-web/src/pages/home.tsx or src/features/**/home.tsx if present
+apps/pos-terminal-web/src/features/**
+apps/pos-terminal-web/src/routes/** if present
+```
+
+Required mapping:
+
+```txt
+Inventory / stock menu -> inventory_basic_stock
+Advanced inventory / movements / reports -> inventory_advanced_stock
+Orders queue menu -> orders_queue
+Restaurant table / floor layout menu -> restaurant_table_service
+Kitchen / KDS / kitchen printer menu -> restaurant_kitchen_ops
+Advanced reports / analytics -> reports_advanced
+Export report -> reports_export
+Multi location menu -> multi_location
+Payment gateway settings -> integrations_payment_gateway
+Webhook/API settings -> integrations_webhook / integrations_api_access
+Compact receipt settings -> receipt_compact
+Label printer -> hardware_label_printer
+Barcode scanner -> hardware_barcode_scanner
+```
+
+Base pages must remain visible/usable without commercial entitlement:
+
+```txt
+Catalog/products/categories base CRUD
+Order open/create/cancel/void/refund lifecycle
+Cash/manual payment base behavior
+Standard receipt/reprint base behavior
+```
+
+Do not hide base POS with commercial entitlement checks.
+
+## Part I — Marketplace cleanup
 
 Marketplace must read from:
 
@@ -317,11 +506,32 @@ ENTITLEMENT_CATALOG.offers
 ENTITLEMENT_CATALOG.businessTypes[*].recommendedEntitlements
 ```
 
-No hardcoded feature catalog may remain active.
+or from backend API exposing the same data.
 
-## Part F — Seeds/test fixture cleanup
+Marketplace must not use:
 
-Remove old seed references to:
+```txt
+apps/pos-terminal-web/src/lib/featureCatalog.ts hardcoded catalog
+MODULE_CATALOG_DATA
+FEATURE_CATALOG_DATA
+old module config flags
+old feature code arrays
+```
+
+Marketplace behavior:
+
+```txt
+1. Show plans from SOT.
+2. Show add-on offers from SOT.
+3. Do not show base operations as purchasable features.
+4. Do not allow purchase if entitlement already included by cumulative plan.
+5. Enforce offer.requiredPlan using SOT plan sortOrder.
+6. For expired/cancelled tenant_entitlements, show as not active.
+```
+
+## Part J — Seeds and tests cleanup
+
+Remove seed/test fixture reliance on:
 
 ```txt
 tenant_features
@@ -330,6 +540,8 @@ enable_inventory
 enable_inventory_advanced
 enableInventory
 enableInventoryAdvanced
+moduleConfig
+activeFeatures
 ```
 
 Seed tenants should only set:
@@ -339,32 +551,25 @@ planTier
 businessType
 ```
 
-If a test needs an active purchased addon, seed `tenant_entitlements`.
-
-If a test needs default plan/business entitlement, do not seed DB entitlement rows; assert engine derives it from SOT.
-
-## Part G — Migration cleanup
-
-Confirm current migration state:
+If a test needs an active purchased addon, seed:
 
 ```txt
-0022_single_tenant_entitlements.sql creates tenant_entitlements and drops old tables.
+tenant_entitlements
 ```
 
-If `0022` still keeps old tables or is incomplete, fix it.
+If a test needs default plan/business entitlement, do not seed DB rows; assert engine derives it from SOT.
 
-If later migrations still reference dropped tables, update or remove those references.
+## Part K — Required tests
 
-No migration after Phase 2 may recreate:
+Update or replace:
 
 ```txt
-tenant_features
-tenant_module_configs
+apps/pos-terminal-web/src/__tests__/hub-sidebar-gating.test.ts
 ```
 
-## Part H — Tests to add/update
+That test currently mirrors old `featureCatalog.ts`, `MODULE_REQUIRED_PLAN`, `FEATURE_REQUIRED_PLAN`, module config, and feature list behavior. Replace it with entitlement-based tests.
 
-Required tests:
+Required test coverage:
 
 ```txt
 1. No active schema export for tenantFeatures / tenantModuleConfigs.
@@ -378,12 +583,19 @@ Required tests:
 9. Inventory movement/history/report requires inventory_advanced_stock.
 10. Base catalog routes are not commercially entitlement-gated.
 11. Base order lifecycle routes are not commercially entitlement-gated.
-12. Marketplace offer list comes from entitlementCatalog.ts.
-13. planFeatureMap.ts either deleted or generated from SOT only.
-14. businessTypeTemplates.ts either deleted or generated from SOT only.
+12. Marketplace offer list comes from entitlementCatalog.ts / entitlement API.
+13. Sidebar desktop visibility uses entitlement codes only.
+14. Hub/home menu visibility uses entitlement codes only.
+15. Mobile bottom nav visibility uses entitlement codes only.
+16. Page route guard uses entitlement codes only.
+17. featureCatalog.ts is deleted or contains no independent hardcoded plan/feature/module data.
+18. planFeatureMap.ts is deleted or generated from SOT only.
+19. businessTypeTemplates.ts is deleted or generated from SOT only.
+20. Pro gets Starter + Growth + Pro entitlements cumulatively.
+21. Included plan entitlement cannot be purchased/charged again through offer flow.
 ```
 
-Add a grep/audit test if practical to prevent reintroducing:
+Add a grep/audit test if practical to prevent reintroducing these in active app/package source:
 
 ```txt
 tenantModuleConfigs
@@ -391,9 +603,11 @@ tenantFeatures
 enableInventory
 enableInventoryAdvanced
 resolveBasicStockEntitlement
+MODULE_CATALOG_DATA
+FEATURE_CATALOG_DATA
+MODULE_REQUIRED_PLAN
+FEATURE_REQUIRED_PLAN
 ```
-
-in active app/package source.
 
 ## Required validation commands
 
@@ -410,9 +624,29 @@ pnpm type-check
 pnpm run db:check
 ```
 
-Run focused entitlement/API/registration/marketplace tests.
+Run focused entitlement/API/registration/marketplace/sidebar/hub tests.
+
+Run frontend tests affected by navigation/gating.
 
 If full API tests require `DATABASE_URL`, run with DB env or document exact limitation.
+
+## Required final audit
+
+Before final commit, rerun:
+
+```bash
+rg -n "tenantFeatures|tenant_features|tenantModuleConfigs|tenant_module_configs|enableInventory|enableInventoryAdvanced|enable_inventory|enable_inventory_advanced|enable_table_management|enable_kitchen_ticket|enable_multi_location|resolveBasicStockEntitlement|repairBasicStockEntitlement|BASIC_STOCK_DEFAULT_PLAN_TIERS" apps packages shared migrations
+
+rg -n "featureCatalog|MODULE_CATALOG_DATA|FEATURE_CATALOG_DATA|MODULE_REQUIRED_PLAN|FEATURE_REQUIRED_PLAN|PLAN_RANK|moduleConfig|activeFeatures|hasModule|hasFeature|useFeatures" apps packages shared
+```
+
+Expected result:
+
+```txt
+No active runtime/frontend source matches, except intentional tests proving absence or generated type names that no longer reference old behavior.
+```
+
+Historical docs/roadmap/report may still mention old names only as removed history.
 
 ## Required report
 
@@ -429,9 +663,13 @@ Report must include:
 
 ## Summary
 
-## Removed legacy tables/code
+## Files removed
 
-## Schema changes
+## Files added
+
+## Files changed
+
+## Schema cleanup
 
 - tenant_features active schema removed: yes/no
 - tenant_module_configs active schema removed: yes/no
@@ -442,32 +680,53 @@ Report must include:
 - entitlementCatalog.ts only SOT: yes/no
 - planFeatureMap.ts removed or generated wrapper:
 - businessTypeTemplates.ts removed or generated wrapper:
-- featureCatalog hardcode removed: yes/no
+- frontend featureCatalog.ts removed or generated wrapper:
+- no duplicate frontend SOT: yes/no
 
-## Runtime access checks
+## Backend cleanup
 
-- inventory basic:
-- inventory advanced:
-- tenant profile/me:
-- marketplace:
 - registration:
+- inventory route guards:
+- tenant profile/me entitlements:
+- marketplace/catalog endpoint:
+
+## Frontend cleanup
+
+- useEntitlements/can helper:
+- Sidebar:
+- Hub/home menu:
+- Mobile bottom nav:
+- Page route guard:
+- Marketplace page:
+
+## Base functionality not gated commercially
+
+- catalog CRUD:
+- order lifecycle:
+- cash/manual payment:
+- standard receipt/reprint:
 
 ## Audit results
 
 Include summarized output for:
 
 ```bash
-rg -n "tenantFeatures|tenant_features|tenantModuleConfigs|tenant_module_configs|enableInventory|enableInventoryAdvanced|resolveBasicStockEntitlement|repairBasicStockEntitlement|BASIC_STOCK_DEFAULT_PLAN_TIERS" apps packages shared migrations docs roadmap
+rg -n "tenantFeatures|tenant_features|tenantModuleConfigs|tenant_module_configs|enableInventory|enableInventoryAdvanced|enable_inventory|enable_inventory_advanced|enable_table_management|enable_kitchen_ticket|enable_multi_location|resolveBasicStockEntitlement|repairBasicStockEntitlement|BASIC_STOCK_DEFAULT_PLAN_TIERS" apps packages shared migrations docs roadmap
+
+rg -n "featureCatalog|MODULE_CATALOG_DATA|FEATURE_CATALOG_DATA|MODULE_REQUIRED_PLAN|FEATURE_REQUIRED_PLAN|PLAN_RANK|moduleConfig|activeFeatures|hasModule|hasFeature|useFeatures" apps packages shared
 ```
 
 Classify remaining matches:
 
 ```txt
+none
 historical docs only
-active code remaining
 migration history only
 test-only proof of absence
+active code remaining
 ```
+
+If any active code remains, Phase 2 is not done.
 
 ## Tests
 
@@ -475,14 +734,21 @@ test-only proof of absence
 
 ## Remaining blockers
 
+Only list blockers caused by external environment limitations, not normal refactor work.
+
 ## Final decision
 
 - Active tenant_features removed: yes/no
 - Active tenant_module_configs removed: yes/no
 - Runtime self-heal removed: yes/no
-- SOT-only plan/business/marketplace config: yes/no
-- API guards use entitlement engine: yes/no
+- Backend API guards use entitlement engine: yes/no
 - Registration uses SOT only: yes/no
+- Marketplace uses SOT only: yes/no
+- Sidebar uses entitlement codes only: yes/no
+- Hub/home menu uses entitlement codes only: yes/no
+- Mobile nav uses entitlement codes only: yes/no
+- Frontend old featureCatalog independent SOT removed: yes/no
+- No active legacy gating remains: yes/no
 - Ready for Phase 3: yes/no
 ```
 
@@ -491,7 +757,7 @@ test-only proof of absence
 Use commit message:
 
 ```bash
-git commit -m "refactor(entitlement): remove legacy feature and module references"
+git commit -m "refactor(entitlement): remove legacy gating end-to-end"
 ```
 
 Then push.
@@ -510,6 +776,10 @@ SOT-only config: yes/no
 Registration cleanup: yes/no
 API guards cleanup: yes/no
 Marketplace cleanup: yes/no
+Sidebar cleanup: yes/no
+Hub/home cleanup: yes/no
+Mobile nav cleanup: yes/no
+featureCatalog independent SOT removed: yes/no
 Tests added/run:
 Commands run:
 Remaining blockers:
