@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { db } from '@pos/infrastructure/database';
-import { tenants, outlets, tenantModuleConfigs, tenantFeatures, tenantOrderTypes, orderTypes, productCategories, products } from '@pos/infrastructure/db/schema';
+import { tenants, outlets, tenantOrderTypes, orderTypes, productCategories, products } from '@pos/infrastructure/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 
 async function run() {
@@ -39,28 +39,9 @@ async function run() {
   } as any).returning();
   console.log('✅ Outlet:', outlet.name);
 
-  await db.insert(tenantModuleConfigs).values({
-    tenantId: tenant.id,
-    enableTableManagement: false,
-    enableKitchenTicket: false,
-    enableLoyalty: false,
-    enableDelivery: false,
-    enableInventory: true,
-    enableInventoryAdvanced: false,
-    enableAppointments: false,
-    enableMultiLocation: false,
-  } as any);
-  console.log('✅ Module config: Stok Dasar ON, paid modules OFF');
-
-  await db.insert(tenantFeatures).values([
-    { tenantId: tenant.id, featureCode: 'product_variants', source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'partial_payment',  source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'discounts',        source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'order_queue',      source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'receipt_printer',  source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'sales_reports',    source: 'plan_default', isActive: true },
-  ] as any);
-  console.log('✅ 6 free features + Stok Dasar module (no kitchen, no analytics, no advanced inventory)');
+  // Commercial entitlement defaults are derived from the catalog SOT at runtime.
+  // Do not seed legacy feature/module rows or default tenant_entitlements grants.
+  console.log('✅ Entitlement defaults derived from catalog SOT');
 
   const ots = await db.select().from(orderTypes).where(
     inArray(orderTypes.code, ['DINE_IN', 'TAKE_AWAY'])
@@ -107,7 +88,7 @@ async function run() {
 
   console.log('\n🎉 Warung Bahagia siap!');
   console.log('   Tenant ID / x-tenant-id: warung-bahagia');
-  console.log('   Plan: FREE — 0 modul aktif, 6 fitur dasar');
+  console.log('   Plan: starter — default entitlement dari catalog SOT');
   console.log('   Untuk test: nonaktifkan fitur di Marketplace, lihat efeknya\n');
   process.exit(0);
 }

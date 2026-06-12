@@ -15,8 +15,6 @@ const {
   productCategories,
   products,
   tenantEntitlements,
-  tenantFeatures,
-  tenantModuleConfigs,
   tenantOrderTypes,
   tenants,
   userOutletAssignments,
@@ -115,8 +113,6 @@ describe('Full registration journey — SOT entitlement onboarding', () => {
 
       assert.equal(tenantInsert?.values.planTier, catalogBusinessType.defaultPlan);
       assert.equal(tenantInsert?.values.subscriptionStatus, 'active');
-      assert.equal(fake.inserts.some((op) => op.table === tenantFeatures), false);
-      assert.equal(fake.inserts.some((op) => op.table === tenantModuleConfigs), false);
       assert.equal(fake.inserts.some((op) => op.table === tenantEntitlements), false);
       assert.deepEqual(result.orderTypeCodes, [...catalogBusinessType.orderTypes]);
       assert.equal(result.featureCodes.includes('inventory_basic_stock'), true);

@@ -11,12 +11,12 @@ import 'dotenv/config';
 import { db } from '@pos/infrastructure/database';
 import {
   tenants, products, productCategories, productOptionGroups, productOptions,
-  tenantFeatures, tenantModuleConfigs, tables, orders, orderItems,
+  tables, orders, orderItems,
   orderTypes, tenantOrderTypes, businessTypes, outlets,
 } from '@pos/infrastructure/db/schema';
 import type {
   InsertTenant, InsertProduct, InsertProductOptionGroup, InsertProductOption,
-  InsertTenantFeature, InsertTenantModuleConfig, InsertTable, InsertOrderType,
+  InsertTable, InsertOrderType,
   InsertTenantOrderType, InsertBusinessType, InsertOutlet,
 } from '@pos/infrastructure/db/schema';
 import { sql, eq } from 'drizzle-orm';
@@ -41,7 +41,7 @@ async function clearDatabase() {
       order_item_modifiers, order_payments, kitchen_tickets,
       order_items, orders, tenant_order_types, order_types,
       product_options, product_option_groups, products, product_categories,
-      tenant_features, tenant_module_configs, "tables",
+      tenant_entitlements, "tables",
       outlet_product_configs, user_outlet_assignments, outlets,
       tenants, business_types
     CASCADE
@@ -164,38 +164,9 @@ async function seedThamada(createdOrderTypes: any[]) {
   await db.insert(tenantOrderTypes).values(tenantOTs as InsertTenantOrderType[]);
   console.log(`✅ Order types enabled: Dine In, Take Away, Delivery\n`);
 
-  // Module config
-  await db.insert(tenantModuleConfigs).values({
-    tenantId: tenant.id,
-    enableTableManagement: true,
-    enableKitchenTicket: true,
-    enableLoyalty: false,
-    enableDelivery: true,
-    enableInventory: true,
-    enableInventoryAdvanced: true,
-    enableAppointments: false,
-    enableMultiLocation: false,
-  } as InsertTenantModuleConfig);
-
-  // Features — seeded lengkap sesuai CAFE_RESTAURANT template
-  // kitchen_ticket disinkronisasi dengan enableKitchenTicket: true di atas
-  await db.insert(tenantFeatures).values([
-    // Kitchen features (synced: enableKitchenTicket = true)
-    { tenantId: tenant.id, featureCode: 'kitchen_ticket',      source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'kitchen_display',     source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'kitchen_printer',     source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'order_notifications', source: 'plan_default', isActive: true },
-    // POS features
-    { tenantId: tenant.id, featureCode: 'product_variants',    source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'partial_payment',     source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'discounts',           source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'order_queue',         source: 'plan_default', isActive: true },
-    // Printing
-    { tenantId: tenant.id, featureCode: 'receipt_printer',     source: 'plan_default', isActive: true },
-    // Reporting
-    { tenantId: tenant.id, featureCode: 'sales_reports',       source: 'plan_default', isActive: true },
-  ] as InsertTenantFeature[]);
-  console.log('✅ Modules & features configured (10 features)\n');
+  // Commercial entitlements are derived from planTier/businessType at runtime;
+  // this seed intentionally does not write legacy module/feature rows.
+  console.log('✅ Entitlement defaults derived from catalog SOT\n');
 
   // Tables
   console.log('🪑 Seeding tables...');
@@ -440,33 +411,9 @@ async function seedNusantara(createdOrderTypes: any[]) {
   await db.insert(tenantOrderTypes).values(tenantOTs as InsertTenantOrderType[]);
   console.log(`✅ Order types enabled: Dine In, Take Away (no delivery)\n`);
 
-  // Module config — simple setup, basic stock enabled, no kitchen display, no delivery
-  await db.insert(tenantModuleConfigs).values({
-    tenantId: tenant.id,
-    enableTableManagement: true,
-    enableKitchenTicket: false,
-    enableLoyalty: false,
-    enableDelivery: false,
-    enableInventory: true,
-    enableInventoryAdvanced: false,
-    enableAppointments: false,
-    enableMultiLocation: false,
-  } as InsertTenantModuleConfig);
-
-  // Features — seeded lengkap (CAFE_RESTAURANT tanpa kitchen karena enableKitchenTicket: false)
-  // Tidak ada kitchen_ticket/kitchen_display/kitchen_printer karena module kitchen OFF
-  await db.insert(tenantFeatures).values([
-    // POS features
-    { tenantId: tenant.id, featureCode: 'product_variants',    source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'partial_payment',     source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'discounts',           source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'order_queue',         source: 'plan_default', isActive: true },
-    // Printing
-    { tenantId: tenant.id, featureCode: 'receipt_printer',     source: 'plan_default', isActive: true },
-    // Reporting
-    { tenantId: tenant.id, featureCode: 'sales_reports',       source: 'plan_default', isActive: true },
-  ] as InsertTenantFeature[]);
-  console.log('✅ Modules & features configured (6 features, no kitchen)\n');
+  // Commercial entitlements are derived from planTier/businessType at runtime;
+  // this seed intentionally does not write legacy module/feature rows.
+  console.log('✅ Entitlement defaults derived from catalog SOT\n');
 
   // Tables — lesehan/warung style, fewer tables
   console.log('🪑 Seeding tables...');
@@ -691,29 +638,9 @@ async function seedFreeStarter(createdOrderTypes: any[]) {
   if (dinein)   await db.insert(tenantOrderTypes).values({ tenantId: tenant.id, orderTypeId: dinein.id,   isEnabled: true } as InsertTenantOrderType);
   if (takeaway) await db.insert(tenantOrderTypes).values({ tenantId: tenant.id, orderTypeId: takeaway.id, isEnabled: true } as InsertTenantOrderType);
 
-  // Only Basic Stock module enabled on free plan
-  await db.insert(tenantModuleConfigs).values({
-    tenantId: tenant.id,
-    enableTableManagement: false,
-    enableKitchenTicket: false,
-    enableLoyalty: false,
-    enableDelivery: false,
-    enableInventory: true,
-    enableInventoryAdvanced: false,
-    enableAppointments: false,
-    enableMultiLocation: false,
-  } as InsertTenantModuleConfig);
-
-  // Only free-plan features
-  await db.insert(tenantFeatures).values([
-    { tenantId: tenant.id, featureCode: 'product_variants', source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'partial_payment',  source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'discounts',        source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'order_queue',      source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'receipt_printer',  source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'sales_reports',    source: 'plan_default', isActive: true },
-  ] as InsertTenantFeature[]);
-  console.log('✅ Free plan features only (6 features, 0 modules)\n');
+  // Commercial entitlements are derived from planTier/businessType at runtime;
+  // this seed intentionally does not write legacy module/feature rows.
+  console.log('✅ Entitlement defaults derived from catalog SOT\n');
 
   // Simple products — NO variants (variants feature disabled by default for testing)
   const [catMakanan] = await db.insert(productCategories).values({

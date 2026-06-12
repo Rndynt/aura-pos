@@ -14,8 +14,6 @@ const {
   productCategories,
   products,
   tenantEntitlements,
-  tenantFeatures,
-  tenantModuleConfigs,
   tenantOrderTypes,
   tenants,
   userOutletAssignments,
@@ -126,8 +124,6 @@ describe('registerTenantOwner — SOT entitlement onboarding', () => {
     assert.equal(tenantInsert?.values.businessType, 'CAFE_RESTAURANT');
     assert.equal(tenantInsert?.values.subscriptionStatus, 'active');
 
-    assert.equal(fake.inserts.some((op) => op.table === tenantFeatures), false, 'registration must not insert tenant_features');
-    assert.equal(fake.inserts.some((op) => op.table === tenantModuleConfigs), false, 'registration must not insert tenant_module_configs');
     assert.equal(fake.inserts.some((op) => op.table === tenantEntitlements), false, 'registration must not persist plan/business defaults as tenant_entitlements');
 
     assert.equal(result.featureCodes.includes('inventory_basic_stock'), true);
@@ -144,8 +140,6 @@ describe('registerTenantOwner — SOT entitlement onboarding', () => {
       const tenantInsert = fake.inserts.find((op) => op.table === tenants);
 
       assert.equal(tenantInsert?.values.planTier, catalogBusinessType.defaultPlan);
-      assert.equal(fake.inserts.some((op) => op.table === tenantFeatures), false);
-      assert.equal(fake.inserts.some((op) => op.table === tenantModuleConfigs), false);
       assert.equal(result.featureCodes.includes('inventory_basic_stock'), true);
     });
   }

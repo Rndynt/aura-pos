@@ -7382,3 +7382,216 @@ Phase 1B SOT cleanup is complete. Continue with dedicated legacy feature/module 
 ### Continuation Notes
 
 Next safest batch: create a dedicated legacy feature/module compatibility removal plan. Start by mapping all live uses of `tenantFeatures`, `tenantModuleConfigs`, `featureGuard`, tenant admin module toggles, marketplace legacy feature display, and repository tests before changing schema exports or migrations.
+
+## Plan: Entitlement Phase 2 — Remove Active Legacy References
+
+### Source
+
+- Tasklist: `roadmap/entitlement/phase_2.md`
+- User request: "Eksekusi secara hati hati, clean, presisi, bertahao, sesuai task tanpa melanggar roadmap/entitlement/phase_2.md"
+- Date started: 2026-06-10
+- Current status: In progress
+
+### Goal
+
+Remove active runtime/schema references to legacy `tenant_features`, `tenant_module_configs`, `enableInventory`, and `enableInventoryAdvanced` commercial gating while preserving the Phase 1B commercial-only entitlement SOT in `packages/application/entitlements/entitlementCatalog.ts`.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist: `roadmap/entitlement/phase_2.md`
+- [x] Relevant docs/reports: `roadmap/entitlement/phase_1_report.md`, `roadmap/entitlement/phase_1b_report.md`, `docs/billing-entitlement.md`
+- [x] Relevant source files: entitlement catalog/engine, tenants schema, registration service, tenant controller, feature guard, inventory routes, marketplace/feature catalog wrappers, seed/tests
+
+### Workstreams
+
+Real subagents were not used because the current higher-priority tool instructions only allow spawning when the user explicitly asks for sub-agents. Workstreams are simulated below.
+
+#### Backend/API Workstream
+
+- Scope: Tenant feature/module endpoints, guards, registration, seed, inventory guards.
+- Files inspected: `apps/api/src/http/controllers/TenantsController.ts`, `apps/api/src/http/middleware/featureGuard.ts`, `apps/api/src/services/registrationService.ts`, `apps/api/src/http/routes/inventory.ts`, `apps/api/src/seed.ts`.
+- Findings: Tenant controller and feature guard still query legacy tables; seed still inserts legacy rows. Inventory already uses entitlement guard.
+- Tasks: Convert guards/controller to entitlement engine and remove legacy persistence.
+- Risks: Existing route/API tests may assume legacy feature rows.
+- Validation: API type-check and focused tests where possible.
+
+#### Database/Schema Workstream
+
+- Scope: Drizzle schema and migrations.
+- Files inspected: `packages/infrastructure/db/schema/tenants.schema.ts`, `packages/infrastructure/db/schema/index.ts`, `migrations/0022_single_tenant_entitlements.sql`.
+- Findings: 0022 drops old tables, but Drizzle schema still exports them.
+- Tasks: Remove legacy table/schema/type exports and keep `tenantEntitlements`.
+- Risks: Legacy repositories/tests/imports must be migrated or removed.
+- Validation: infrastructure type-check and `pnpm run db:check`.
+
+#### Frontend/UI Workstream
+
+- Scope: Marketplace catalog and frontend entitlement hardcode.
+- Files inspected: `apps/pos-terminal-web/src/pages/marketplace.tsx`, `apps/pos-terminal-web/src/lib/featureCatalog.ts`.
+- Findings: Frontend still has independent feature catalog data and old inventory feature codes.
+- Tasks: Convert feature catalog data to derived SOT wrapper or document blocker if too broad.
+- Risks: Marketplace has `@ts-nocheck` and substantial legacy UI mapping.
+- Validation: terminal-web type-check.
+
+#### Tests/Validation Workstream
+
+- Scope: Entitlement/API/registration audit tests.
+- Files inspected: `apps/api/src/__tests__/inventory-entitlement.test.ts`, registration tests, old tenant feature repository test.
+- Findings: Existing tests include SOT absence assertions and registration no-insert assertions; tenant feature repository tests will be obsolete once schema export is removed.
+- Tasks: Add/update audit tests to prove no active schema/API imports, registration does not use old tables, SOT grants work.
+- Risks: Full API tests may require DB env.
+- Validation: focused tests and required validation commands.
+
+#### Documentation Workstream
+
+- Scope: Phase 2 report, source checklist, billing entitlement docs.
+- Files inspected: `roadmap/entitlement/phase_2.md`, `docs/billing-entitlement.md`.
+- Findings: Phase 2 requires new report and honest audit classification.
+- Tasks: Create `roadmap/entitlement/phase_2_report.md`, update `PLANS.md`.
+- Risks: Historical docs legitimately mention old tables.
+- Validation: Audit commands.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Tenant-owned entitlement checks.
+- Files inspected: entitlement engine and inventory route guards.
+- Findings: Entitlement engine is read-only; API helper uses tenant-scoped rows.
+- Tasks: Preserve tenant ID filtering and no runtime self-heal/projection tables.
+- Risks: Plan mutation endpoint must remain internal-secret protected.
+- Validation: Type-check/tests.
+
+### Execution Order
+
+1. Required audit commands and classification.
+2. Remove legacy schema exports and migrate compile-time callers.
+3. Convert API guards/controllers to entitlement engine/SOT-only behavior.
+4. Remove legacy seed/test active imports.
+5. Convert or reduce wrappers to SOT-only generated data.
+6. Create Phase 2 report and update checklist honestly.
+7. Run required validations and commit.
+
+### Progress
+
+#### Completed
+
+- [ ] Task:
+  - Files changed:
+  - Validation:
+  - Docs updated:
+
+#### Partially Completed
+
+- [ ] Task:
+  - Completed:
+  - Remaining:
+  - Reason:
+
+#### Blocked
+
+- [ ] Task:
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+
+- [ ] Task:
+  - Reason:
+
+### Validation Log
+
+- Command: required Phase 2 `rg` audit commands
+- Result: initial matches found in active schema/controller/middleware/seed/frontend wrapper/tests plus historical docs/migrations.
+- Notes: Active matches will be reduced during implementation; historical docs/migrations may remain.
+
+### Documentation Updates
+
+- File: pending
+- Change: pending
+
+### Checklist Updates
+
+- File: `roadmap/entitlement/phase_2.md`
+- Change: pending final status/report reference.
+
+### Continuation Notes
+
+Continue with schema export removal, then compile-driven migration of API/infrastructure callers away from legacy tables.
+
+### Progress Update — 2026-06-10 Phase 2 cleanup batch
+
+#### Completed
+
+- [x] Removed active Drizzle exports for `tenant_features` and `tenant_module_configs`.
+  - Files changed: `packages/infrastructure/db/schema/tenants.schema.ts`
+  - Validation: package type-checks passed.
+  - Docs updated: `roadmap/entitlement/phase_2_report.md`
+- [x] Converted tenant controller/guards/seed/outlet/inventory policy paths away from legacy table reads/writes.
+  - Files changed: tenant controller, feature guard, outlet routes, seed scripts, inventory policy repository.
+  - Validation: API and infrastructure type-checks passed.
+  - Docs updated: `roadmap/entitlement/phase_2_report.md`
+- [x] Registration now reads business defaults directly from `ENTITLEMENT_CATALOG`.
+  - Files changed: `apps/api/src/services/registrationService.ts`
+  - Validation: API type-check passed.
+  - Docs updated: `roadmap/entitlement/phase_2_report.md`
+
+#### Partially Completed
+
+- [ ] Remove all old compatibility wrapper/public shape references.
+  - Completed: active table usage was removed from converted API/schema/seed paths; frontend marketplace inventory controls now use entitlement codes.
+  - Remaining: `moduleConfig` compatibility types/context/hooks and generated wrappers still exist.
+  - Reason: removing the public frontend/application shape safely requires a separate Phase 3 batch to avoid broad UI regressions.
+
+#### Blocked
+
+
+#### Not Attempted
+
+- [ ] Remove `CreateTenant` legacy compatibility use case entirely.
+  - Reason: canonical registration path was cleaned; full use-case removal is broader and should be done after confirming no external callers.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/domain type-check`
+- Result: passed
+- Notes: domain package compiles after schema cleanup.
+- Command: `pnpm --filter @pos/application type-check`
+- Result: passed
+- Notes: application package compiles with remaining compatibility wrappers.
+- Command: `pnpm --filter @pos/infrastructure type-check`
+- Result: passed
+- Notes: infrastructure package compiles without old schema exports.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: passed
+- Notes: API package compiles after controller/guard/test migration.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: passed
+- Notes: terminal web compiles after marketplace/catalog wrapper update.
+- Command: `pnpm --filter @pos/api test`
+- Result: passed
+- Notes: API test suite passed (129 tests).
+- Command: `pnpm check:boundaries`
+- Result: passed
+- Notes: Architecture boundary check passed.
+- Command: `pnpm type-check`
+- Result: passed
+- Notes: Turbo type-check passed across all 10 packages.
+- Command: `pnpm run db:check`
+- Result: passed
+- Notes: Drizzle check completed successfully.
+
+### Documentation Updates
+
+- File: `roadmap/entitlement/phase_2_report.md`
+- Change: Added honest Phase 2 implementation report, audit classification, validation summary, and remaining blockers.
+
+### Checklist Updates
+
+- File: `roadmap/entitlement/phase_2.md`
+- Change: No checkbox mutation; status is recorded in the required report.
+
+### Continuation Notes
+
+Next safest batch: remove remaining moduleConfig-shaped frontend/application compatibility (`TenantContext`, `useTenantProfile`, stock page, `CreateTenant`, `GetTenantProfile`, and generated wrapper tests) and then re-run the full Phase 2 audit until only historical docs/migrations and test proof-of-absence remain.

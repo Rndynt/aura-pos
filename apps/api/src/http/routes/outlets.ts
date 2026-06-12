@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { db } from '@pos/infrastructure/database';
-import { outlets, userOutletAssignments, tenantFeatures, insertOutletSchema, outletProductConfigs } from '@pos/infrastructure/db/schema';
+import { outlets, userOutletAssignments, insertOutletSchema, outletProductConfigs } from '@pos/infrastructure/db/schema';
 import { eq, and, count, inArray } from 'drizzle-orm';
+import { requireTenantEntitlement } from '../helpers/inventoryEntitlement';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { z } from 'zod';
 import { requireManager } from '../middleware/rbac';
@@ -15,22 +16,13 @@ const OUTLET_CACHE_TTL_SECONDS = 60;
 
 type OutletRow = typeof outlets.$inferSelect;
 
-async function getPurchasedOutletSlots(tenantId: string): Promise<number> {
-  const rows = await db
-    .select()
-    .from(tenantFeatures)
-    .where(
-      and(
-        eq(tenantFeatures.tenantId, tenantId),
-        eq(tenantFeatures.featureCode, 'multi_outlet'),
-        eq(tenantFeatures.isActive, true),
-      ),
-    )
-    .limit(1);
-
-  if (!rows.length) return MAX_FREE_OUTLETS;
-  const cfg = rows[0].config as { purchased_slots?: number } | null;
-  return (cfg?.purchased_slots ?? MAX_FREE_OUTLETS);
+async function getAllowedOutletSlots(tenantId: string): Promise<number> {
+  try {
+    await requireTenantEntitlement(db, tenantId, 'multi_location');
+    return Number.MAX_SAFE_INTEGER;
+  } catch {
+    return MAX_FREE_OUTLETS;
+  }
 }
 
 // GET /api/outlets — list all outlets for tenant
@@ -81,7 +73,7 @@ router.get('/current', asyncHandler(async (req, res) => {
 router.post('/', requireManager, asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
 
-  const allowedSlots = await getPurchasedOutletSlots(tenantId);
+  const allowedSlots = await getAllowedOutletSlots(tenantId);
   const [{ value: existingCount }] = await db
     .select({ value: count() })
     .from(outlets)
@@ -89,7 +81,7 @@ router.post('/', requireManager, asyncHandler(async (req, res) => {
 
   if (Number(existingCount) >= allowedSlots) {
     throw createError(
-      `Batas outlet tercapai (${allowedSlots} outlet). Beli slot tambahan untuk menambah cabang.`,
+      `Batas outlet tercapai (${allowedSlots} outlet). Aktifkan entitlement multi_location untuk menambah cabang.`,
       402,
     );
   }

@@ -1,54 +1,147 @@
 /**
  * Tenants Controller
- * Handles tenant feature management endpoints
+ * Handles tenant entitlement/profile endpoints.
  */
 
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { eq, and } from 'drizzle-orm';
-import { container } from '../../container';
+import { and, eq } from 'drizzle-orm';
+import {
+  ENTITLEMENT_CATALOG,
+  canPurchaseOffer,
+  getEffectiveEntitlements,
+  type BusinessTypeCode,
+  type EntitlementCode,
+  type PlanCode,
+  type TenantEntitlementGrant,
+} from '@pos/application/entitlements';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { db } from '@pos/infrastructure/database';
-import { tenants, tenantFeatures } from '@pos/infrastructure/db/schema';
+import { tenantEntitlements, tenants } from '@pos/infrastructure/db/schema';
 import {
   invalidateFeatureAccessCache,
-  invalidateModuleAccessCache,
   invalidateTenantFeatureModuleAndOutletCaches,
   invalidateTenantResolutionCache,
 } from '../../services/cacheInvalidation';
 
-// ─── Plan → Feature mapping (must stay in sync with marketplace.tsx PLANS) ────
-import { PLAN_FEATURE_MAP } from '../../constants/planFeatureMap';
+const DEFAULT_PLAN: PlanCode = 'starter';
+const DEFAULT_BUSINESS_TYPE: BusinessTypeCode = 'CAFE_RESTAURANT';
+
+function toPlanCode(planTier: string | null | undefined): PlanCode {
+  if (planTier === 'starter' || planTier === 'growth' || planTier === 'pro') return planTier;
+  if (planTier === 'free') return 'starter';
+  return DEFAULT_PLAN;
+}
+
+function toBusinessTypeCode(businessType: string | null | undefined): BusinessTypeCode {
+  if (businessType && businessType in ENTITLEMENT_CATALOG.businessTypes) {
+    return businessType as BusinessTypeCode;
+  }
+  return DEFAULT_BUSINESS_TYPE;
+}
+
+function isEntitlementCode(code: string): code is EntitlementCode {
+  return code in ENTITLEMENT_CATALOG.entitlements;
+}
+
+async function loadTenantContext(tenantId: string) {
+  const [tenant] = await db
+    .select()
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+
+  if (!tenant) {
+    throw createError('Tenant not found', 404, 'TENANT_NOT_FOUND');
+  }
+
+  const grants = await db
+    .select({
+      id: tenantEntitlements.id,
+      entitlementCode: tenantEntitlements.entitlementCode,
+      status: tenantEntitlements.status,
+      expiresAt: tenantEntitlements.expiresAt,
+      source: tenantEntitlements.source,
+      config: tenantEntitlements.config,
+    })
+    .from(tenantEntitlements)
+    .where(eq(tenantEntitlements.tenantId, tenantId));
+
+  return {
+    tenant,
+    planCode: toPlanCode(tenant.planTier),
+    businessType: toBusinessTypeCode(tenant.businessType),
+    grants: grants.map((grant): TenantEntitlementGrant => ({
+      entitlementCode: grant.entitlementCode,
+      status: grant.status as TenantEntitlementGrant['status'],
+      expiresAt: grant.expiresAt,
+      source: grant.source as TenantEntitlementGrant['source'],
+    })),
+    grantRows: grants,
+  };
+}
+
+async function buildEntitlementResponse(tenantId: string) {
+  const context = await loadTenantContext(tenantId);
+  const effective = await getEffectiveEntitlements({
+    planCode: context.planCode,
+    businessType: context.businessType,
+    grants: context.grants,
+  });
+
+  const entitlements = Object.fromEntries(
+    (Object.keys(ENTITLEMENT_CATALOG.entitlements) as EntitlementCode[]).map((code) => [code, effective.has(code)]),
+  ) as Record<EntitlementCode, boolean>;
+
+  return {
+    tenant: {
+      id: context.tenant.id,
+      name: context.tenant.name,
+      slug: context.tenant.slug,
+      planTier: context.planCode,
+      businessType: context.businessType,
+      subscriptionStatus: context.tenant.subscriptionStatus,
+      settings: context.tenant.settings,
+    },
+    entitlements,
+    plans: ENTITLEMENT_CATALOG.plans,
+    offers: ENTITLEMENT_CATALOG.offers,
+    catalog: ENTITLEMENT_CATALOG.entitlements,
+    grants: context.grantRows,
+  };
+}
 
 /**
  * GET /api/tenants/features
- * Get active features for tenant
+ * Get effective commercial entitlements for tenant.
  */
 export const getActiveFeatures = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.tenantId!;
-
-  // Execute use case
-  const result = await container.getActiveFeaturesForTenant.execute({
-    tenant_id: tenantId,
-  });
+  const profile = await buildEntitlementResponse(req.tenantId!);
+  const features = Object.entries(profile.entitlements)
+    .filter(([, enabled]) => enabled)
+    .map(([feature_code]) => ({
+      enabled: true,
+      feature_code,
+      reason: 'Entitlement is effective for this tenant',
+      expires_at: null,
+      config: undefined,
+    }));
 
   res.status(200).json({
     success: true,
     data: {
-      features: result.features,
-      total: result.total,
+      features,
+      entitlements: profile.entitlements,
+      total: features.length,
     },
   });
 });
 
 /**
  * POST /api/tenants/features/check
- * Check feature access for tenant
+ * Check entitlement access for tenant.
  */
 export const checkFeatureAccess = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.tenantId!;
-
-  // Validate request body
   const bodySchema = z.object({
     feature_code: z.string().min(1),
   });
@@ -59,24 +152,27 @@ export const checkFeatureAccess = asyncHandler(async (req: Request, res: Respons
   }
 
   const { feature_code } = parsed.data;
-
-  // Execute use case
-  const result = await container.checkFeatureAccess.execute({
-    tenant_id: tenantId,
-    feature_code,
-  });
+  const profile = await buildEntitlementResponse(req.tenantId!);
+  const enabled = isEntitlementCode(feature_code) ? profile.entitlements[feature_code] : false;
 
   res.status(200).json({
     success: true,
-    data: result.result,
+    data: {
+      enabled,
+      feature_code,
+      reason: enabled
+        ? 'Entitlement is effective for this tenant'
+        : 'Unknown or unavailable commercial entitlement',
+      expires_at: null,
+    },
   });
 });
 
 /**
  * POST /api/tenants/register
  * Deprecated tenant-only registration endpoint. Production onboarding must use
- * POST /api/register so tenant, owner, outlet, modules, features, order types,
- * and starter catalog are created by one canonical flow.
+ * POST /api/register so tenant, owner, outlet, order types, and starter catalog
+ * are created by one canonical flow.
  */
 export const registerTenant = asyncHandler(async (_req: Request, res: Response) => {
   res.setHeader('Deprecation', 'true');
@@ -93,12 +189,10 @@ export const registerTenant = asyncHandler(async (_req: Request, res: Response) 
 
 /**
  * POST /api/tenants/features/toggle
- * Activate or deactivate a single feature code for the current tenant.
- * Enforces plan tier — a tenant cannot activate a feature that requires a higher plan.
+ * Grant/cancel a purchased commercial entitlement for the current tenant.
  */
 export const toggleFeature = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.tenantId!;
-
   const bodySchema = z.object({
     feature_code: z.string().min(1),
   });
@@ -108,200 +202,84 @@ export const toggleFeature = asyncHandler(async (req: Request, res: Response) =>
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
-  const { feature_code } = parsed.data;
+  const entitlementCode = parsed.data.feature_code;
+  if (!isEntitlementCode(entitlementCode)) {
+    throw createError(`Unknown commercial entitlement '${entitlementCode}'.`, 400, 'UNKNOWN_ENTITLEMENT');
+  }
 
-  // ── Plan tier enforcement ──────────────────────────────────────────────────
-  const [tenantRow] = await db
-    .select({ planTier: tenants.planTier })
-    .from(tenants)
-    .where(eq(tenants.id, tenantId))
-    .limit(1);
-
-  const planTier = tenantRow?.planTier ?? 'free';
-  const allowedFeatures = PLAN_FEATURE_MAP[planTier] ?? PLAN_FEATURE_MAP.free;
-
-  if (!allowedFeatures.includes(feature_code)) {
+  const context = await loadTenantContext(tenantId);
+  const catalogOffer = Object.entries(ENTITLEMENT_CATALOG.offers).find(([, offer]) => offer.entitlement === entitlementCode);
+  if (catalogOffer && !canPurchaseOffer({ offerCode: catalogOffer[0] as keyof typeof ENTITLEMENT_CATALOG.offers, planCode: context.planCode })) {
     throw createError(
-      `Fitur '${feature_code}' tidak tersedia pada paket ${planTier}. Upgrade paket untuk mengaktifkan fitur ini.`,
+      `Entitlement '${entitlementCode}' is not purchasable for plan ${context.planCode}.`,
       403,
       'PLAN_RESTRICTION',
     );
   }
 
-  const repo = container.tenantFeatureRepository;
-  const existing = await repo.findByTenantAndFeature(tenantId, feature_code);
+  const [existing] = await db
+    .select({ id: tenantEntitlements.id, status: tenantEntitlements.status })
+    .from(tenantEntitlements)
+    .where(and(
+      eq(tenantEntitlements.tenantId, tenantId),
+      eq(tenantEntitlements.entitlementCode, entitlementCode),
+    ))
+    .limit(1);
 
-  let updated;
-  if (!existing) {
-    updated = await repo.upsertByTenantAndFeature({
-      tenantId,
-      featureCode: feature_code,
-      source: 'purchase',
-      isActive: true,
-    } as any);
+  let isActive: boolean;
+  if (existing?.status === 'active') {
+    await db
+      .update(tenantEntitlements)
+      .set({ status: 'cancelled', updatedAt: new Date() })
+      .where(eq(tenantEntitlements.id, existing.id));
+    isActive = false;
+  } else if (existing) {
+    await db
+      .update(tenantEntitlements)
+      .set({ status: 'active', startsAt: new Date(), expiresAt: null, updatedAt: new Date() })
+      .where(eq(tenantEntitlements.id, existing.id));
+    isActive = true;
   } else {
-    updated = await repo.update(existing.id, { isActive: !existing.is_active } as any);
+    await db.insert(tenantEntitlements).values({
+      tenantId,
+      entitlementCode,
+      source: 'purchase',
+      status: 'active',
+    });
+    isActive = true;
   }
 
-  await invalidateFeatureAccessCache(tenantId, feature_code, 'tenant_feature_toggle');
+  await invalidateFeatureAccessCache(tenantId, entitlementCode, 'tenant_entitlement_toggle');
 
   res.status(200).json({
     success: true,
-    data: { feature_code: updated.feature_code, is_active: updated.is_active },
+    data: { feature_code: entitlementCode, entitlement_code: entitlementCode, is_active: isActive },
   });
 });
 
 /**
- * Maps module keys to the feature codes that are BUNDLED inside that module.
- * When a module is toggled, these features must be synced in tenantFeatures too
- * so that hasFeature() checks and the module config remain consistent.
- */
-const MODULE_BUNDLED_FEATURES: Partial<Record<string, string[]>> = {
-  enableKitchenTicket:    ['kitchen_ticket', 'kitchen_display', 'kitchen_printer'],
-  enableInventoryAdvanced: ['inventory_tracking', 'inventory_reports'],
-};
-
-/**
- * Plan tier restrictions for each module.
- * Tenant must be on this tier or higher to activate the module.
- */
-const MODULE_REQUIRED_PLAN: Partial<Record<string, string[]>> = {
-  // 'growth' tier modules
-  enableTableManagement:   ['growth', 'pro'],
-  enableKitchenTicket:     ['growth', 'pro'],
-  enableLoyalty:           ['growth', 'pro'],
-  enableDelivery:          ['growth', 'pro'],
-  enableInventoryAdvanced: ['growth', 'pro'],
-  enableAppointments:      ['growth', 'pro'],
-  // 'pro' only
-  enableMultiLocation:     ['pro'],
-};
-
-/**
  * PATCH /api/tenants/modules
- * Update module config flags for the current tenant.
- *
- * Side-effects:
- *  • Enforces plan tier — prevents free tenants from enabling paid modules.
- *  • Syncs bundled feature codes in tenantFeatures so module state and
- *    feature flags never diverge (split-brain prevention).
+ * Legacy module toggles are no longer persisted. Return current effective
+ * entitlements so callers can migrate to entitlement-code based controls.
  */
 export const updateModuleConfig = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.tenantId!;
-  const { db } = await import('@pos/infrastructure/database');
-  const { tenantModuleConfigs, tenants: tenantsTable } = await import('@pos/infrastructure/db/schema');
-  const { eq } = await import('drizzle-orm');
-
-  const bodySchema = z.object({
-    enableTableManagement: z.boolean().optional(),
-    enableKitchenTicket: z.boolean().optional(),
-    enableLoyalty: z.boolean().optional(),
-    enableDelivery: z.boolean().optional(),
-    enableInventory: z.boolean().optional(),
-    enableInventoryAdvanced: z.boolean().optional(),
-    enableAppointments: z.boolean().optional(),
-    enableMultiLocation: z.boolean().optional(),
-  });
-
+  const bodySchema = z.object({}).passthrough();
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
-  const updates = parsed.data;
-
-  // ── Plan tier enforcement ────────────────────────────────────────────────
-  const [tenantRow] = await db
-    .select({ planTier: tenantsTable.planTier })
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, tenantId))
-    .limit(1);
-
-  const planTier = tenantRow?.planTier ?? 'free';
-
-  for (const [moduleKey, newValue] of Object.entries(updates)) {
-    if (newValue !== true) continue; // only check activation, not deactivation
-    const allowedTiers = MODULE_REQUIRED_PLAN[moduleKey];
-    if (allowedTiers && !allowedTiers.includes(planTier)) {
-      throw createError(
-        `Modul '${moduleKey}' membutuhkan paket ${allowedTiers[0]} atau lebih tinggi. ` +
-        `Paket aktif Anda: ${planTier}.`,
-        403,
-        'PLAN_RESTRICTION',
-      );
-    }
-  }
-
-  // ── Dependency enforcement ───────────────────────────────────────────────
-  // Enabling Stok Lanjutan auto-enables Stok Dasar; disabling Dasar disables Lanjutan
-  if (updates.enableInventoryAdvanced === true)  updates.enableInventory = true;
-  if (updates.enableInventory === false)          updates.enableInventoryAdvanced = false;
-
-  // ── Persist module config ────────────────────────────────────────────────
-  const existing = await db
-    .select()
-    .from(tenantModuleConfigs)
-    .where(eq(tenantModuleConfigs.tenantId, tenantId))
-    .limit(1);
-
-  if (existing.length === 0) {
-    await db.insert(tenantModuleConfigs).values({ tenantId, ...updates });
-  } else {
-    await db
-      .update(tenantModuleConfigs)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(tenantModuleConfigs.tenantId, tenantId));
-  }
-
-  const [updated] = await db
-    .select()
-    .from(tenantModuleConfigs)
-    .where(eq(tenantModuleConfigs.tenantId, tenantId))
-    .limit(1);
-
-  // ── Sync bundled feature codes in tenantFeatures ─────────────────────────
-  // When a module is toggled, keep tenantFeatures in sync so hasFeature()
-  // and moduleConfig checks never disagree (split-brain prevention).
-  const repo = container.tenantFeatureRepository;
-  const now = new Date();
-
-  for (const [moduleKey, newValue] of Object.entries(updates)) {
-    if (newValue === undefined) continue;
-    const bundled = MODULE_BUNDLED_FEATURES[moduleKey];
-    if (!bundled) continue;
-
-    for (const featureCode of bundled) {
-      if (newValue === true) {
-        await repo.upsertByTenantAndFeature({
-          tenantId,
-          featureCode,
-          source: 'plan_default',
-          isActive: true,
-          activatedAt: now,
-        } as any);
-      } else {
-        // Deactivate without deleting so audit trail is preserved
-        const existing = await repo.findByTenantAndFeature(tenantId, featureCode);
-        if (existing) {
-          await repo.update(existing.id, { isActive: false } as any);
-        }
-      }
-      await invalidateFeatureAccessCache(tenantId, featureCode, 'module_toggle_sync');
-    }
-  }
-
-  await invalidateModuleAccessCache(tenantId, undefined, 'tenant_module_config_update');
-
-  res.status(200).json({ success: true, data: updated });
+  res.status(410).json({
+    success: false,
+    error: 'Legacy module configuration flags have been removed. Use entitlement codes from /api/tenants/profile or /api/tenants/features.',
+    code: 'LEGACY_MODULE_CONFIG_REMOVED',
+    data: await buildEntitlementResponse(req.tenantId!),
+  });
 });
 
 /**
  * Returns true only if the request carries a valid internal billing secret.
  * Used to restrict plan-tier mutations to the billing/admin system.
- *
- * Rules:
- *  - If BILLING_INTERNAL_SECRET is not configured → always deny.
- *  - If the x-internal-billing-secret header is missing or wrong → deny.
  */
 export function isBillingPlanChangeAuthorized(req: Request): boolean {
   const configuredSecret = process.env.BILLING_INTERNAL_SECRET;
@@ -312,11 +290,8 @@ export function isBillingPlanChangeAuthorized(req: Request): boolean {
 
 /**
  * PATCH /api/tenants/plan
- * Switch plan tier and sync all plan_default features accordingly.
- *
- * BILLING SAFETY: This endpoint is restricted to trusted internal billing/admin
- * systems only. Browser/client requests are rejected with 403.
- * Set BILLING_INTERNAL_SECRET env var and pass it in x-internal-billing-secret header.
+ * Switch plan tier only. Default plan/business entitlements are derived at
+ * runtime from the entitlement catalog and are not persisted as grant rows.
  */
 export const updatePlanTier = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.tenantId!;
@@ -331,73 +306,45 @@ export const updatePlanTier = asyncHandler(async (req: Request, res: Response) =
   }
 
   const bodySchema = z.object({
-    plan_tier: z.enum(['free', 'growth', 'pro']),
+    plan_tier: z.enum(['starter', 'growth', 'pro']),
   });
 
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw createError('Invalid plan tier. Must be one of: free, growth, pro', 400, 'VALIDATION_ERROR');
+    throw createError('Invalid plan tier. Must be one of: starter, growth, pro', 400, 'VALIDATION_ERROR');
   }
 
   const { plan_tier } = parsed.data;
-  const newFeatures = PLAN_FEATURE_MAP[plan_tier] ?? [];
 
-  // 1. Update plan tier on tenant row
   await db
     .update(tenants)
     .set({ planTier: plan_tier, updatedAt: new Date() })
     .where(eq(tenants.id, tenantId));
-
-  // 2. Remove all existing plan_default features (clean slate for this plan)
-  await db
-    .delete(tenantFeatures)
-    .where(
-      and(
-        eq(tenantFeatures.tenantId, tenantId),
-        eq(tenantFeatures.source, 'plan_default'),
-      ),
-    );
-
-  // 3. Upsert fresh plan_default features for the new plan. This keeps plan
-  // switches idempotent after tenant_features enforces one row per feature.
-  const repo = container.tenantFeatureRepository;
-  for (const fc of newFeatures) {
-    await repo.upsertByTenantAndFeature({
-      tenantId,
-      featureCode: fc,
-      source: 'plan_default',
-      isActive: true,
-    } as any);
-  }
 
   await Promise.all([
     invalidateTenantResolutionCache(tenantId, [tenantId], 'tenant_plan_tier_update'),
     invalidateTenantFeatureModuleAndOutletCaches(tenantId, 'tenant_plan_tier_update'),
   ]);
 
+  const profile = await buildEntitlementResponse(tenantId);
+
   res.status(200).json({
     success: true,
     data: {
       plan_tier,
-      activated_features: newFeatures,
+      activated_entitlements: Object.keys(profile.entitlements)
+        .filter((code) => profile.entitlements[code as EntitlementCode]),
     },
   });
 });
 
 /**
  * GET /api/tenants/profile
- * Get tenant profile with modules
+ * Get tenant profile with effective entitlement data.
  */
 export const getTenantProfile = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.tenantId!;
-
-  // Execute use case
-  const result = await container.getTenantProfile.execute({
-    tenant_id: tenantId,
-  });
-
   res.status(200).json({
     success: true,
-    data: result.profile,
+    data: await buildEntitlementResponse(req.tenantId!),
   });
 });

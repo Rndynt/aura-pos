@@ -31,15 +31,14 @@ import {
 type TabType = "modul" | "fitur";
 type ModuleKey =
   | "enable_table_management" | "enable_kitchen_ticket" | "enable_loyalty"
-  | "enable_delivery" | "enable_inventory" | "enable_inventory_advanced"
+  | "enable_delivery"
   | "enable_appointments" | "enable_multi_location";
 
 /** What feature_codes are BUNDLED inside this module (not sold separately) */
 type ModuleItem = {
   type: "module";
   moduleKey: ModuleKey;
-  /** camelCase version for moduleConfig object */
-  moduleConfigKey: string;
+  entitlementCode?: string;
   title: string;
   description: string;
   longDesc: string;
@@ -98,7 +97,7 @@ const MODULE_CATALOG: ModuleItem[] = ([
   {
     type: "module",
     moduleKey: "enable_table_management",
-    moduleConfigKey: "enableTableManagement",
+    entitlementCode: "restaurant_table_service",
     price: null,
     title: "Manajemen Meja",
     category: "Restoran & Meja",
@@ -113,7 +112,7 @@ const MODULE_CATALOG: ModuleItem[] = ([
   {
     type: "module",
     moduleKey: "enable_kitchen_ticket",
-    moduleConfigKey: "enableKitchenTicket",
+    entitlementCode: "restaurant_kitchen_ops",
     price: null,
     title: "Kitchen Display (KDS)",
     category: "Restoran & Meja",
@@ -132,7 +131,6 @@ const MODULE_CATALOG: ModuleItem[] = ([
   {
     type: "module",
     moduleKey: "enable_loyalty",
-    moduleConfigKey: "enableLoyalty",
     price: null,
     title: "Program Loyalitas",
     category: "Pelanggan",
@@ -149,7 +147,6 @@ const MODULE_CATALOG: ModuleItem[] = ([
   {
     type: "module",
     moduleKey: "enable_delivery",
-    moduleConfigKey: "enableDelivery",
     price: null,
     title: "Delivery & Pengiriman",
     category: "Pelanggan",
@@ -164,7 +161,6 @@ const MODULE_CATALOG: ModuleItem[] = ([
   {
     type: "module",
     moduleKey: "enable_appointments",
-    moduleConfigKey: "enableAppointments",
     price: null,
     title: "Sistem Appointment",
     category: "Pelanggan",
@@ -179,43 +175,8 @@ const MODULE_CATALOG: ModuleItem[] = ([
   },
   {
     type: "module",
-    moduleKey: "enable_inventory",
-    moduleConfigKey: "enableInventory",
-    price: null,
-    title: "Stok Dasar",
-    category: "Inventori",
-    description: "Lihat stok per produk, status menipis/habis, & adjust qty.",
-    longDesc:
-      "Fitur stok esensial: aktifkan tracking stok per produk, lihat status stok (aman, menipis, habis) secara real-time, dan lakukan penyesuaian stok langsung. Tersedia di semua paket termasuk Starter.",
-    icon: Package,
-    iconBg: "bg-amber-100",
-    iconColor: "text-amber-600",
-    bundledFeatures: [],
-    isCore: true,
-  },
-  {
-    type: "module",
-    moduleKey: "enable_inventory_advanced",
-    moduleConfigKey: "enableInventoryAdvanced",
-    price: null,
-    title: "Stok Lanjutan",
-    category: "Inventori",
-    description: "Mutasi stok bertipe, riwayat audit trail, & laporan pergerakan.",
-    longDesc:
-      "Melengkapi Stok Dasar dengan fitur profesional: catat mutasi stok dengan tipe (pembelian baru, rusak/terbuang, retur masuk), riwayat lengkap setiap pergerakan, dan laporan audit trail. Stok Dasar harus aktif terlebih dahulu.",
-    icon: PackageSearch,
-    iconBg: "bg-emerald-100",
-    iconColor: "text-emerald-600",
-    badge: "Growth",
-    bundledFeatures: [
-      { code: "inventory_tracking", label: "Tracking Otomatis per Transaksi" },
-      { code: "inventory_reports", label: "Laporan Pergerakan Stok" },
-    ],
-  },
-  {
-    type: "module",
     moduleKey: "enable_multi_location",
-    moduleConfigKey: "enableMultiLocation",
+    entitlementCode: "multi_location",
     price: null,
     title: "Multi Lokasi",
     category: "Ekspansi",
@@ -596,7 +557,7 @@ function FeatureCard({
 
 export default function MarketplacePage() {
   const [, setLocation] = useLocation();
-  const { tenantId, moduleConfig } = useTenant();
+  const { tenantId } = useTenant();
   const { data: profile } = useTenantProfile(tenantId);
   const { data: featuresData, isLoading: featuresLoading } = useTenantFeatures();
   const { toast } = useToast();
@@ -611,16 +572,17 @@ export default function MarketplacePage() {
   const [switchingPlan, setSwitchingPlan] = useState<PlanTier | null>(null);
 
   // plan_tier uses snake_case in the domain type — planTier (camelCase) is the DB column alias
-  const currentPlan: PlanTier = (profile?.tenant?.plan_tier as PlanTier) ?? "free";
+  const currentPlan: PlanTier = ((profile?.tenant?.planTier ?? profile?.tenant?.plan_tier) as PlanTier) ?? "free";
 
   const activeFeatureCodes = new Set(
     (featuresData?.features ?? []).map((f: any) => f.feature_code)
   );
 
-  // Module active check: moduleConfig from API uses snake_case keys
+  const effectiveEntitlements = profile?.entitlements ?? featuresData?.entitlements ?? {};
+
   const isModuleActive = (item: ModuleItem): boolean => {
-    if (!moduleConfig) return false;
-    return !!(moduleConfig as any)[item.moduleKey];
+    if (!item.entitlementCode) return false;
+    return !!effectiveEntitlements[item.entitlementCode];
   };
 
   const isFeatureActive = (item: FeatureItem) => activeFeatureCodes.has(item.featureCode);
@@ -665,11 +627,11 @@ export default function MarketplacePage() {
       if (item.type === "module") {
         const mItem = item as ModuleItem;
         const newVal = !isModuleActive(mItem);
-        const res = await fetch("/api/tenants/modules", {
-          method: "PATCH",
+        const res = await fetch("/api/tenants/features/toggle", {
+          method: "POST",
           headers: buildApiHeaders({ "Content-Type": "application/json" }),
           credentials: "include",
-          body: JSON.stringify({ [mItem.moduleConfigKey]: newVal }),
+          body: JSON.stringify({ feature_code: mItem.entitlementCode }),
         });
         if (!res.ok) throw new Error();
         await queryClient.invalidateQueries({ queryKey: ["/api/tenants/profile", tenantId] });

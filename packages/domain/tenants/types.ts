@@ -112,7 +112,7 @@ export type FeatureCheck = {
 
 /**
  * Common feature codes used across the system.
- * These values are stored in the DB (tenant_features.feature_code) and MUST
+ * Legacy feature-code constants kept for older UI labels and tests. They MUST
  * stay in sync with:
  *   - packages/core/enums.ts FeatureCode
  *   - apps/api/src/http/controllers/TenantsController.ts PLAN_FEATURE_MAP

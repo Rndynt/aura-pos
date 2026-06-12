@@ -23,12 +23,12 @@ export class GetActiveFeaturesForTenant {
 
   async execute(input: GetActiveFeaturesForTenantInput): Promise<GetActiveFeaturesForTenantOutput> {
     try {
-      const tenantFeatures = await this.tenantFeatureRepository.findByTenantId(input.tenant_id);
+      const featureRows = await this.tenantFeatureRepository.findByTenantId(input.tenant_id);
 
       const now = new Date();
       const activeFeatures: FeatureCheck[] = [];
 
-      for (const feature of tenantFeatures) {
+      for (const feature of featureRows) {
         if (!feature.is_active) {
           continue;
         }
