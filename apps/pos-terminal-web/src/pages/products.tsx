@@ -11,7 +11,6 @@ import {
   Store,
   Lock,
 } from "lucide-react";
-import { useFeatures } from "@/hooks/useFeatures";
 import { PageHeader } from "@/components/design";
 import { useProducts, useCreateProduct, useUpdateProduct } from "@/hooks/api/useProducts";
 import { useVariantsLibrary, useCreateOrUpdateVariant, type Variant } from "@/hooks/useVariants";
@@ -35,8 +34,8 @@ const formatIDR = (price: number) =>
 export default function ProductsPage() {
   const [, setLocation] = useLocation();
   const { toast, addToast } = useToast();
-  const { hasFeature } = useFeatures();
-  const hasProductVariants = hasFeature("product_variants");
+  // Product variants are base catalog behavior — always available.
+  const hasProductVariants = true;
 
   const [activeTab, setActiveTab] = useState<"products" | "variants">("products");
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});

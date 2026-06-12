@@ -5,11 +5,13 @@ export type InventoryStockPolicy = 'strict' | 'allow_negative';
 
 export interface InventoryPolicyResult {
   policy: InventoryStockPolicy;
-  enableInventory: boolean;
-  enableInventoryAdvanced: boolean;
+  /** Effective inventory_basic_stock entitlement. */
+  inventoryBasicStock: boolean;
+  /** Effective inventory_advanced_stock entitlement. */
+  inventoryAdvancedStock: boolean;
   source:
-    | 'tenant_module_config.config.inventory_policy'
-    | 'tenant_module_config.config.inventoryPolicy'
+    | 'tenant_settings.inventory_policy'
+    | 'tenant_settings.inventoryPolicy'
     | 'module_default'
     | 'missing_config_default';
 }

@@ -1,733 +1,147 @@
-// @ts-nocheck
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
 import { useTenant } from "@/context/TenantContext";
-import { useTenantProfile } from "@/hooks/api/useTenantProfile";
-import { useTenantFeatures } from "@/lib/api/hooks";
+import { useEntitlements } from "@/hooks/api/useEntitlements";
 import { useToast } from "@/hooks/use-toast";
-import { getActiveTenantId } from "@/lib/tenant";
-import { buildApiHeaders } from "@/lib/outlet";
-import {
-  type PlanTier,
-  PLAN_RANK,
-  MODULE_REQUIRED_PLAN,
-  FEATURE_REQUIRED_PLAN,
-} from "@/lib/featureCatalog";
 import { PageHeader } from "@/components/design";
 import {
-  Crown, Sparkles, ChevronRight, X, Zap,
-  ToggleLeft, ToggleRight, Lock, Info, CheckCircle2, ShieldCheck,
-  LayoutGrid, ChefHat, Heart, Truck, CalendarDays, Package, MapPin,
-  Layers, SplitSquareVertical, Tag, ClipboardList, Printer, QrCode,
-  BarChart3, PieChart, Globe, Webhook, CalendarClock, Bell, PackageSearch,
-  Banknote, Link2,
-  Moon, Palette, BookOpen,
+  Crown, Sparkles, ChevronRight, X, Lock, Info, CheckCircle2, ShieldCheck,
 } from "lucide-react";
+import {
+  ENTITLEMENT_CATALOG,
+  getPlanIncludedEntitlements,
+  type EntitlementCode,
+  type PlanCode,
+  type OfferCode,
+} from "@pos/application/entitlements";
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
-// PlanTier is imported from @/lib/featureCatalog — single source of truth.
+// ─── Single source of truth (imported directly) ────────────────────────────────
+// The marketplace renders exclusively from ENTITLEMENT_CATALOG + the tenant's
+// effective entitlements from /api/me/entitlements. There is NO frontend
+// plan/module/feature catalog and NO module/feature toggling.
 
-type TabType = "modul" | "fitur";
-type ModuleKey =
-  | "enable_table_management" | "enable_kitchen_ticket" | "enable_loyalty"
-  | "enable_delivery" | "enable_inventory" | "enable_inventory_advanced"
-  | "enable_appointments" | "enable_multi_location";
+const PLAN_ORDER: PlanCode[] = (Object.keys(ENTITLEMENT_CATALOG.plans) as PlanCode[]).sort(
+  (a, b) => ENTITLEMENT_CATALOG.plans[a].sortOrder - ENTITLEMENT_CATALOG.plans[b].sortOrder,
+);
 
-/** What feature_codes are BUNDLED inside this module (not sold separately) */
-type ModuleItem = {
-  type: "module";
-  moduleKey: ModuleKey;
-  /** camelCase version for moduleConfig object */
-  moduleConfigKey: string;
-  title: string;
-  description: string;
-  longDesc: string;
-  icon: React.ElementType;
-  iconBg: string;
-  iconColor: string;
-  requiredPlan: PlanTier;
-  category: string;
-  badge?: string;
-  /** Feature codes that are part of this module bundle */
-  bundledFeatures: Array<{ code: string; label: string }>;
-  comingSoon?: boolean;
-  /** Core items are always active and cannot be deactivated */
-  isCore?: boolean;
-  /**
-   * Monthly add-on price in IDR. null = included in plan (no extra charge).
-   * Only relevant when requiredPlan matches tenant's current plan and the
-   * module is sold as an optional add-on on top of the base plan price.
-   */
-  price?: number | null;
-};
-
-type FeatureItem = {
-  type: "feature";
-  featureCode: string;
-  title: string;
-  description: string;
-  longDesc: string;
-  icon: React.ElementType;
-  iconBg: string;
-  iconColor: string;
-  requiredPlan: PlanTier;
-  category: string;
-  badge?: string;
-  comingSoon?: boolean;
-  /** Core items are always active and cannot be deactivated */
-  isCore?: boolean;
-  /**
-   * Monthly add-on price in IDR. null = included in plan (no extra charge).
-   * Shown as "Rp X.000/bln" on the card. Omitted or null = "Termasuk paket".
-   */
-  price?: number | null;
-};
-
-type CatalogItem = ModuleItem | FeatureItem;
-
-// ─── Module Catalog ────────────────────────────────────────────────────────────
-// Each module may bundle related feature codes that ONLY make sense together.
-// These bundled features are NOT shown separately in the Fitur Satuan tab.
-//
-// NOTE: `requiredPlan` is NOT hardcoded here — it is derived at runtime from
-// MODULE_REQUIRED_PLAN (featureCatalog.ts), the single source of truth.
-// To change a module's required plan, edit featureCatalog.ts only.
-
-const MODULE_CATALOG: ModuleItem[] = ([
-  {
-    type: "module",
-    moduleKey: "enable_table_management",
-    moduleConfigKey: "enableTableManagement",
-    price: null,
-    title: "Manajemen Meja",
-    category: "Restoran & Meja",
-    description: "Denah meja real-time, status duduk, & kelola pesanan per meja.",
-    longDesc:
-      "Aktifkan denah meja interaktif. Kasir bisa lihat status meja (tersedia / terisi / reservasi) dan lanjutkan pesanan langsung dari tampilan lantai.",
-    icon: LayoutGrid,
-    iconBg: "bg-blue-100",
-    iconColor: "text-blue-600",
-    bundledFeatures: [],
-  },
-  {
-    type: "module",
-    moduleKey: "enable_kitchen_ticket",
-    moduleConfigKey: "enableKitchenTicket",
-    price: null,
-    title: "Kitchen Display (KDS)",
-    category: "Restoran & Meja",
-    description: "Tiket dapur, layar KDS, & printer dapur — satu paket lengkap.",
-    longDesc:
-      "Satu modul, tiga fitur terintegrasi: tiket pesanan otomatis ke dapur, layar display khusus staf dapur, dan dukungan printer thermal dapur. Ketiganya aktif bersama agar alur kerja dapur berjalan lancar.",
-    icon: ChefHat,
-    iconBg: "bg-orange-100",
-    iconColor: "text-orange-600",
-    bundledFeatures: [
-      { code: "kitchen_ticket", label: "Tiket Dapur" },
-      { code: "kitchen_display", label: "Layar KDS" },
-      { code: "kitchen_printer", label: "Printer Dapur" },
-    ],
-  },
-  {
-    type: "module",
-    moduleKey: "enable_loyalty",
-    moduleConfigKey: "enableLoyalty",
-    price: null,
-    title: "Program Loyalitas",
-    category: "Pelanggan",
-    description: "Poin reward, member card, & retensi pelanggan jangka panjang.",
-    longDesc:
-      "Bangun hubungan jangka panjang: kumpulkan poin tiap transaksi, tukarkan dengan diskon atau hadiah. Mendukung member card digital dan riwayat poin per pelanggan.",
-    icon: Heart,
-    iconBg: "bg-pink-100",
-    iconColor: "text-pink-600",
-    badge: "Populer",
-    comingSoon: true,
-    bundledFeatures: [],
-  },
-  {
-    type: "module",
-    moduleKey: "enable_delivery",
-    moduleConfigKey: "enableDelivery",
-    price: null,
-    title: "Delivery & Pengiriman",
-    category: "Pelanggan",
-    description: "Tipe order delivery, input alamat pengiriman, & tracking.",
-    longDesc:
-      "Tambahkan tipe pesanan delivery ke alur POS. Input alamat dan catatan driver, pantau status pengiriman, dan pisahkan laporan delivery dari transaksi reguler.",
-    icon: Truck,
-    iconBg: "bg-emerald-100",
-    iconColor: "text-emerald-600",
-    bundledFeatures: [],
-  },
-  {
-    type: "module",
-    moduleKey: "enable_appointments",
-    moduleConfigKey: "enableAppointments",
-    price: null,
-    title: "Sistem Appointment",
-    category: "Pelanggan",
-    description: "Jadwal booking, reminder otomatis, & manajemen antrian janji.",
-    longDesc:
-      "Cocok untuk salon, klinik, bengkel, atau laundry express. Pelanggan booking jadwal, dapat reminder otomatis. Manajer atur kapasitas slot dari kalender.",
-    icon: CalendarDays,
-    iconBg: "bg-violet-100",
-    iconColor: "text-violet-600",
-    comingSoon: true,
-    bundledFeatures: [],
-  },
-  {
-    type: "module",
-    moduleKey: "enable_inventory",
-    moduleConfigKey: "enableInventory",
-    price: null,
-    title: "Stok Dasar",
-    category: "Inventori",
-    description: "Lihat stok per produk, status menipis/habis, & adjust qty.",
-    longDesc:
-      "Fitur stok esensial: aktifkan tracking stok per produk, lihat status stok (aman, menipis, habis) secara real-time, dan lakukan penyesuaian stok langsung. Tersedia di semua paket termasuk Starter.",
-    icon: Package,
-    iconBg: "bg-amber-100",
-    iconColor: "text-amber-600",
-    bundledFeatures: [],
-    isCore: true,
-  },
-  {
-    type: "module",
-    moduleKey: "enable_inventory_advanced",
-    moduleConfigKey: "enableInventoryAdvanced",
-    price: null,
-    title: "Stok Lanjutan",
-    category: "Inventori",
-    description: "Mutasi stok bertipe, riwayat audit trail, & laporan pergerakan.",
-    longDesc:
-      "Melengkapi Stok Dasar dengan fitur profesional: catat mutasi stok dengan tipe (pembelian baru, rusak/terbuang, retur masuk), riwayat lengkap setiap pergerakan, dan laporan audit trail. Stok Dasar harus aktif terlebih dahulu.",
-    icon: PackageSearch,
-    iconBg: "bg-emerald-100",
-    iconColor: "text-emerald-600",
-    badge: "Growth",
-    bundledFeatures: [
-      { code: "inventory_tracking", label: "Tracking Otomatis per Transaksi" },
-      { code: "inventory_reports", label: "Laporan Pergerakan Stok" },
-    ],
-  },
-  {
-    type: "module",
-    moduleKey: "enable_multi_location",
-    moduleConfigKey: "enableMultiLocation",
-    price: null,
-    title: "Multi Lokasi",
-    category: "Ekspansi",
-    description: "Kelola beberapa cabang dari satu dashboard terpusat.",
-    longDesc:
-      "Buka dan kelola beberapa cabang dari satu akun: laporan per cabang, atur produk & harga per lokasi, transfer stok antar cabang.",
-    icon: MapPin,
-    iconBg: "bg-cyan-100",
-    iconColor: "text-cyan-600",
-    badge: "Pro",
-    bundledFeatures: [],
-  },
-] as any[]).map((m) => ({ ...m, requiredPlan: MODULE_REQUIRED_PLAN[m.moduleKey] ?? "free" }));
-
-// ─── Feature Catalog ───────────────────────────────────────────────────────────
-// ONLY standalone features that work independently.
-// Features that are bundled inside a module (kitchen_ticket, kitchen_display,
-// kitchen_printer, inventory_tracking, inventory_reports) are NOT listed here
-// to avoid confusion and duplicate purchases.
-//
-// NOTE: `requiredPlan` is NOT hardcoded here — it is derived at runtime from
-// FEATURE_REQUIRED_PLAN (featureCatalog.ts), the single source of truth.
-// To change a feature's required plan, edit featureCatalog.ts only.
-
-const FEATURE_CATALOG: FeatureItem[] = ([
-  // Kasir & Transaksi
-  {
-    type: "feature", featureCode: "product_variants", price: null,
-    title: "Variasi Produk", category: "Kasir & Transaksi",
-    description: "Size, topping, rasa — tambahkan pilihan ke setiap produk.",
-    longDesc: "Buat variasi produk fleksibel (ukuran, rasa, topping, add-on). Tiap varian bisa punya harga berbeda. Pelanggan pilih opsi saat checkout.",
-    icon: Layers, iconBg: "bg-blue-100", iconColor: "text-blue-600",
-  },
-  {
-    type: "feature", featureCode: "partial_payment", price: null,
-    title: "Pembayaran Parsial", category: "Kasir & Transaksi",
-    description: "Bayar sebagian, lunasi nanti — split bill & cicilan.",
-    longDesc: "Terima pembayaran parsial atau split bill antar pelanggan. Sisa tagihan tercatat dan bisa dilunasi di waktu berbeda dengan metode bayar berbeda.",
-    icon: SplitSquareVertical, iconBg: "bg-green-100", iconColor: "text-green-600",
-  },
-  {
-    type: "feature", featureCode: "discounts", price: null,
-    title: "Sistem Diskon", category: "Kasir & Transaksi",
-    description: "Diskon per item (% atau Rp) dan diskon keseluruhan order.",
-    longDesc: "Berikan diskon fleksibel: persentase atau nominal per item, plus diskon total per order. Badge hemat tampil otomatis di struk.",
-    icon: Tag, iconBg: "bg-rose-100", iconColor: "text-rose-600",
-  },
-  {
-    type: "feature", featureCode: "order_queue", price: null,
-    title: "Panel Antrian Order", category: "Kasir & Transaksi",
-    description: "Tampilkan antrian semua order aktif real-time di layar kasir.",
-    longDesc: "Panel samping yang menampilkan semua order aktif secara real-time beserta status bayar. Kasir pantau pesanan tanpa berpindah layar.",
-    icon: ClipboardList, iconBg: "bg-indigo-100", iconColor: "text-indigo-600",
-  },
-  {
-    type: "feature", featureCode: "dark_mode", price: null,
-    title: "Mode Gelap", category: "Kasir & Transaksi",
-    description: "Tampilan kasir mode gelap — nyaman untuk shift malam.",
-    longDesc: "Aktifkan dark mode di seluruh tampilan POS. Cocok untuk operasional malam hari atau lingkungan dengan pencahayaan rendah.",
-    icon: Moon, iconBg: "bg-slate-100", iconColor: "text-slate-600",
-    comingSoon: true,
-  },
-  {
-    type: "feature", featureCode: "custom_branding", price: null,
-    title: "Kustomisasi Merek", category: "Kasir & Transaksi",
-    description: "Logo toko, warna tema, & nama brand di struk dan tampilan.",
-    longDesc: "Pasang logo bisnis, pilih warna tema POS, dan sesuaikan nama brand yang tampil di struk serta layar customer-facing display.",
-    icon: Palette, iconBg: "bg-pink-100", iconColor: "text-pink-600",
-    comingSoon: true,
-  },
-  // Notifikasi
-  {
-    type: "feature", featureCode: "order_notifications", price: null,
-    title: "Notifikasi Order", category: "Notifikasi",
-    description: "Alert bunyi & visual saat order baru masuk atau status berubah.",
-    longDesc: "Notifikasi audio dan visual untuk semua tipe order (bukan hanya dapur). Kasir tidak melewatkan pesanan yang baru dibuat atau butuh perhatian.",
-    icon: Bell, iconBg: "bg-yellow-100", iconColor: "text-yellow-600",
-    comingSoon: true,
-  },
-  // Hardware & Cetak
-  {
-    type: "feature", featureCode: "receipt_printer", price: null,
-    title: "Printer Struk", category: "Hardware & Cetak",
-    description: "Cetak struk thermal ke pelanggan saat transaksi selesai.",
-    longDesc: "Integrasi printer thermal untuk struk pelanggan. Struk mencakup item, harga, diskon, pajak, metode bayar, dan info toko.",
-    icon: Printer, iconBg: "bg-slate-100", iconColor: "text-slate-600",
-    isCore: true,
-  },
-  {
-    type: "feature", featureCode: "label_printer", price: null,
-    title: "Printer Label", category: "Hardware & Cetak",
-    description: "Cetak label harga, barcode, atau stiker pakaian & produk.",
-    longDesc: "Cetak label produk dengan barcode, harga, dan nama. Cocok untuk laundry (tag pakaian), retail (label harga), atau usaha dengan banyak SKU.",
-    icon: QrCode, iconBg: "bg-teal-100", iconColor: "text-teal-600",
-    comingSoon: true,
-  },
-  {
-    type: "feature", featureCode: "barcode_scanner", price: null,
-    title: "Scanner Barcode", category: "Hardware & Cetak",
-    description: "Scan produk langsung dari kamera atau scanner USB/Bluetooth.",
-    longDesc: "Tambahkan produk ke keranjang dengan scan barcode. Mendukung scanner USB, Bluetooth, dan kamera perangkat. Proses checkout retail jadi lebih cepat.",
-    icon: PackageSearch, iconBg: "bg-purple-100", iconColor: "text-purple-600",
-    comingSoon: true,
-  },
-  // Laporan & Analitik
-  {
-    type: "feature", featureCode: "sales_reports", price: null,
-    title: "Laporan Penjualan", category: "Laporan & Analitik",
-    description: "Ringkasan omzet harian, mingguan, dan bulanan dengan export.",
-    longDesc: "Laporan penjualan lengkap: omzet per periode, produk terlaris, metode pembayaran, dan tren penjualan. Export ke PDF atau Excel.",
-    icon: BarChart3, iconBg: "bg-blue-100", iconColor: "text-blue-600",
-    isCore: true,
-  },
-  {
-    type: "feature", featureCode: "analytics_dashboard", price: null,
-    title: "Dashboard Analitik", category: "Laporan & Analitik",
-    description: "Grafik real-time, KPI bisnis, & insight penjualan interaktif.",
-    longDesc: "Dashboard visual dengan grafik omzet, chart produk terlaris, rata-rata nilai transaksi, dan insight bisnis. Update real-time, bisa filter per periode.",
-    icon: PieChart, iconBg: "bg-violet-100", iconColor: "text-violet-600", badge: "Baru",
-  },
-  // Integrasi Eksternal
-  {
-    type: "feature", featureCode: "payment_gateway", price: null,
-    title: "Payment Gateway", category: "Integrasi Eksternal",
-    description: "Terima QRIS, Virtual Account, GoPay, OVO, & kartu kredit.",
-    longDesc: "Integrasi payment gateway: QRIS, Virtual Account, GoPay, OVO, ShopeePay, dan kartu kredit. Rekonsiliasi otomatis ke laporan penjualan.",
-    icon: Banknote, iconBg: "bg-green-100", iconColor: "text-green-600", badge: "Pro",
-    comingSoon: true,
-  },
-  {
-    type: "feature", featureCode: "api_integration", price: null,
-    title: "Integrasi API", category: "Integrasi Eksternal",
-    description: "Hubungkan AuraPOS ke sistem ERP, marketplace, atau akuntansi.",
-    longDesc: "API key & webhook untuk integrasi dengan sistem eksternal (ERP, marketplace, akuntansi). Dokumentasi REST API lengkap tersedia.",
-    icon: Webhook, iconBg: "bg-slate-100", iconColor: "text-slate-600", badge: "Pro",
-    comingSoon: true,
-  },
-  {
-    type: "feature", featureCode: "online_booking", price: null,
-    title: "Booking Online", category: "Integrasi Eksternal",
-    description: "Halaman booking publik via link atau QR code untuk pelanggan.",
-    longDesc: "Halaman booking online yang bisa dibagikan ke pelanggan. Mereka pilih layanan, tanggal, jam — langsung masuk ke kalender appointment toko.",
-    icon: Globe, iconBg: "bg-cyan-100", iconColor: "text-cyan-600",
-    comingSoon: true,
-  },
-  {
-    type: "feature", featureCode: "calendar_sync", price: null,
-    title: "Sinkronisasi Kalender", category: "Integrasi Eksternal",
-    description: "Sync appointment ke Google Calendar atau iCal secara otomatis.",
-    longDesc: "Appointment otomatis tersync ke Google Calendar atau iCal. Reminder email & WhatsApp ke pelanggan terkirim otomatis.",
-    icon: CalendarClock, iconBg: "bg-indigo-100", iconColor: "text-indigo-600",
-    comingSoon: true,
-  },
-  {
-    type: "feature", featureCode: "accounting_sync", price: null,
-    title: "Sinkronisasi Akuntansi", category: "Integrasi Eksternal",
-    description: "Ekspor data transaksi ke Jurnal, Accurate, atau Excel otomatis.",
-    longDesc: "Sync data penjualan & pembayaran ke software akuntansi (Jurnal, Accurate) atau ekspor otomatis ke Excel setiap tutup hari. Tidak perlu input manual lagi.",
-    icon: BookOpen, iconBg: "bg-emerald-100", iconColor: "text-emerald-600",
-    comingSoon: true,
-  },
-] as any[]).map((f) => ({ ...f, requiredPlan: FEATURE_REQUIRED_PLAN[f.featureCode] ?? "free" }));
-
-// ─── Plan config ──────────────────────────────────────────────────────────────
-
-const PLANS = [
-  {
-    tier: "free" as PlanTier, name: "Starter", price: "Gratis",
-    features: [
-      "POS Terminal", "Manajemen Produk", "Laporan Penjualan",
-      "Variasi Produk", "Diskon & Parsial", "Printer Struk", "Panel Antrian",
-    ],
-  },
-  {
-    tier: "growth" as PlanTier, name: "Growth", price: "Rp 149.000",
-    features: [
-      "Semua Starter",
-      "Kitchen Display System (KDS)", "Printer Dapur", "Tiket Dapur",
-      "Inventori Lanjutan (tracking + laporan)", "Dashboard Analitik",
-      "Notifikasi Order", "Label Printer", "Scanner Barcode",
-      "Mode Gelap", "Kustomisasi Merek", "Sinkronisasi Akuntansi",
-    ],
-    popular: true,
-  },
-  {
-    tier: "pro" as PlanTier, name: "Pro", price: "Rp 349.000",
-    features: [
-      "Semua Growth",
-      "Multi Lokasi", "Payment Gateway",
-      "API Integration", "Booking Online", "Calendar Sync",
-    ],
-  },
-];
-
-// PLAN_RANK is imported from @/lib/featureCatalog — do not redefine here.
-
-const MODULE_CATS = ["Semua", "Restoran & Meja", "Pelanggan", "Inventori", "Ekspansi"];
-const FEATURE_CATS = ["Semua", "Kasir & Transaksi", "Notifikasi", "Hardware & Cetak", "Laporan & Analitik", "Integrasi Eksternal"];
-
-// ─── Card Components ───────────────────────────────────────────────────────────
-
-function ModuleCard({
-  item, isActive, unlocked, isToggling, onToggle, onSelect,
-}: {
-  item: ModuleItem; isActive: boolean; unlocked: boolean;
-  isToggling: boolean; onToggle: () => void; onSelect: () => void;
-}) {
-  const comingSoon = item.comingSoon;
-  const isCore = item.isCore;
-  const effectiveActive = isCore ? true : (isActive && unlocked);
-  const locked = !unlocked && !comingSoon && !isCore;
-
-  return (
-    <div className={`bg-white rounded-2xl border-2 transition-all duration-200 overflow-hidden relative ${
-      comingSoon ? "border-slate-100"
-      : effectiveActive ? "border-emerald-300 shadow-md shadow-emerald-50"
-      : locked ? "border-slate-100 opacity-60"
-      : "border-slate-200 hover:border-slate-300 hover:shadow-md"
-    }`}>
-      {comingSoon && (
-        <div className="absolute inset-0 z-10 bg-white/80 backdrop-blur-[1px] flex flex-col items-center justify-center gap-1.5 rounded-2xl">
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-            Segera Hadir
-          </span>
-          <span className="text-[10px] text-slate-400">Sedang dalam pengembangan</span>
-        </div>
-      )}
-
-      <button className="w-full text-left p-4" onClick={comingSoon ? undefined : onSelect}>
-        <div className="flex items-start justify-between mb-3">
-          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${item.iconBg}`}>
-            <item.icon size={18} className={item.iconColor} />
-          </div>
-          <div className="flex items-center gap-1.5">
-            {effectiveActive && !comingSoon && (
-              <span className="flex items-center gap-1 text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-full">
-                <CheckCircle2 size={9} /> Aktif
-              </span>
-            )}
-            {/* Plan badge — only shown when NOT active (locked or unlocked-idle) */}
-            {!effectiveActive && !comingSoon && item.requiredPlan !== "free" && (
-              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
-                item.requiredPlan === "pro" ? "bg-violet-50 text-violet-600 border-violet-200"
-                : "bg-orange-50 text-orange-600 border-orange-200"
-              }`}>
-                {item.requiredPlan === "pro" ? "Pro" : "Growth"}
-              </span>
-            )}
-            {locked && <Lock size={11} className="text-slate-300" />}
-          </div>
-        </div>
-        <h3 className="font-black text-slate-800 text-sm mb-1">{item.title}</h3>
-        <p className="text-[11px] text-slate-400 leading-relaxed">{item.description}</p>
-
-        {item.bundledFeatures.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2.5">
-            {item.bundledFeatures.map((f) => (
-              <span key={f.code} className="flex items-center gap-1 text-[10px] font-semibold bg-slate-50 border border-slate-200 text-slate-500 px-1.5 py-0.5 rounded-lg">
-                <Link2 size={9} className="text-slate-400" />
-                {f.label}
-              </span>
-            ))}
-          </div>
-        )}
-      </button>
-
-      {/* Footer — only rendered when there's an actionable toggle */}
-      {!comingSoon && !isCore && unlocked && (
-        <div className={`px-4 py-2.5 flex items-center justify-end border-t ${
-          effectiveActive ? "bg-emerald-50/50 border-emerald-100" : "bg-slate-50/50 border-slate-100"
-        }`}>
-          <button
-            onClick={(e) => { e.stopPropagation(); onToggle(); }}
-            disabled={isToggling}
-            className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl transition-all active:scale-95 ${
-              isActive
-                ? "bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600"
-                : "bg-slate-800 text-white hover:bg-slate-700"
-            } ${isToggling ? "opacity-60" : ""}`}
-          >
-            {isToggling ? (
-              <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
-            ) : isActive ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-            {isActive ? "Nonaktifkan" : "Aktifkan"}
-          </button>
-        </div>
-      )}
-    </div>
-  );
+function planSortOrder(plan: PlanCode): number {
+  return ENTITLEMENT_CATALOG.plans[plan]?.sortOrder ?? 0;
 }
 
-function FeatureCard({
-  item, isActive, unlocked, isToggling, onToggle, onSelect,
-}: {
-  item: FeatureItem; isActive: boolean; unlocked: boolean;
-  isToggling: boolean; onToggle: () => void; onSelect: () => void;
-}) {
-  const comingSoon = item.comingSoon;
-  const isCore = item.isCore;
-  const effectiveActive = isCore ? true : (isActive && unlocked);
-  const locked = !unlocked && !comingSoon && !isCore;
-
-  return (
-    <div className={`bg-white rounded-2xl border-2 transition-all duration-200 overflow-hidden relative ${
-      comingSoon ? "border-slate-100"
-      : effectiveActive ? "border-emerald-300 shadow-md shadow-emerald-50"
-      : locked ? "border-slate-100 opacity-60"
-      : "border-slate-200 hover:border-slate-300 hover:shadow-md"
-    }`}>
-      {comingSoon && (
-        <div className="absolute inset-0 z-10 bg-white/80 backdrop-blur-[1px] flex flex-col items-center justify-center gap-1.5 rounded-2xl">
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-            Segera Hadir
-          </span>
-          <span className="text-[10px] text-slate-400">Sedang dalam pengembangan</span>
-        </div>
-      )}
-
-      <button className="w-full text-left p-4" onClick={comingSoon ? undefined : onSelect}>
-        <div className="flex items-start justify-between mb-3">
-          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${item.iconBg}`}>
-            <item.icon size={18} className={item.iconColor} />
-          </div>
-          <div className="flex items-center gap-1.5">
-            {effectiveActive && !comingSoon && (
-              <span className="flex items-center gap-1 text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-full">
-                <CheckCircle2 size={9} /> Aktif
-              </span>
-            )}
-            {/* Plan badge — only shown when NOT active */}
-            {!effectiveActive && !comingSoon && item.requiredPlan !== "free" && (
-              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
-                item.requiredPlan === "pro" ? "bg-violet-50 text-violet-600 border-violet-200"
-                : "bg-orange-50 text-orange-600 border-orange-200"
-              }`}>
-                {item.requiredPlan === "pro" ? "Pro" : "Growth"}
-              </span>
-            )}
-            {/* "Baru" badge alongside plan badge if both apply */}
-            {item.badge === "Baru" && !effectiveActive && !comingSoon && (
-              <span className="text-[10px] font-black px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-600 border-emerald-200">
-                Baru
-              </span>
-            )}
-            {locked && <Lock size={11} className="text-slate-300" />}
-          </div>
-        </div>
-        <h3 className="font-black text-slate-800 text-sm mb-1">{item.title}</h3>
-        <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">{item.description}</p>
-      </button>
-
-      {/* Footer — only rendered when there's an actionable toggle */}
-      {!comingSoon && !isCore && unlocked && (
-        <div className={`px-4 py-2.5 flex items-center justify-end border-t ${
-          effectiveActive ? "bg-emerald-50/50 border-emerald-100" : "bg-slate-50/50 border-slate-100"
-        }`}>
-          <button
-            onClick={(e) => { e.stopPropagation(); onToggle(); }}
-            disabled={isToggling}
-            className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl transition-all active:scale-95 ${
-              isActive
-                ? "bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600"
-                : "bg-slate-800 text-white hover:bg-slate-700"
-            } ${isToggling ? "opacity-60" : ""}`}
-          >
-            {isToggling ? (
-              <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
-            ) : isActive ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-            {isActive ? "Nonaktifkan" : "Aktifkan"}
-          </button>
-        </div>
-      )}
-    </div>
-  );
+function formatPrice(price: number): string {
+  if (!price) return "Gratis";
+  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(price);
 }
 
-// ─── Main Component ────────────────────────────────────────────────────────────
+type EntitlementRow = {
+  code: EntitlementCode;
+  label: string;
+  area: string;
+  /** Lowest plan that includes this entitlement cumulatively, if any. */
+  includedFromPlan: PlanCode | null;
+  /** Offer that sells this entitlement as an add-on, if any. */
+  offerCode: OfferCode | null;
+};
+
+function buildEntitlementRows(): EntitlementRow[] {
+  const includedFrom = new Map<EntitlementCode, PlanCode>();
+  for (const plan of PLAN_ORDER) {
+    for (const code of getPlanIncludedEntitlements(plan)) {
+      if (!includedFrom.has(code)) includedFrom.set(code, plan);
+    }
+  }
+
+  const offerByEntitlement = new Map<EntitlementCode, OfferCode>();
+  for (const [offerCode, offer] of Object.entries(ENTITLEMENT_CATALOG.offers)) {
+    offerByEntitlement.set(offer.entitlement as EntitlementCode, offerCode as OfferCode);
+  }
+
+  return (Object.keys(ENTITLEMENT_CATALOG.entitlements) as EntitlementCode[]).map((code) => {
+    const meta = ENTITLEMENT_CATALOG.entitlements[code];
+    return {
+      code,
+      label: meta.label,
+      area: meta.area,
+      includedFromPlan: includedFrom.get(code) ?? null,
+      offerCode: offerByEntitlement.get(code) ?? null,
+    };
+  });
+}
 
 export default function MarketplacePage() {
   const [, setLocation] = useLocation();
-  const { tenantId, moduleConfig } = useTenant();
-  const { data: profile } = useTenantProfile(tenantId);
-  const { data: featuresData, isLoading: featuresLoading } = useTenantFeatures();
+  const { planTier } = useTenant();
+  const { entitlements, grants, isLoading } = useEntitlements();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<TabType>("modul");
-  const [moduleCat, setModuleCat] = useState("Semua");
-  const [featureCat, setFeatureCat] = useState("Semua");
-  const [selected, setSelected] = useState<CatalogItem | null>(null);
-  const [toggling, setToggling] = useState<string | null>(null);
+  const [selected, setSelected] = useState<EntitlementRow | null>(null);
   const [showPlans, setShowPlans] = useState(false);
-  const [switchingPlan, setSwitchingPlan] = useState<PlanTier | null>(null);
 
-  // plan_tier uses snake_case in the domain type — planTier (camelCase) is the DB column alias
-  const currentPlan: PlanTier = (profile?.tenant?.plan_tier as PlanTier) ?? "free";
+  const currentPlan: PlanCode =
+    (planTier as PlanCode) && ENTITLEMENT_CATALOG.plans[planTier as PlanCode] ? (planTier as PlanCode) : "starter";
 
-  const activeFeatureCodes = new Set(
-    (featuresData?.features ?? []).map((f: any) => f.feature_code)
-  );
+  const rows = useMemo(() => buildEntitlementRows(), []);
 
-  // Module active check: moduleConfig from API uses snake_case keys
-  const isModuleActive = (item: ModuleItem): boolean => {
-    if (!moduleConfig) return false;
-    return !!(moduleConfig as any)[item.moduleKey];
+  const can = (code: EntitlementCode) => entitlements[code] === true;
+
+  // An entitlement is included by the tenant's cumulative plan.
+  const includedByPlan = (row: EntitlementRow) =>
+    row.includedFromPlan !== null && planSortOrder(currentPlan) >= planSortOrder(row.includedFromPlan);
+
+  // An offer can be purchased only if the tenant's plan meets the offer's
+  // requiredPlan AND the entitlement is not already included by the plan.
+  const canPurchase = (row: EntitlementRow): boolean => {
+    if (!row.offerCode) return false;
+    if (includedByPlan(row)) return false;
+    const offer = ENTITLEMENT_CATALOG.offers[row.offerCode];
+    return planSortOrder(currentPlan) >= planSortOrder(offer.requiredPlan as PlanCode);
   };
 
-  const isFeatureActive = (item: FeatureItem) => activeFeatureCodes.has(item.featureCode);
-  const isItemActive = (item: CatalogItem) =>
-    item.type === "module" ? isModuleActive(item as ModuleItem) : isFeatureActive(item as FeatureItem);
-  const canActivate = (item: CatalogItem) => PLAN_RANK[item.requiredPlan] <= PLAN_RANK[currentPlan];
+  const grantFor = (code: EntitlementCode) =>
+    grants.find((g) => g.entitlement_code === code) ?? null;
 
-  // Only count non-comingSoon items in totals (coming soon items aren't activatable yet)
-  const availableModules = MODULE_CATALOG.filter((m) => !m.comingSoon);
-  const availableFeatures = FEATURE_CATALOG.filter((f) => !f.comingSoon);
-  // Count as active only if BOTH enabled in DB AND plan allows it (same logic as effectiveActive in cards)
-  const activeModules = availableModules.filter(
-    (m) => isModuleActive(m) && canActivate(m)
-  ).length;
-  const activeFeatures = availableFeatures.filter(
-    (f) => isFeatureActive(f) && canActivate(f)
-  ).length;
-  const totalActive = activeModules + activeFeatures;
-  const totalItems = availableModules.length + availableFeatures.length;
+  const statusOf = (row: EntitlementRow): "active" | "included" | "purchasable" | "locked" => {
+    if (can(row.code)) return "active";
+    if (includedByPlan(row)) return "included";
+    if (canPurchase(row)) return "purchasable";
+    return "locked";
+  };
 
-  const handleSwitchPlan = (_tier: PlanTier) => {
-    // BILLING SAFETY: Plan upgrades cannot be initiated from the browser.
-    // Upgrade must be processed through the billing/admin system.
+  const activeCount = rows.filter((r) => can(r.code)).length;
+  const totalCount = rows.length;
+
+  const handlePurchase = (row: EntitlementRow) => {
+    // BILLING SAFETY: entitlement purchases/upgrades are processed by the
+    // billing/admin system only — never written from the browser.
     toast({
-      title: "Upgrade belum tersedia",
+      title: "Aktivasi via billing",
       description:
-        "Upgrade paket harus diproses melalui billing/admin. Fitur ini akan dihubungkan ke pembayaran resmi.",
+        "Pembelian add-on & upgrade paket diproses melalui billing/admin. Fitur akan dihubungkan ke pembayaran resmi.",
     });
+    setSelected(null);
     setShowPlans(false);
   };
 
-  const handleToggle = async (item: CatalogItem) => {
-    if (item.isCore) return;
-    if (!canActivate(item)) { setShowPlans(true); return; }
-
-    const key = item.type === "module"
-      ? (item as ModuleItem).moduleKey
-      : (item as FeatureItem).featureCode;
-    setToggling(key);
-
-    try {
-      if (item.type === "module") {
-        const mItem = item as ModuleItem;
-        const newVal = !isModuleActive(mItem);
-        const res = await fetch("/api/tenants/modules", {
-          method: "PATCH",
-          headers: buildApiHeaders({ "Content-Type": "application/json" }),
-          credentials: "include",
-          body: JSON.stringify({ [mItem.moduleConfigKey]: newVal }),
-        });
-        if (!res.ok) throw new Error();
-        await queryClient.invalidateQueries({ queryKey: ["/api/tenants/profile", tenantId] });
-        toast({ title: newVal ? `${item.title} diaktifkan` : `${item.title} dinonaktifkan` });
-      } else {
-        const fItem = item as FeatureItem;
-        const res = await fetch("/api/tenants/features/toggle", {
-          method: "POST",
-          headers: buildApiHeaders({ "Content-Type": "application/json" }),
-          credentials: "include",
-          body: JSON.stringify({ feature_code: fItem.featureCode }),
-        });
-        if (!res.ok) throw new Error();
-        await queryClient.invalidateQueries({ queryKey: ["/api/tenants/features", tenantId] });
-        const wasActive = isFeatureActive(fItem);
-        toast({ title: !wasActive ? `${item.title} diaktifkan` : `${item.title} dinonaktifkan` });
-      }
-      setSelected(null);
-    } catch {
-      toast({ title: "Gagal", description: "Coba lagi beberapa saat.", variant: "destructive" });
-    } finally {
-      setToggling(null);
-    }
+  const areaLabel = (area: string) => {
+    const map: Record<string, string> = {
+      inventory: "Inventori",
+      payments: "Pembayaran",
+      receipt: "Struk",
+      orders: "Order",
+      restaurant: "Restoran",
+      reports: "Laporan",
+      multi_location: "Multi Lokasi",
+      hardware: "Hardware",
+      integrations: "Integrasi",
+    };
+    return map[area] ?? area;
   };
-
-  const sortItems = <T extends CatalogItem>(items: T[]): T[] =>
-    [...items].sort((a, b) => {
-      const rank = (i: T) => {
-        if (i.comingSoon) return 3;
-        // Active = enabled in DB AND plan tier sufficient (same as effectiveActive in cards)
-        if (isItemActive(i) && canActivate(i)) return 0;
-        // Unlocked = plan allows it but not yet active
-        if (canActivate(i)) return 1;
-        // Locked = plan too low (need upgrade)
-        return 2;
-      };
-      return rank(a) - rank(b);
-    });
-
-  const filteredModules = sortItems(
-    moduleCat === "Semua" ? MODULE_CATALOG : MODULE_CATALOG.filter((m) => m.category === moduleCat)
-  );
-  const filteredFeatures = sortItems(
-    featureCat === "Semua" ? FEATURE_CATALOG : FEATURE_CATALOG.filter((f) => f.category === featureCat)
-  );
-
-  const selectedActive = selected ? isItemActive(selected) : false;
-  const selectedUnlocked = selected ? canActivate(selected) : false;
-  const selectedTogglingKey = selected
-    ? (selected.type === "module" ? (selected as ModuleItem).moduleKey : (selected as FeatureItem).featureCode)
-    : null;
 
   return (
     <div className="flex-1 h-full bg-slate-50 overflow-y-auto pb-8">
-
       <PageHeader
-        title="Marketplace Fitur"
-        subtitle="Aktifkan modul & fitur sesuai kebutuhan bisnis"
+        title="Marketplace Entitlement"
+        subtitle="Paket & add-on dari katalog resmi"
         onBack={() => setLocation("/hub")}
         actions={
           <button
@@ -737,281 +151,153 @@ export default function MarketplacePage() {
             <Crown size={13} /> Paket
           </button>
         }
-        tabs={
-          <div className="flex gap-1">
-            {(["modul", "fitur"] as TabType[]).map((tab) => {
-              const count = tab === "modul" ? activeModules : activeFeatures;
-              const total = tab === "modul" ? availableModules.length : availableFeatures.length;
-              return (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`relative px-4 py-3 text-sm font-bold transition-colors ${
-                    activeTab === tab ? "text-slate-800" : "text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  {tab === "modul" ? "Modul" : "Fitur Satuan"}
-                  <span className={`ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded-full ${
-                    activeTab === tab ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-400"
-                  }`}>{count}/{total}</span>
-                  {activeTab === tab && (
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-slate-800 rounded-full" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        }
       />
 
       <div className="px-4 pt-4 space-y-4">
-
         {/* ── PLAN BANNER ── */}
         <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-4 text-white relative overflow-hidden">
-          <div className="absolute inset-0 opacity-10 pointer-events-none">
-            <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full bg-white" />
-            <div className="absolute -bottom-12 -left-6 w-32 h-32 rounded-full bg-white" />
-          </div>
           <div className="relative flex items-center justify-between">
             <div>
               <div className="flex items-center gap-1.5 mb-0.5">
                 <Sparkles size={12} className="text-yellow-400" />
                 <span className="text-[10px] font-bold text-white/60 uppercase tracking-wide">Paket Aktif</span>
               </div>
-              <h2 className="text-xl font-black">{PLANS.find((p) => p.tier === currentPlan)?.name ?? "Starter"}</h2>
-              <p className="text-white/50 text-[11px] mt-0.5">{totalActive} aktif dari {totalItems} tersedia</p>
+              <h2 className="text-xl font-black">{ENTITLEMENT_CATALOG.plans[currentPlan]?.label ?? "Starter"}</h2>
+              <p className="text-white/50 text-[11px] mt-0.5">{activeCount} aktif dari {totalCount} entitlement</p>
             </div>
-            <div className="flex flex-col items-end gap-2">
-              <button
-                onClick={() => setShowPlans(true)}
-                className="flex items-center gap-1 bg-white text-slate-800 font-bold text-xs px-3 py-1.5 rounded-xl hover:bg-slate-100 transition-colors"
-              >
-                Upgrade <ChevronRight size={12} />
-              </button>
-              <div className="flex gap-2">
-                <span className="text-[11px] font-black text-emerald-400">{activeModules} modul</span>
-                <span className="text-white/30">·</span>
-                <span className="text-[11px] font-black text-blue-400">{activeFeatures} fitur</span>
-              </div>
-            </div>
+            <button
+              onClick={() => setShowPlans(true)}
+              className="flex items-center gap-1 bg-white text-slate-800 font-bold text-xs px-3 py-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+            >
+              Upgrade <ChevronRight size={12} />
+            </button>
           </div>
           <div className="relative mt-3">
             <div className="h-1 bg-white/10 rounded-full overflow-hidden">
               <div
                 className="h-full bg-white/60 rounded-full transition-all duration-500"
-                style={{ width: `${(totalActive / totalItems) * 100}%` }}
+                style={{ width: `${totalCount ? (activeCount / totalCount) * 100 : 0}%` }}
               />
             </div>
           </div>
         </div>
 
-        {/* ── MODUL TAB ── */}
-        {activeTab === "modul" && (
-          <>
-            {/* Category filter */}
-            <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-              {MODULE_CATS.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setModuleCat(cat)}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    moduleCat === cat
-                      ? "bg-slate-800 text-white shadow-sm"
-                      : "bg-white text-slate-500 border border-slate-200 hover:border-slate-300"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            {/* Note about bundles */}
-            <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-2xl px-3.5 py-3">
-              <Link2 size={13} className="text-amber-600 flex-shrink-0 mt-0.5" />
-              <p className="text-[11px] text-amber-800 leading-relaxed">
-                Beberapa modul sudah termasuk fitur-fitur terkait yang saling bergantung. Fitur bundled tidak dijual terpisah — harus diaktifkan bersama modulnya.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {filteredModules.map((item) => (
-                <ModuleCard
-                  key={item.moduleKey}
-                  item={item}
-                  isActive={isModuleActive(item)}
-                  unlocked={canActivate(item)}
-                  isToggling={toggling === item.moduleKey}
-                  onToggle={() => handleToggle(item)}
-                  onSelect={() => setSelected(item)}
-                />
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* ── FITUR SATUAN TAB ── */}
-        {activeTab === "fitur" && (
-          <>
-            {/* Category filter */}
-            <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-              {FEATURE_CATS.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setFeatureCat(cat)}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    featureCat === cat
-                      ? "bg-slate-800 text-white shadow-sm"
-                      : "bg-white text-slate-500 border border-slate-200 hover:border-slate-300"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            {/* Note: what's NOT here */}
-            <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-100 rounded-2xl px-3.5 py-3">
-              <Info size={13} className="text-blue-500 flex-shrink-0 mt-0.5" />
-              <p className="text-[11px] text-blue-700 leading-relaxed">
-                Fitur yang sudah tergabung dalam modul (Tiket Dapur, Layar KDS, Printer Dapur, Tracking Stok, Laporan Inventori) dikelola di tab <strong>Modul</strong> — tidak dijual terpisah di sini.
-              </p>
-            </div>
-
-            {featuresLoading ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="bg-white rounded-2xl border-2 border-slate-100 p-4 animate-pulse">
-                    <div className="w-10 h-10 bg-slate-100 rounded-2xl mb-3" />
-                    <div className="h-4 bg-slate-100 rounded w-3/4 mb-2" />
-                    <div className="h-3 bg-slate-100 rounded w-full" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {filteredFeatures.map((item) => (
-                  <FeatureCard
-                    key={item.featureCode}
-                    item={item}
-                    isActive={isFeatureActive(item)}
-                    unlocked={canActivate(item)}
-                    isToggling={toggling === item.featureCode}
-                    onToggle={() => handleToggle(item)}
-                    onSelect={() => setSelected(item)}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-
-        <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-2xl p-3.5">
-          <Info size={15} className="text-blue-500 flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2.5 bg-blue-50 border border-blue-100 rounded-2xl px-3.5 py-3">
+          <Info size={13} className="text-blue-500 flex-shrink-0 mt-0.5" />
           <p className="text-[11px] text-blue-700 leading-relaxed">
-            Perubahan langsung aktif tanpa restart aplikasi. Beberapa fitur & modul membutuhkan upgrade paket terlebih dahulu.
+            Operasi dasar POS (katalog, order, pembayaran tunai, struk standar) selalu aktif tanpa entitlement.
+            Daftar di bawah hanya menampilkan entitlement komersial dari katalog resmi.
           </p>
         </div>
+
+        {/* ── ENTITLEMENT GRID ── */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="bg-white rounded-2xl border-2 border-slate-100 p-4 animate-pulse">
+                <div className="h-4 bg-slate-100 rounded w-3/4 mb-2" />
+                <div className="h-3 bg-slate-100 rounded w-full" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {rows.map((row) => {
+              const status = statusOf(row);
+              const grant = grantFor(row.code);
+              return (
+                <button
+                  key={row.code}
+                  onClick={() => setSelected(row)}
+                  className={`text-left bg-white rounded-2xl border-2 p-4 transition-all duration-200 ${
+                    status === "active" ? "border-emerald-300 shadow-md shadow-emerald-50"
+                    : status === "locked" ? "border-slate-100 opacity-70"
+                    : "border-slate-200 hover:border-slate-300 hover:shadow-md"
+                  }`}
+                  data-testid={`card-entitlement-${row.code}`}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
+                      {areaLabel(row.area)}
+                    </span>
+                    {status === "active" && (
+                      <span className="flex items-center gap-1 text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-full">
+                        <CheckCircle2 size={9} /> Aktif
+                      </span>
+                    )}
+                    {status === "included" && (
+                      <span className="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded-full">
+                        Termasuk paket
+                      </span>
+                    )}
+                    {status === "purchasable" && row.offerCode && (
+                      <span className="text-[10px] font-black bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full">
+                        {formatPrice(ENTITLEMENT_CATALOG.offers[row.offerCode].price)}
+                      </span>
+                    )}
+                    {status === "locked" && <Lock size={11} className="text-slate-300" />}
+                  </div>
+                  <h3 className="font-black text-slate-800 text-sm mb-1">{row.label}</h3>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    {row.includedFromPlan
+                      ? `Termasuk paket ${ENTITLEMENT_CATALOG.plans[row.includedFromPlan].label}`
+                      : row.offerCode
+                        ? `Add-on (butuh paket ${ENTITLEMENT_CATALOG.plans[ENTITLEMENT_CATALOG.offers[row.offerCode].requiredPlan as PlanCode].label})`
+                        : "Add-on komersial"}
+                    {grant?.status === "expired" && " · grant kedaluwarsa"}
+                    {grant?.status === "cancelled" && " · grant dibatalkan"}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── DETAIL DRAWER ── */}
       {selected && (
         <>
-          <div
-            className="fixed inset-0 bg-black/30 backdrop-blur-[2px] z-[60]"
-            onClick={() => setSelected(null)}
-          />
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-[2px] z-[60]" onClick={() => setSelected(null)} />
           <div className="fixed inset-x-0 bottom-0 z-[70] bg-white rounded-t-3xl shadow-2xl max-h-[85vh] overflow-y-auto">
             <div className="flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 rounded-full bg-slate-200" />
             </div>
             <div className="px-5 pb-8 pt-3">
               <div className="flex items-start justify-between mb-5">
-                <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${selected.iconBg}`}>
-                    <selected.icon size={22} className={selected.iconColor} />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-slate-800 text-base">{selected.title}</h3>
-                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                        selectedActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${selectedActive ? "bg-emerald-500" : "bg-slate-300"}`} />
-                        {selectedActive ? "Aktif" : "Tidak Aktif"}
-                      </span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        selected.requiredPlan === "free" ? "bg-slate-100 text-slate-500"
-                        : selected.requiredPlan === "growth" ? "bg-blue-50 text-blue-600"
-                        : "bg-violet-50 text-violet-600"
-                      }`}>
-                        {selected.requiredPlan === "free" ? "Gratis" : selected.requiredPlan === "growth" ? "Growth" : "Pro"}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-medium bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
-                        {selected.type === "module" ? "Modul" : "Fitur Satuan"}
-                      </span>
-                    </div>
-                  </div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-base">{selected.label}</h3>
+                  <span className="text-[10px] text-slate-400 font-medium bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
+                    {areaLabel(selected.area)} · {selected.code}
+                  </span>
                 </div>
-                <button
-                  onClick={() => setSelected(null)}
-                  className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500"
-                >
+                <button onClick={() => setSelected(null)} className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500">
                   <X size={16} />
                 </button>
               </div>
 
-              <p className="text-sm text-slate-600 leading-relaxed mb-5">{selected.longDesc}</p>
-
-              {/* Bundled features detail for modules */}
-              {selected.type === "module" && (selected as ModuleItem).bundledFeatures.length > 0 && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-5">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2.5">
-                    Sudah Termasuk dalam Modul Ini
-                  </p>
-                  <div className="space-y-2">
-                    {(selected as ModuleItem).bundledFeatures.map((f) => (
-                      <div key={f.code} className="flex items-center gap-2.5">
-                        <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
-                        <div>
-                          <span className="text-xs font-bold text-slate-700">{f.label}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-
-              {selected.isCore ? (
+              {statusOf(selected) === "active" ? (
                 <div className="w-full py-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center gap-2">
                   <ShieldCheck size={16} className="text-emerald-600" />
-                  <span className="text-sm font-black text-emerald-700">Fitur Inti — Selalu Aktif</span>
+                  <span className="text-sm font-black text-emerald-700">Sudah Aktif</span>
                 </div>
-              ) : selectedUnlocked ? (
+              ) : statusOf(selected) === "included" ? (
+                <div className="w-full py-3.5 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center gap-2">
+                  <CheckCircle2 size={16} className="text-blue-600" />
+                  <span className="text-sm font-black text-blue-700">Termasuk Paket Aktif</span>
+                </div>
+              ) : statusOf(selected) === "purchasable" ? (
                 <button
-                  onClick={() => handleToggle(selected)}
-                  disabled={toggling === selectedTogglingKey}
-                  className={`w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.99] ${
-                    selectedActive
-                      ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                      : "bg-slate-800 text-white hover:bg-slate-700 shadow-lg shadow-slate-200"
-                  }`}
+                  onClick={() => handlePurchase(selected)}
+                  className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-slate-800 text-white hover:bg-slate-700"
                 >
-                  {toggling === selectedTogglingKey ? (
-                    <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                  ) : selectedActive ? (
-                    <><ToggleRight size={16} /> Nonaktifkan</>
-                  ) : (
-                    <><Zap size={16} /> Aktifkan Sekarang</>
-                  )}
+                  <Crown size={16} /> Aktifkan Add-on
                 </button>
               ) : (
                 <button
                   onClick={() => { setSelected(null); setShowPlans(true); }}
-                  className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-violet-600 text-white hover:bg-violet-700 transition-all shadow-lg shadow-violet-200"
+                  className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-violet-600 text-white hover:bg-violet-700"
                 >
-                  <Crown size={16} />
-                  Upgrade ke {selected.requiredPlan === "growth" ? "Growth" : "Pro"}
+                  <Crown size={16} /> Upgrade Paket
                 </button>
               )}
             </div>
@@ -1022,83 +308,55 @@ export default function MarketplacePage() {
       {/* ── PLANS MODAL ── */}
       {showPlans && (
         <>
-          <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-[3px] z-[80]"
-            onClick={() => setShowPlans(false)}
-          />
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-[3px] z-[80]" onClick={() => setShowPlans(false)} />
           <div className="fixed inset-0 z-[90] flex items-end md:items-center justify-center p-4">
             <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100">
                 <div>
                   <h2 className="font-black text-slate-800 text-lg">Pilih Paket</h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Unlock lebih banyak fitur untuk bisnis kamu</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Entitlement kumulatif dari katalog resmi</p>
                 </div>
-                <button
-                  onClick={() => setShowPlans(false)}
-                  className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500"
-                >
+                <button onClick={() => setShowPlans(false)} className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500">
                   <X size={16} />
                 </button>
               </div>
               <div className="p-5 space-y-3">
-                {PLANS.map((plan) => {
-                  const isCurrent = plan.tier === currentPlan;
+                {PLAN_ORDER.map((planCode) => {
+                  const plan = ENTITLEMENT_CATALOG.plans[planCode];
+                  const isCurrent = planCode === currentPlan;
+                  const included = getPlanIncludedEntitlements(planCode);
                   return (
                     <div
-                      key={plan.tier}
-                      className={`rounded-2xl border-2 p-4 relative ${
-                        plan.popular ? "border-blue-400 bg-blue-50/30"
-                        : isCurrent ? "border-slate-300 bg-slate-50"
-                        : "border-slate-200"
-                      }`}
+                      key={planCode}
+                      className={`rounded-2xl border-2 p-4 relative ${isCurrent ? "border-slate-300 bg-slate-50" : "border-slate-200"}`}
                     >
-                      {plan.popular && (
-                        <span className="absolute -top-3 left-4 text-[10px] font-black bg-blue-500 text-white px-2.5 py-0.5 rounded-full">
-                          PALING POPULER
-                        </span>
-                      )}
                       <div className="flex items-start justify-between mb-3">
                         <div>
-                          <h3 className="font-black text-slate-800">{plan.name}</h3>
+                          <h3 className="font-black text-slate-800">{plan.label}</h3>
                           <p className="text-lg font-black text-slate-800">
-                            {plan.price}
-                            {plan.tier !== "free" && (
-                              <span className="text-xs font-semibold text-slate-400">/bln</span>
-                            )}
+                            {formatPrice(plan.price)}
+                            {plan.price > 0 && <span className="text-xs font-semibold text-slate-400">/bln</span>}
                           </p>
                         </div>
                         {isCurrent ? (
-                          <span className="text-[11px] font-black bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-xl">
-                            ✓ Aktif
-                          </span>
+                          <span className="text-[11px] font-black bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-xl">✓ Aktif</span>
                         ) : (
                           <button
-                            onClick={() => handleSwitchPlan(plan.tier)}
-                            disabled={switchingPlan !== null}
-                            className={`flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-xl text-white ${
-                              plan.tier === "free"
-                                ? "bg-slate-500 hover:bg-slate-600"
-                                : plan.tier === "growth"
-                                ? "bg-blue-500 hover:bg-blue-600"
-                                : "bg-violet-500 hover:bg-violet-600"
-                            } transition-colors disabled:opacity-60`}
-                            data-testid={`button-select-plan-${plan.tier}`}
+                            onClick={() => handlePurchase({ code: included[0] as EntitlementCode, label: plan.label, area: "", includedFromPlan: planCode, offerCode: null })}
+                            className="text-xs font-black px-3 py-1.5 rounded-xl text-white bg-violet-500 hover:bg-violet-600 transition-colors"
+                            data-testid={`button-select-plan-${planCode}`}
                           >
-                            {switchingPlan === plan.tier ? (
-                              <span className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                            ) : null}
-                            {switchingPlan === plan.tier ? "Memproses..." : "Pilih"}
+                            Pilih
                           </button>
                         )}
                       </div>
                       <div className="space-y-1.5">
-                        {plan.features.map((f) => (
-                          <div key={f} className="flex items-center gap-2">
-                            <CheckCircle2
-                              size={12}
-                              className={plan.popular ? "text-blue-500" : "text-slate-400"}
-                            />
-                            <span className="text-xs text-slate-600">{f}</span>
+                        {included.map((code) => (
+                          <div key={code} className="flex items-center gap-2">
+                            <CheckCircle2 size={12} className="text-slate-400" />
+                            <span className="text-xs text-slate-600">
+                              {ENTITLEMENT_CATALOG.entitlements[code]?.label ?? code}
+                            </span>
                           </div>
                         ))}
                       </div>

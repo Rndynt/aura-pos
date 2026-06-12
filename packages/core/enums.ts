@@ -152,7 +152,7 @@ export const FeatureCode = {
   KITCHEN_DISPLAY: 'kitchen_display',
   ORDER_NOTIFICATIONS: 'order_notifications',
   
-  // Kitchen ticket feature (synced with enable_kitchen_ticket module)
+  // Kitchen ticket descriptor (gated via restaurant_kitchen_ops entitlement)
   KITCHEN_TICKET: 'kitchen_ticket',
 
   // POS features

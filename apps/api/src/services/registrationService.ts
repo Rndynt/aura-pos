@@ -1,7 +1,12 @@
 import { eq, inArray, sql } from 'drizzle-orm';
 import type { BusinessType } from '@pos/core';
-import { getBusinessTypeTemplate } from '@pos/application/tenants';
-import { getBusinessTypeDefaultEntitlements, getPlanIncludedEntitlements } from '@pos/application/entitlements';
+import {
+  ENTITLEMENT_CATALOG,
+  getBusinessTypeDefaultEntitlements,
+  getPlanIncludedEntitlements,
+  type BusinessTypeCode,
+  type PlanCode,
+} from '@pos/application/entitlements';
 import { db } from '@pos/infrastructure/database';
 import {
   orderTypes,
@@ -267,9 +272,19 @@ export async function registerTenantOwner(
   try {
     return await deps.runTransaction(async (tx) => {
       const tenantId = deps.generateId();
-      const template = getBusinessTypeTemplate(businessType);
+      const businessTypeCode = businessType as BusinessTypeCode;
+      const businessTypeDef = ENTITLEMENT_CATALOG.businessTypes[businessTypeCode];
+      if (!businessTypeDef) {
+        throw new RegistrationError(
+          `Unknown business type: ${businessType}`,
+          'REGISTRATION_FAILED',
+          400,
+        );
+      }
 
-      const defaultPlan = template.tenantDefaults.plan_tier ?? DEFAULT_ONBOARDING_PLAN_TIER;
+      // BILLING SAFETY: tenants always start on the business type's default plan.
+      const defaultPlan: PlanCode = businessTypeDef.defaultPlan ?? DEFAULT_ONBOARDING_PLAN_TIER;
+      const onboardingOrderTypes = [...businessTypeDef.orderTypes];
 
       const [tenant] = await tx
         .insert(tenants)
@@ -279,7 +294,7 @@ export async function registerTenantOwner(
           slug: input.slug,
           businessName: input.businessName,
           businessType,
-          settings: template.tenantDefaults.settings,
+          settings: businessTypeDef.settings,
           planTier: defaultPlan,
           subscriptionStatus: 'active',
           timezone: input.timezone ?? 'Asia/Jakarta',
@@ -302,19 +317,22 @@ export async function registerTenantOwner(
         })
         .returning();
 
+      // Effective default entitlements are derived from the SOT at runtime;
+      // they are NOT persisted to tenant_entitlements. This list is returned
+      // for the onboarding response only.
       const featureCodes = [...new Set([
         ...getPlanIncludedEntitlements(defaultPlan),
-        ...getBusinessTypeDefaultEntitlements(businessType),
+        ...getBusinessTypeDefaultEntitlements(businessTypeCode),
       ])];
 
-      const orderTypeRows = template.orderTypes.length > 0
+      const orderTypeRows = onboardingOrderTypes.length > 0
         ? await tx
             .select({ id: orderTypes.id, code: orderTypes.code })
             .from(orderTypes)
-            .where(inArray(orderTypes.code, template.orderTypes))
+            .where(inArray(orderTypes.code, onboardingOrderTypes))
         : [];
       const foundOrderTypeCodes = new Set(orderTypeRows.map((orderType: { code: string }) => orderType.code));
-      const missingOrderTypes = template.orderTypes.filter((code) => !foundOrderTypeCodes.has(code));
+      const missingOrderTypes = onboardingOrderTypes.filter((code) => !foundOrderTypeCodes.has(code));
       if (missingOrderTypes.length > 0) {
         throw new RegistrationError(
           `Required order types are not seeded: ${missingOrderTypes.join(', ')}`,
@@ -401,7 +419,7 @@ export async function registerTenantOwner(
         ownerUserId,
         defaultOutletId: defaultOutlet.id,
         featureCodes,
-        orderTypeCodes: template.orderTypes,
+        orderTypeCodes: onboardingOrderTypes,
         catalogSeed: {
           categories: seededCategoryCount,
           products: seededProductCount,

@@ -119,10 +119,10 @@ function SidebarItem({
 
 export function Sidebar() {
   const [location, setLocation] = useLocation();
-  const { hasModule, isLoading } = useTenant();
+  const { can, isLoading } = useTenant();
 
-  const showTables  = !isLoading && hasModule("enable_table_management");
-  const showKitchen = !isLoading && hasModule("enable_kitchen_ticket");
+  const showTables  = !isLoading && can("restaurant_table_service");
+  const showKitchen = !isLoading && can("restaurant_kitchen_ops");
 
   const nav = (path: string) => setLocation(path);
   const isHub = ["/hub", "/dashboard", "/products", "/stock", "/reports", "/employees", "/store-profile"].some(p => location === p || location.startsWith(p));
@@ -194,10 +194,10 @@ export function Sidebar() {
 // ─── SidebarContent (used in mobile sheet/drawer if needed) ───────────────────
 export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
   const [location, setLocation] = useLocation();
-  const { hasModule, isLoading } = useTenant();
+  const { can, isLoading } = useTenant();
 
-  const showTables  = !isLoading && hasModule("enable_table_management");
-  const showKitchen = !isLoading && hasModule("enable_kitchen_ticket");
+  const showTables  = !isLoading && can("restaurant_table_service");
+  const showKitchen = !isLoading && can("restaurant_kitchen_ops");
 
   const nav = (path: string) => { setLocation(path); onItemClick?.(); };
   const isHub = ["/hub", "/dashboard", "/products", "/stock", "/reports", "/employees", "/store-profile"].some(p => location === p || location.startsWith(p));

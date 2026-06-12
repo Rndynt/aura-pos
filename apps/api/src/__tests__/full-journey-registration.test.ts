@@ -6,17 +6,16 @@ process.env.DATABASE_URL ||= 'postgres://user:pass@127.0.0.1:5432/aurapos_test';
 process.env.BETTER_AUTH_SECRET ||= 'test-secret-with-at-least-32-characters';
 
 const { registerTenantOwner, RegistrationError } = await import('../services/registrationService');
-const { BUSINESS_TYPE_TEMPLATES } = await import('@pos/application/tenants/businessTypeTemplates');
-const { ENTITLEMENT_CATALOG } = await import('@pos/application/entitlements');
-const { PLAN_FEATURE_MAP } = await import('../constants/planFeatureMap');
+const {
+  ENTITLEMENT_CATALOG,
+  getPlanIncludedEntitlements,
+} = await import('@pos/application/entitlements');
 const {
   orderTypes,
   outlets,
   productCategories,
   products,
   tenantEntitlements,
-  tenantFeatures,
-  tenantModuleConfigs,
   tenantOrderTypes,
   tenants,
   userOutletAssignments,
@@ -106,18 +105,25 @@ const BASE = {
   locale: 'id-ID',
 };
 
+// Tables that registration is allowed to write to. Legacy feature/module tables
+// no longer exist, so this set proves registration never re-introduces them.
+const ALLOWED_INSERT_TABLES = new Set<unknown>([
+  tenants, outlets, productCategories, products, tenantOrderTypes, userOutletAssignments,
+]);
+
 describe('Full registration journey — SOT entitlement onboarding', () => {
   for (const [businessType, catalogBusinessType] of Object.entries(ENTITLEMENT_CATALOG.businessTypes)) {
-    it(`${businessType}: completes registration using SOT defaults without old entitlement table inserts`, async () => {
+    it(`${businessType}: completes registration using SOT defaults without entitlement/feature/module inserts`, async () => {
       const fake = createFake([...catalogBusinessType.orderTypes]);
       const result = await registerTenantOwner({ ...BASE, slug: businessType.toLowerCase().replaceAll('_', '-'), businessType: businessType as any }, fake.deps);
       const tenantInsert = fake.inserts.find((op) => op.table === tenants);
 
       assert.equal(tenantInsert?.values.planTier, catalogBusinessType.defaultPlan);
       assert.equal(tenantInsert?.values.subscriptionStatus, 'active');
-      assert.equal(fake.inserts.some((op) => op.table === tenantFeatures), false);
-      assert.equal(fake.inserts.some((op) => op.table === tenantModuleConfigs), false);
       assert.equal(fake.inserts.some((op) => op.table === tenantEntitlements), false);
+      for (const op of fake.inserts) {
+        assert.equal(ALLOWED_INSERT_TABLES.has(op.table), true, 'registration inserted into an unexpected table');
+      }
       assert.deepEqual(result.orderTypeCodes, [...catalogBusinessType.orderTypes]);
       assert.equal(result.featureCodes.includes('inventory_basic_stock'), true);
       assert.equal(fake.inserts.some((op) => op.table === tenantOrderTypes), true);
@@ -149,20 +155,12 @@ describe('Full registration journey — SOT entitlement onboarding', () => {
   });
 });
 
-describe('BUSINESS_TYPE_TEMPLATES and PLAN_FEATURE_MAP wrappers', () => {
-  it('business type templates mirror the entitlement catalog', () => {
-    for (const [businessType, template] of Object.entries(BUSINESS_TYPE_TEMPLATES)) {
-      const catalogBusinessType = ENTITLEMENT_CATALOG.businessTypes[businessType as keyof typeof ENTITLEMENT_CATALOG.businessTypes];
-      assert.equal(template.tenantDefaults.plan_tier, catalogBusinessType.defaultPlan);
-      assert.deepEqual(template.defaultEntitlements, [...catalogBusinessType.defaultEntitlements]);
-      assert.deepEqual(template.recommendedEntitlements, [...catalogBusinessType.recommendedEntitlements]);
-      assert.deepEqual(template.orderTypes, [...catalogBusinessType.orderTypes]);
-    }
-  });
-
-  it('plan feature wrapper remains cumulative for old callers', () => {
-    for (const code of PLAN_FEATURE_MAP.starter) assert.equal(PLAN_FEATURE_MAP.growth.includes(code), true);
-    for (const code of PLAN_FEATURE_MAP.growth) assert.equal(PLAN_FEATURE_MAP.pro.includes(code), true);
-    assert.equal(PLAN_FEATURE_MAP.free, PLAN_FEATURE_MAP.starter);
+describe('Entitlement SOT cumulative plan inclusion', () => {
+  it('higher plans include every entitlement of lower plans (cumulative)', () => {
+    const starter = getPlanIncludedEntitlements('starter');
+    const growth = getPlanIncludedEntitlements('growth');
+    const pro = getPlanIncludedEntitlements('pro');
+    for (const code of starter) assert.equal(growth.includes(code), true);
+    for (const code of growth) assert.equal(pro.includes(code), true);
   });
 });

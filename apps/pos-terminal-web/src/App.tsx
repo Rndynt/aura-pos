@@ -185,14 +185,16 @@ const NotFoundWithLayout = () => (
 );
 
 function ProtectedKitchenRoute() {
-  const { hasModule } = useTenant();
-  return hasModule("enable_kitchen_ticket") ? <KitchenDisplayPageWithLayout /> : <NotFoundWithLayout />;
+  const { can, isLoading } = useTenant();
+  if (isLoading) return null;
+  return can("restaurant_kitchen_ops") ? <KitchenDisplayPageWithLayout /> : <NotFoundWithLayout />;
 }
 
 
 function ProtectedTablesRoute() {
-  const { hasModule } = useTenant();
-  return hasModule("enable_table_management") ? <TablesManagementPageWithLayout /> : <NotFoundWithLayout />;
+  const { can, isLoading } = useTenant();
+  if (isLoading) return null;
+  return can("restaurant_table_service") ? <TablesManagementPageWithLayout /> : <NotFoundWithLayout />;
 }
 
 const OFFLINE_SESSION_KEY = "aurapos_session_cached";

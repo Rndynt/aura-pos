@@ -1,6 +1,5 @@
 import { nanoid } from "nanoid";
 import type { Product, ProductVariant } from "@pos/domain/catalog/types";
-import type { Feature } from "@pos/domain/tenants/types";
 
 // Product images - import from generated assets
 import burgerImg from "@assets/generated_images/Gourmet_beef_burger_product_photo_df61270b.png";
@@ -130,94 +129,6 @@ export const mockProducts: Product[] = [
   },
 ];
 
-// Mock features catalog //todo: remove mock functionality
-type PricedFeature = Feature & { price?: number };
-
-export const featuresCatalog: PricedFeature[] = [
-  {
-    code: "receipt_compact",
-    name: "Compact Receipt",
-    description: "Print smaller, eco-friendly receipts",
-    type: "one_time",
-    group: "printing",
-    price: 50000,
-  },
-  {
-    code: "remove_watermark",
-    name: "Remove Watermark",
-    description: "Remove branding from receipts",
-    type: "one_time",
-    group: "printing",
-    price: 75000,
-  },
-  {
-    code: "kitchen_ticket",
-    name: "Kitchen Ticket",
-    description: "Send orders directly to kitchen printer",
-    type: "one_time",
-    group: "kitchen",
-    price: 100000,
-  },
-  {
-    code: "partial_payment",
-    name: "Partial Payment / DP",
-    description: "Accept down payments for orders",
-    type: "one_time",
-    group: "pos",
-    price: 60000,
-  },
-  {
-    code: "queue_number",
-    name: "Queue Number",
-    description: "Generate queue numbers for orders",
-    type: "one_time",
-    group: "pos",
-    price: 40000,
-  },
-  {
-    code: "report_history_12m",
-    name: "12 Month Report History",
-    description: "Access sales reports up to 12 months",
-    type: "subscription",
-    group: "reporting",
-    price: 150000,
-  },
-  {
-    code: "products_unlimited",
-    name: "Unlimited Products",
-    description: "Add unlimited products to your catalog",
-    type: "subscription",
-    group: "pos",
-    price: 100000,
-  },
-  {
-    code: "product_variants",
-    name: "Product Variants",
-    description: "Add size, color variations to products",
-    type: "one_time",
-    group: "pos",
-    price: 80000,
-  },
-  {
-    code: "multi_device_pos",
-    name: "Multi Device POS",
-    description: "Use POS on multiple devices simultaneously",
-    type: "subscription",
-    group: "ui",
-    price: 200000,
-  },
-];
-
-// Helper to get active features (initially some are active for demo) //todo: remove mock functionality
-export const getActiveFeatures = (): PricedFeature[] => {
-  // For demo purposes, activate some features by default
-  const activeCodes = ["product_variants", "kitchen_ticket"];
-  return featuresCatalog.filter((f) => activeCodes.includes(f.code));
-};
-
-export const hasFeature = (features: Feature[], code: string): boolean => {
-  return features.some((f) => f.code === code);
-};
 
 export const categories = [
   "Popular",

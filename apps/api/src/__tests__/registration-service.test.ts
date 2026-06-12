@@ -6,7 +6,6 @@ process.env.DATABASE_URL ||= 'postgres://user:pass@127.0.0.1:5432/aurapos_test';
 process.env.BETTER_AUTH_SECRET ||= 'test-secret-with-at-least-32-characters';
 
 const { registerTenantOwner } = await import('../services/registrationService');
-const { BUSINESS_TYPE_TEMPLATES } = await import('@pos/application/tenants/businessTypeTemplates');
 const { ENTITLEMENT_CATALOG, getBusinessTypeDefaultEntitlements } = await import('@pos/application/entitlements');
 const {
   orderTypes,
@@ -14,8 +13,6 @@ const {
   productCategories,
   products,
   tenantEntitlements,
-  tenantFeatures,
-  tenantModuleConfigs,
   tenantOrderTypes,
   tenants,
   userOutletAssignments,
@@ -103,21 +100,14 @@ function createFakeDeps(options: FakeRegistrationOptions = {}) {
   return { deps, inserts, updates, cleanupAuthUsers, cleanupTenants };
 }
 
-describe('BUSINESS_TYPE_TEMPLATES compatibility wrapper', () => {
-  for (const [businessType, template] of Object.entries(BUSINESS_TYPE_TEMPLATES)) {
-    it(`${businessType}: derives defaults from entitlement catalog`, () => {
-      const catalogBusinessType = ENTITLEMENT_CATALOG.businessTypes[businessType as keyof typeof ENTITLEMENT_CATALOG.businessTypes];
-      assert.equal(template.tenantDefaults.plan_tier, catalogBusinessType.defaultPlan);
-      assert.deepEqual(template.defaultEntitlements, [...catalogBusinessType.defaultEntitlements]);
-      assert.deepEqual(template.recommendedEntitlements, [...catalogBusinessType.recommendedEntitlements]);
-      assert.deepEqual(template.orderTypes, [...catalogBusinessType.orderTypes]);
-      assert.equal(getBusinessTypeDefaultEntitlements(businessType as any).includes('inventory_basic_stock'), true);
-    });
-  }
-});
+// Tables that registration is allowed to write to. Legacy feature/module tables
+// no longer exist, so this set proves registration never re-introduces them.
+const ALLOWED_INSERT_TABLES = new Set<unknown>([
+  tenants, outlets, productCategories, products, tenantOrderTypes, userOutletAssignments,
+]);
 
 describe('registerTenantOwner — SOT entitlement onboarding', () => {
-  it('creates tenant, default outlet, order types, catalog, owner link, and no old entitlement table inserts', async () => {
+  it('creates tenant, default outlet, order types, catalog, owner link, and no entitlement/feature/module inserts', async () => {
     const fake = createFakeDeps();
     const result = await registerTenantOwner(baseInput, fake.deps);
 
@@ -126,9 +116,15 @@ describe('registerTenantOwner — SOT entitlement onboarding', () => {
     assert.equal(tenantInsert?.values.businessType, 'CAFE_RESTAURANT');
     assert.equal(tenantInsert?.values.subscriptionStatus, 'active');
 
-    assert.equal(fake.inserts.some((op) => op.table === tenantFeatures), false, 'registration must not insert tenant_features');
-    assert.equal(fake.inserts.some((op) => op.table === tenantModuleConfigs), false, 'registration must not insert tenant_module_configs');
-    assert.equal(fake.inserts.some((op) => op.table === tenantEntitlements), false, 'registration must not persist plan/business defaults as tenant_entitlements');
+    // Registration must NOT persist plan/business default entitlements anywhere.
+    assert.equal(
+      fake.inserts.some((op) => op.table === tenantEntitlements), false,
+      'registration must not persist plan/business defaults as tenant_entitlements',
+    );
+    // Registration must only touch the allowed tables (no legacy feature/module tables).
+    for (const op of fake.inserts) {
+      assert.equal(ALLOWED_INSERT_TABLES.has(op.table), true, 'registration inserted into an unexpected table');
+    }
 
     assert.equal(result.featureCodes.includes('inventory_basic_stock'), true);
     assert.equal(result.orderTypeCodes.join(','), 'DINE_IN,TAKE_AWAY,DELIVERY');
@@ -138,15 +134,18 @@ describe('registerTenantOwner — SOT entitlement onboarding', () => {
   });
 
   for (const [businessType, catalogBusinessType] of Object.entries(ENTITLEMENT_CATALOG.businessTypes)) {
-    it(`${businessType}: inserted tenant uses SOT defaultPlan and no old entitlement tables`, async () => {
+    it(`${businessType}: inserted tenant uses SOT defaultPlan and persists no entitlement rows`, async () => {
       const fake = createFakeDeps({ availableOrderTypeCodes: [...catalogBusinessType.orderTypes] });
       const result = await registerTenantOwner({ ...baseInput, businessType: businessType as any }, fake.deps);
       const tenantInsert = fake.inserts.find((op) => op.table === tenants);
 
       assert.equal(tenantInsert?.values.planTier, catalogBusinessType.defaultPlan);
-      assert.equal(fake.inserts.some((op) => op.table === tenantFeatures), false);
-      assert.equal(fake.inserts.some((op) => op.table === tenantModuleConfigs), false);
+      assert.equal(fake.inserts.some((op) => op.table === tenantEntitlements), false);
       assert.equal(result.featureCodes.includes('inventory_basic_stock'), true);
+      assert.equal(
+        getBusinessTypeDefaultEntitlements(businessType as any).includes('inventory_basic_stock'),
+        true,
+      );
     });
   }
 });

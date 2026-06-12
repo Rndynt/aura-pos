@@ -1,21 +1,10 @@
 /**
- * Entitlement catalog integrity tests
+ * Entitlement SOT integrity tests (frontend view).
  *
- * Pure-logic tests for featureCatalog.ts — the single source of truth
- * for plan-tier gating on the frontend. No React, no network, no DB.
- *
- * Covers:
- *  - planAllows() correctness across all tier combinations
- *  - PLAN_RANK ordering (free < growth < pro)
- *  - No duplicate moduleKey / featureCode in catalogs
- *  - All entries have a valid PlanTier value
- *  - Free-tier modules: only enable_inventory
- *  - Pro-tier modules: only enable_multi_location
- *  - Growth modules include all expected POS modules
- *  - Free features match the API's PLAN_FEATURE_MAP.free
- *  - MODULE_REQUIRED_PLAN and FEATURE_REQUIRED_PLAN lookups are correct
- *  - Every marketplace.tsx module key appears in MODULE_CATALOG_DATA
- *  - Every marketplace.tsx feature code appears in FEATURE_CATALOG_DATA
+ * The frontend has NO independent plan/module/feature catalog. These tests
+ * assert directly against the shared single source of truth:
+ *   packages/application/entitlements/entitlementCatalog.ts
+ * and the entitlement engine that derives effective entitlements.
  */
 
 import assert from 'node:assert/strict';
@@ -24,254 +13,131 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { register } from 'tsconfig-paths';
 
-// ─── Path setup (resolve @/ alias for frontend source) ───────────────────────
+// ─── Path setup (resolve @pos/* aliases) ─────────────────────────────────────
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir   = path.resolve(__dirname, '../../../../../');
 register({
   baseUrl: rootDir,
   paths: {
-    '@pos/core':           ['packages/core'],
-    '@pos/core/*':         ['packages/core/*'],
-    '@pos/domain':         ['packages/domain'],
-    '@pos/domain/*':       ['packages/domain/*'],
-    '@pos/application':    ['packages/application'],
-    '@pos/application/*':  ['packages/application/*'],
-    '@pos/infrastructure': ['packages/infrastructure'],
+    '@pos/core':            ['packages/core'],
+    '@pos/core/*':          ['packages/core/*'],
+    '@pos/domain':          ['packages/domain'],
+    '@pos/domain/*':        ['packages/domain/*'],
+    '@pos/application':     ['packages/application'],
+    '@pos/application/*':   ['packages/application/*'],
+    '@pos/infrastructure':  ['packages/infrastructure'],
     '@pos/infrastructure/*':['packages/infrastructure/*'],
   },
 });
 
-// Import using relative path (no @/ alias needed — same package)
 const {
-  PLAN_RANK, planAllows,
-  MODULE_CATALOG_DATA, MODULE_REQUIRED_PLAN,
-  FEATURE_CATALOG_DATA, FEATURE_REQUIRED_PLAN,
-} = await import('../lib/featureCatalog.js');
+  ENTITLEMENT_CATALOG,
+  getPlanIncludedEntitlements,
+  getEffectiveEntitlements,
+  canPurchaseOffer,
+} = await import('@pos/application/entitlements');
 
-const VALID_TIERS = new Set(['free', 'growth', 'pro']);
+// Allowed Phase 1B commercial entitlement list (must stay exactly this set).
+const COMMERCIAL_CODES = [
+  'inventory_basic_stock',
+  'inventory_advanced_stock',
+  'payments_partial_payment',
+  'payments_multi_payment',
+  'payments_split_payment',
+  'receipt_compact',
+  'orders_queue',
+  'restaurant_table_service',
+  'restaurant_kitchen_ops',
+  'reports_advanced',
+  'reports_export',
+  'multi_location',
+  'hardware_label_printer',
+  'hardware_barcode_scanner',
+  'integrations_payment_gateway',
+  'integrations_accounting',
+  'integrations_webhook',
+  'integrations_api_access',
+];
 
-// ─── planAllows() ─────────────────────────────────────────────────────────────
+const REMOVED_BASE_CODES = [
+  'orders_open_order', 'orders_cancel', 'orders_void', 'orders_refund',
+  'catalog_products', 'catalog_categories', 'catalog_variants', 'catalog_options',
+  'catalog_sku', 'catalog_barcode', 'payments_cash', 'payments_manual_qris',
+  'payments_manual_bank_transfer', 'receipt_standard', 'receipt_reprint',
+  'inventory_stock_adjustment', 'inventory_stock_movement_history', 'inventory_stock_opname',
+  'inventory_stock_transfer', 'inventory_low_stock_alert', 'inventory_reports',
+  'hardware_receipt_printer', 'hardware_cash_drawer',
+];
 
-describe('planAllows()', () => {
-  const cases: [string, string, boolean][] = [
-    ['free',   'free',   true],
-    ['free',   'growth', false],
-    ['free',   'pro',    false],
-    ['growth', 'free',   true],
-    ['growth', 'growth', true],
-    ['growth', 'pro',    false],
-    ['pro',    'free',   true],
-    ['pro',    'growth', true],
-    ['pro',    'pro',    true],
-  ];
-  for (const [tenant, required, expected] of cases) {
-    it(`planAllows(${tenant}, ${required}) → ${expected}`, () => {
-      assert.equal(planAllows(tenant as any, required as any), expected);
+describe('Entitlement catalog is the only commercial SOT', () => {
+  it('contains exactly the Phase 1B commercial entitlement list', () => {
+    assert.deepEqual(
+      Object.keys(ENTITLEMENT_CATALOG.entitlements).sort(),
+      [...COMMERCIAL_CODES].sort(),
+    );
+  });
+
+  it('does not contain any base operation codes', () => {
+    for (const code of REMOVED_BASE_CODES) {
+      assert.equal(code in ENTITLEMENT_CATALOG.entitlements, false, `base code '${code}' must not be a commercial entitlement`);
+    }
+  });
+
+  it('plan codes are starter/growth/pro with strictly increasing sortOrder', () => {
+    const plans = Object.entries(ENTITLEMENT_CATALOG.plans)
+      .sort((a, b) => a[1].sortOrder - b[1].sortOrder)
+      .map(([code]) => code);
+    assert.deepEqual(plans, ['starter', 'growth', 'pro']);
+  });
+});
+
+describe('Cumulative plan inclusion', () => {
+  it('starter ⊆ growth ⊆ pro', () => {
+    const starter = getPlanIncludedEntitlements('starter');
+    const growth = getPlanIncludedEntitlements('growth');
+    const pro = getPlanIncludedEntitlements('pro');
+    for (const code of starter) assert.ok(growth.includes(code), `${code} must remain on growth`);
+    for (const code of growth) assert.ok(pro.includes(code), `${code} must remain on pro`);
+  });
+
+  it('pro grants Starter + Growth + Pro entitlements', () => {
+    const pro = getPlanIncludedEntitlements('pro');
+    assert.ok(pro.includes('inventory_basic_stock'));   // starter
+    assert.ok(pro.includes('restaurant_kitchen_ops'));  // growth
+    assert.ok(pro.includes('multi_location'));          // pro
+  });
+});
+
+describe('Effective entitlements + grants', () => {
+  it('new starter RETAIL_MINIMARKET tenant gets inventory_basic_stock without a grant row', async () => {
+    const eff = await getEffectiveEntitlements({ planCode: 'starter', businessType: 'RETAIL_MINIMARKET' });
+    assert.equal(eff.has('inventory_basic_stock'), true);
+  });
+
+  it('expired grant does not grant access', async () => {
+    const eff = await getEffectiveEntitlements({
+      planCode: 'starter',
+      grants: [{ entitlementCode: 'inventory_advanced_stock', status: 'active', expiresAt: '2000-01-01T00:00:00.000Z' }],
     });
-  }
-});
-
-// ─── PLAN_RANK ordering ───────────────────────────────────────────────────────
-
-describe('PLAN_RANK ordering', () => {
-  it('free < growth < pro', () => {
-    assert.ok(PLAN_RANK.free < PLAN_RANK.growth, 'free must rank lower than growth');
-    assert.ok(PLAN_RANK.growth < PLAN_RANK.pro,  'growth must rank lower than pro');
+    assert.equal(eff.has('inventory_advanced_stock'), false);
   });
 
-  it('all three tiers have distinct ranks', () => {
-    const ranks = [PLAN_RANK.free, PLAN_RANK.growth, PLAN_RANK.pro];
-    assert.equal(new Set(ranks).size, 3, 'all three tier ranks must be distinct');
+  it('cancelled grant does not grant access', async () => {
+    const eff = await getEffectiveEntitlements({
+      planCode: 'starter',
+      grants: [{ entitlementCode: 'inventory_advanced_stock', status: 'cancelled' }],
+    });
+    assert.equal(eff.has('inventory_advanced_stock'), false);
   });
 });
 
-// ─── MODULE_CATALOG_DATA integrity ───────────────────────────────────────────
-
-describe('MODULE_CATALOG_DATA integrity', () => {
-  it('has at least one entry', () => {
-    assert.ok(MODULE_CATALOG_DATA.length > 0);
+describe('Offer purchase rules', () => {
+  it('an entitlement already included by the plan cannot be purchased again', () => {
+    // pro already includes inventory_advanced_stock → its add-on offer must be unpurchasable on pro.
+    assert.equal(canPurchaseOffer({ offerCode: 'inventory_advanced_stock_addon', planCode: 'pro' }), false);
   });
 
-  it('no duplicate moduleKey', () => {
-    const seen = new Set<string>();
-    for (const entry of MODULE_CATALOG_DATA) {
-      assert.ok(!seen.has(entry.moduleKey), `duplicate moduleKey: '${entry.moduleKey}'`);
-      seen.add(entry.moduleKey);
-    }
-  });
-
-  it('all requiredPlan values are valid PlanTier strings', () => {
-    for (const entry of MODULE_CATALOG_DATA) {
-      assert.ok(VALID_TIERS.has(entry.requiredPlan),
-        `moduleKey '${entry.moduleKey}' has invalid requiredPlan: '${entry.requiredPlan}'`);
-    }
-  });
-
-  it('enable_inventory is the only free-tier module', () => {
-    const freeModules = MODULE_CATALOG_DATA.filter(m => m.requiredPlan === 'free');
-    assert.equal(freeModules.length, 1, `expected exactly 1 free module, got ${freeModules.length}: ${freeModules.map(m => m.moduleKey).join(', ')}`);
-    assert.equal(freeModules[0].moduleKey, 'enable_inventory');
-  });
-
-  it('enable_multi_location is the only pro-tier module', () => {
-    const proModules = MODULE_CATALOG_DATA.filter(m => m.requiredPlan === 'pro');
-    assert.equal(proModules.length, 1, `expected exactly 1 pro module, got ${proModules.length}: ${proModules.map(m => m.moduleKey).join(', ')}`);
-    assert.equal(proModules[0].moduleKey, 'enable_multi_location');
-  });
-
-  it('growth modules include the expected POS modules', () => {
-    const growthKeys = new Set(MODULE_CATALOG_DATA.filter(m => m.requiredPlan === 'growth').map(m => m.moduleKey));
-    const expected = [
-      'enable_table_management', 'enable_kitchen_ticket', 'enable_loyalty',
-      'enable_delivery', 'enable_appointments', 'enable_inventory_advanced',
-    ];
-    for (const key of expected) {
-      assert.ok(growthKeys.has(key), `expected growth module '${key}' is missing from MODULE_CATALOG_DATA`);
-    }
-  });
-
-  it('every moduleKey has a corresponding moduleConfigKey', () => {
-    for (const entry of MODULE_CATALOG_DATA) {
-      assert.ok(entry.moduleConfigKey && entry.moduleConfigKey.length > 0,
-        `moduleKey '${entry.moduleKey}' is missing moduleConfigKey`);
-    }
-  });
-
-  it('moduleConfigKey values are camelCase (no underscores)', () => {
-    for (const entry of MODULE_CATALOG_DATA) {
-      assert.ok(!entry.moduleConfigKey.includes('_'),
-        `moduleConfigKey '${entry.moduleConfigKey}' should be camelCase (no underscores)`);
-    }
-  });
-});
-
-// ─── FEATURE_CATALOG_DATA integrity ──────────────────────────────────────────
-
-describe('FEATURE_CATALOG_DATA integrity', () => {
-  it('has at least one entry', () => {
-    assert.ok(FEATURE_CATALOG_DATA.length > 0);
-  });
-
-  it('no duplicate featureCode', () => {
-    const seen = new Set<string>();
-    for (const entry of FEATURE_CATALOG_DATA) {
-      assert.ok(!seen.has(entry.featureCode), `duplicate featureCode: '${entry.featureCode}'`);
-      seen.add(entry.featureCode);
-    }
-  });
-
-  it('all requiredPlan values are valid PlanTier strings', () => {
-    for (const entry of FEATURE_CATALOG_DATA) {
-      assert.ok(VALID_TIERS.has(entry.requiredPlan),
-        `featureCode '${entry.featureCode}' has invalid requiredPlan: '${entry.requiredPlan}'`);
-    }
-  });
-
-  it('contains the 6 core free features', () => {
-    const freeCodes = new Set(FEATURE_CATALOG_DATA.filter(f => f.requiredPlan === 'free').map(f => f.featureCode));
-    const expected = ['product_variants','partial_payment','discounts','order_queue','receipt_printer','sales_reports'];
-    for (const code of expected) {
-      assert.ok(freeCodes.has(code), `expected free feature '${code}' is missing from FEATURE_CATALOG_DATA`);
-    }
-  });
-
-  it('contains growth features from the marketplace', () => {
-    const growthCodes = new Set(FEATURE_CATALOG_DATA.filter(f => f.requiredPlan === 'growth').map(f => f.featureCode));
-    const expected = [
-      'order_notifications', 'label_printer', 'barcode_scanner', 'analytics_dashboard',
-      'accounting_sync', 'dark_mode', 'custom_branding',
-      'kitchen_ticket', 'kitchen_display', 'kitchen_printer',
-      'inventory_tracking', 'inventory_reports',
-    ];
-    for (const code of expected) {
-      assert.ok(growthCodes.has(code), `expected growth feature '${code}' is missing from FEATURE_CATALOG_DATA`);
-    }
-  });
-
-  it('contains pro features from the marketplace', () => {
-    const proCodes = new Set(FEATURE_CATALOG_DATA.filter(f => f.requiredPlan === 'pro').map(f => f.featureCode));
-    const expected = ['payment_gateway','api_integration','online_booking','calendar_sync'];
-    for (const code of expected) {
-      assert.ok(proCodes.has(code), `expected pro feature '${code}' is missing from FEATURE_CATALOG_DATA`);
-    }
-  });
-});
-
-// ─── MODULE_REQUIRED_PLAN lookup ─────────────────────────────────────────────
-
-describe('MODULE_REQUIRED_PLAN lookup', () => {
-  it('returns growth for enable_table_management', () => {
-    assert.equal(MODULE_REQUIRED_PLAN['enable_table_management'], 'growth');
-  });
-  it('returns growth for enable_kitchen_ticket', () => {
-    assert.equal(MODULE_REQUIRED_PLAN['enable_kitchen_ticket'], 'growth');
-  });
-  it('returns free for enable_inventory', () => {
-    assert.equal(MODULE_REQUIRED_PLAN['enable_inventory'], 'free');
-  });
-  it('returns pro for enable_multi_location', () => {
-    assert.equal(MODULE_REQUIRED_PLAN['enable_multi_location'], 'pro');
-  });
-  it('covers every moduleKey in MODULE_CATALOG_DATA', () => {
-    for (const entry of MODULE_CATALOG_DATA) {
-      assert.equal(MODULE_REQUIRED_PLAN[entry.moduleKey], entry.requiredPlan,
-        `MODULE_REQUIRED_PLAN['${entry.moduleKey}'] should be '${entry.requiredPlan}'`);
-    }
-  });
-});
-
-// ─── FEATURE_REQUIRED_PLAN lookup ────────────────────────────────────────────
-
-describe('FEATURE_REQUIRED_PLAN lookup', () => {
-  it('returns free for product_variants', () => {
-    assert.equal(FEATURE_REQUIRED_PLAN['product_variants'], 'free');
-  });
-  it('returns free for receipt_printer', () => {
-    assert.equal(FEATURE_REQUIRED_PLAN['receipt_printer'], 'free');
-  });
-  it('returns growth for analytics_dashboard', () => {
-    assert.equal(FEATURE_REQUIRED_PLAN['analytics_dashboard'], 'growth');
-  });
-  it('returns growth for kitchen_ticket', () => {
-    assert.equal(FEATURE_REQUIRED_PLAN['kitchen_ticket'], 'growth');
-  });
-  it('returns pro for payment_gateway', () => {
-    assert.equal(FEATURE_REQUIRED_PLAN['payment_gateway'], 'pro');
-  });
-  it('covers every featureCode in FEATURE_CATALOG_DATA', () => {
-    for (const entry of FEATURE_CATALOG_DATA) {
-      assert.equal(FEATURE_REQUIRED_PLAN[entry.featureCode], entry.requiredPlan,
-        `FEATURE_REQUIRED_PLAN['${entry.featureCode}'] should be '${entry.requiredPlan}'`);
-    }
-  });
-});
-
-// ─── Cross-check: catalog vs API planFeatureMap ───────────────────────────────
-// featureCatalog.ts is the frontend source of truth.
-// Its free-tier features must match the API's PLAN_FEATURE_MAP.free
-// (the API uses PLAN_FEATURE_MAP for server-side validation).
-
-const API_FREE_FEATURES = new Set([
-  'product_variants', 'partial_payment', 'discounts',
-  'order_queue', 'receipt_printer', 'sales_reports',
-]);
-
-describe('Cross-check: free features in catalog match API PLAN_FEATURE_MAP.free', () => {
-  const catalogFreeCodes = new Set(
-    FEATURE_CATALOG_DATA.filter(f => f.requiredPlan === 'free').map(f => f.featureCode),
-  );
-
-  it('every API free feature is in the frontend catalog as free', () => {
-    for (const code of API_FREE_FEATURES) {
-      assert.ok(catalogFreeCodes.has(code),
-        `API PLAN_FEATURE_MAP.free has '${code}' but featureCatalog.ts does not mark it as free`);
-    }
-  });
-
-  it('every catalog free feature is in the API free list', () => {
-    for (const code of catalogFreeCodes) {
-      assert.ok(API_FREE_FEATURES.has(code),
-        `featureCatalog.ts marks '${code}' as free but it is NOT in API PLAN_FEATURE_MAP.free`);
-    }
+  it('an add-on is purchasable when plan meets requiredPlan and lacks the entitlement', () => {
+    assert.equal(canPurchaseOffer({ offerCode: 'inventory_advanced_stock_addon', planCode: 'growth' }), true);
   });
 });

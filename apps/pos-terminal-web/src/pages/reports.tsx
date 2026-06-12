@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { List, Download, Printer } from "lucide-react";
-import { useFeatures } from "@/hooks/useFeatures";
 import { FeatureGate } from "@/components/ui/FeatureGate";
 import { CustomSelect, PageHeader } from "@/components/design";
 import { useOrders } from "@/hooks/api/useOrders";
@@ -48,8 +47,9 @@ function norm(o: any) {
 const ReportsPage = () => {
   const [, setLocation] = useLocation();
   const [period, setPeriod] = useState<PeriodLabel>("Hari Ini");
-  const { hasFeature } = useFeatures();
-  const hasSalesReports = hasFeature("sales_reports");
+  // Standard sales reports are base behavior — always available (advanced/export
+  // reporting is gated separately via reports_advanced / reports_export).
+  const hasSalesReports = true;
 
   const { startDate, endDate } = useMemo(() => getPeriodRange(period), [period]);
   const { data: orderRes, isLoading } = useOrders({ startDate, endDate, limit: 1000 });

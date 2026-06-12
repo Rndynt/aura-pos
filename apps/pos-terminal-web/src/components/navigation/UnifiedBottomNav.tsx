@@ -9,10 +9,10 @@ interface UnifiedBottomNavProps {
 
 export function UnifiedBottomNav({ cartCount, onCartClick }: UnifiedBottomNavProps) {
   const [location, setLocation] = useLocation();
-  const { hasModule, isLoading } = useTenant();
+  const { can, isLoading } = useTenant();
   // Guard with isLoading so conditional tabs never flash from stale/wrong-tenant cache
-  const isKitchenEnabled = !isLoading && hasModule("enable_kitchen_ticket");
-  const isTablesEnabled  = !isLoading && hasModule("enable_table_management");
+  const isKitchenEnabled = !isLoading && can("restaurant_kitchen_ops");
+  const isTablesEnabled  = !isLoading && can("restaurant_table_service");
 
   const isActive = (path: string) =>
     path === "/" ? location === "/" : location.startsWith(path);

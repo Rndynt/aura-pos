@@ -6,7 +6,7 @@ import { OrderRepository } from "@pos/infrastructure/repositories/orders/OrderRe
 import { ListTables } from "@pos/application/seating/ListTables";
 import { UpdateTableStatus } from "@pos/application/seating/UpdateTableStatus";
 import type { InsertTable } from "@pos/infrastructure/db/schema";
-import { requireModule } from "../middleware/featureGuard";
+import { requireEntitlement } from "../middleware/entitlementGuard";
 
 const VALID_TABLE_STATUSES = ["available", "occupied", "reserved", "maintenance", "cleaning"] as const;
 
@@ -45,7 +45,7 @@ export function createTablesRouter(db: Database): Router {
   const tableRepository = new TableRepository(db);
   const orderRepository = new OrderRepository(db);
 
-  router.use(requireModule('enableTableManagement'));
+  router.use(requireEntitlement('restaurant_table_service'));
 
   router.get("/", async (req: Request, res: Response) => {
     try {

@@ -8,7 +8,6 @@ import * as TenantsController from '../controllers/TenantsController';
 import { db } from '@pos/infrastructure/database';
 import { tenants } from '@pos/infrastructure/db/schema';
 import { eq } from 'drizzle-orm';
-import { requireOwner, requireManager } from '../middleware/rbac';
 
 const router = Router();
 
@@ -30,25 +29,13 @@ router.get('/by-slug/:slug', async (req, res) => {
   }
 });
 
-// POST /api/tenants/register - Create new tenant with business type
+// POST /api/tenants/register - Deprecated; use POST /api/register
 router.post('/register', TenantsController.registerTenant);
 
-// GET /api/tenants/profile - Get tenant profile with modules
+// GET /api/tenants/profile - Tenant profile + effective entitlements + catalog
 router.get('/profile', TenantsController.getTenantProfile);
 
-// GET /api/tenants/features - Get active features
-router.get('/features', TenantsController.getActiveFeatures);
-
-// PATCH /api/tenants/modules - Update module config flags (owner only)
-router.patch('/modules', requireOwner, TenantsController.updateModuleConfig);
-
-// PATCH /api/tenants/plan - Switch subscription plan tier (owner only)
-router.patch('/plan', requireOwner, TenantsController.updatePlanTier);
-
-// POST /api/tenants/features/toggle - Toggle a single feature on/off (owner only)
-router.post('/features/toggle', requireOwner, TenantsController.toggleFeature);
-
-// POST /api/tenants/features/check - Check feature access
-router.post('/features/check', TenantsController.checkFeatureAccess);
+// GET /api/tenants/entitlements - Effective entitlement map only
+router.get('/entitlements', TenantsController.getTenantEntitlements);
 
 export default router;

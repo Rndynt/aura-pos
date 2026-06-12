@@ -1,323 +1,166 @@
 /**
- * Hub & Sidebar gating tests
+ * Hub / Sidebar / bottom-nav / page-guard gating tests — entitlement edition.
  *
- * Simulates the exact visibility logic used by:
- *  - home.tsx    (hub management grid)
- *  - Sidebar.tsx (desktop nav)
- *  - UnifiedBottomNav.tsx (mobile nav)
+ * Mirrors the exact visibility logic now used by the React components, which is
+ * driven solely by effective entitlement codes via `useTenant().can(code)`:
+ *  - home.tsx           (hub management grid)
+ *  - Sidebar.tsx        (desktop nav)
+ *  - UnifiedBottomNav   (mobile nav)
+ *  - App.tsx            (route guards)
+ *  - stock.tsx          (inventory tab gating)
  *
- * Uses the same planAllows / MODULE_REQUIRED_PLAN / FEATURE_REQUIRED_PLAN
- * from featureCatalog.ts — tests are kept pure (no React, no network).
- *
- * Scenarios per plan + module config + feature list:
- *  - Hub: analytics dashboard, tables tile, kitchen tile, multi-location tile
- *  - Sidebar: Tables (Denah Meja) and Kitchen (Dapur) nav items
- *  - Mobile nav: same two items
- *  - Per-business-type initial state: correct tiles visible after registration
+ * Tests are pure: they take an effective entitlement map (what the backend
+ * derives from the SOT: plan + business defaults + grants) and assert visibility.
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { register } from 'tsconfig-paths';
 
-const {
-  PLAN_RANK, planAllows,
-  MODULE_CATALOG_DATA, MODULE_REQUIRED_PLAN,
-  FEATURE_CATALOG_DATA, FEATURE_REQUIRED_PLAN,
-} = await import('../lib/featureCatalog.js');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir   = path.resolve(__dirname, '../../../../../');
+register({
+  baseUrl: rootDir,
+  paths: {
+    '@pos/core':            ['packages/core'],
+    '@pos/core/*':          ['packages/core/*'],
+    '@pos/domain':          ['packages/domain'],
+    '@pos/domain/*':        ['packages/domain/*'],
+    '@pos/application':     ['packages/application'],
+    '@pos/application/*':   ['packages/application/*'],
+    '@pos/infrastructure':  ['packages/infrastructure'],
+    '@pos/infrastructure/*':['packages/infrastructure/*'],
+  },
+});
 
-// ─── Pure simulations (mirrors the actual React component logic) ──────────────
+const { getEffectiveEntitlements } = await import('@pos/application/entitlements');
 
-type PlanTier = 'free' | 'growth' | 'pro';
-type ModuleConfig = Record<string, boolean>;
-type FeatureList = string[]; // active featureCodes
+type EntMap = Record<string, boolean>;
+const can = (map: EntMap, code: string) => map[code] === true;
 
-/** Mirrors TenantContext.hasModule() */
-function hasModule(name: string, plan: PlanTier, config: ModuleConfig): boolean {
-  const required = MODULE_REQUIRED_PLAN[name];
-  if (required && PLAN_RANK[plan] < PLAN_RANK[required]) return false;
-  return config[name] === true;
+async function effectiveMap(input: Parameters<typeof getEffectiveEntitlements>[0]): Promise<EntMap> {
+  const set = await getEffectiveEntitlements(input);
+  return Object.fromEntries([...set].map((c) => [c, true]));
 }
 
-/** Mirrors useFeatures().hasFeature() */
-function hasFeature(code: string, plan: PlanTier, activeFeatures: FeatureList): boolean {
-  const required = FEATURE_REQUIRED_PLAN[code];
-  if (required && PLAN_RANK[plan] < PLAN_RANK[required]) return false;
-  return activeFeatures.includes(code);
-}
-
-/** Mirrors home.tsx management tile visibility */
-function hubVisibility(plan: PlanTier, config: ModuleConfig, features: FeatureList) {
+/** Mirrors home.tsx hub tile visibility */
+function hubVisibility(map: EntMap) {
   return {
-    dashboard:     hasFeature('analytics_dashboard', plan, features),
-    tables:        hasModule('enable_table_management', plan, config),
-    kitchen:       hasModule('enable_kitchen_ticket',   plan, config),
-    multiLocation: hasModule('enable_multi_location',   plan, config),
+    dashboard:     can(map, 'reports_advanced'),
+    tables:        can(map, 'restaurant_table_service'),
+    kitchen:       can(map, 'restaurant_kitchen_ops'),
+    multiLocation: can(map, 'multi_location'),
   };
 }
 
 /** Mirrors Sidebar.tsx / UnifiedBottomNav.tsx item visibility */
-function navVisibility(plan: PlanTier, config: ModuleConfig) {
+function navVisibility(map: EntMap) {
   return {
-    tables:  hasModule('enable_table_management', plan, config),
-    kitchen: hasModule('enable_kitchen_ticket',   plan, config),
+    tables:  can(map, 'restaurant_table_service'),
+    kitchen: can(map, 'restaurant_kitchen_ops'),
   };
 }
 
-// ─── Default configs per business type (mirrors BUSINESS_TYPE_TEMPLATES) ─────
+/** Mirrors App.tsx route guards */
+function routeGuards(map: EntMap) {
+  return {
+    kitchenRoute: can(map, 'restaurant_kitchen_ops'),
+    tablesRoute:  can(map, 'restaurant_table_service'),
+  };
+}
 
-const DEFAULT_FREE_CONFIG: ModuleConfig = {
-  enable_table_management:   false,
-  enable_kitchen_ticket:     false,
-  enable_loyalty:            false,
-  enable_delivery:           false,
-  enable_inventory:          false,
-  enable_inventory_advanced: false,
-  enable_appointments:       false,
-  enable_multi_location:     false,
-};
+/** Mirrors stock.tsx tab gating */
+function stockGates(map: EntMap) {
+  return {
+    basic:    can(map, 'inventory_basic_stock'),
+    advanced: can(map, 'inventory_advanced_stock'),
+  };
+}
 
-const RETAIL_FREE_CONFIG: ModuleConfig = { ...DEFAULT_FREE_CONFIG, enable_inventory: true };
+describe('Starter plan (CAFE_RESTAURANT) — base only', () => {
+  it('hides commercial tiles/nav, shows basic stock (business-type default)', async () => {
+    const map = await effectiveMap({ planCode: 'starter', businessType: 'CAFE_RESTAURANT' });
+    const hub = hubVisibility(map);
+    assert.equal(hub.dashboard, false);
+    assert.equal(hub.tables, false);
+    assert.equal(hub.kitchen, false);
+    assert.equal(hub.multiLocation, false);
 
-const FREE_FEATURES: FeatureList = [
-  'product_variants','partial_payment','discounts','order_queue','receipt_printer','sales_reports',
-];
-
-const GROWTH_FEATURES: FeatureList = [
-  ...FREE_FEATURES,
-  'order_notifications','label_printer','barcode_scanner','analytics_dashboard',
-  'accounting_sync','dark_mode','custom_branding',
-  'kitchen_ticket','kitchen_display','kitchen_printer',
-  'inventory_tracking','inventory_reports',
-];
-
-const PRO_FEATURES: FeatureList = [
-  ...GROWTH_FEATURES, 'payment_gateway','api_integration','online_booking','calendar_sync',
-];
-
-// ─── Hub visibility ───────────────────────────────────────────────────────────
-
-describe('Hub tile visibility', () => {
-  describe('free plan (all modules off, free features only)', () => {
-    const hub = hubVisibility('free', DEFAULT_FREE_CONFIG, FREE_FEATURES);
-
-    it('hides analytics dashboard (growth feature)', () => assert.equal(hub.dashboard, false));
-    it('hides Tables tile',                           () => assert.equal(hub.tables, false));
-    it('hides Kitchen tile',                          () => assert.equal(hub.kitchen, false));
-    it('hides Multi-Location tile',                   () => assert.equal(hub.multiLocation, false));
-  });
-
-  describe('free plan — stale DB data (paid modules = true in DB)', () => {
-    const staleConfig: ModuleConfig = {
-      enable_table_management: true, enable_kitchen_ticket: true,
-      enable_loyalty: true, enable_delivery: true, enable_inventory: true,
-      enable_inventory_advanced: true, enable_appointments: true, enable_multi_location: true,
-    };
-    const hub = hubVisibility('free', staleConfig, GROWTH_FEATURES);
-
-    it('still hides Tables tile (plan ceiling overrides stale DB)', () => assert.equal(hub.tables, false));
-    it('still hides Kitchen tile (plan ceiling overrides stale DB)', () => assert.equal(hub.kitchen, false));
-    it('still hides Multi-Location tile',                            () => assert.equal(hub.multiLocation, false));
-    it('still hides analytics dashboard',                            () => assert.equal(hub.dashboard, false));
-  });
-
-  describe('growth plan — modules all ON', () => {
-    const allOn: ModuleConfig = { ...DEFAULT_FREE_CONFIG,
-      enable_table_management: true, enable_kitchen_ticket: true,
-      enable_loyalty: true, enable_delivery: true,
-      enable_inventory_advanced: true, enable_appointments: true,
-    };
-    const hub = hubVisibility('growth', allOn, GROWTH_FEATURES);
-
-    it('shows Tables tile',          () => assert.equal(hub.tables, true));
-    it('shows Kitchen tile',         () => assert.equal(hub.kitchen, true));
-    it('shows analytics dashboard',  () => assert.equal(hub.dashboard, true));
-    it('still hides Multi-Location (pro only)', () => assert.equal(hub.multiLocation, false));
-  });
-
-  describe('growth plan — modules all OFF (subscribed but not activated)', () => {
-    const hub = hubVisibility('growth', DEFAULT_FREE_CONFIG, GROWTH_FEATURES);
-
-    it('hides Tables tile (module disabled)', () => assert.equal(hub.tables, false));
-    it('hides Kitchen tile (module disabled)', () => assert.equal(hub.kitchen, false));
-    it('shows analytics dashboard (feature, not a module)', () => assert.equal(hub.dashboard, true));
-  });
-
-  describe('growth plan — only kitchen module ON', () => {
-    const config: ModuleConfig = { ...DEFAULT_FREE_CONFIG, enable_kitchen_ticket: true };
-    const hub = hubVisibility('growth', config, GROWTH_FEATURES);
-
-    it('shows Kitchen tile',  () => assert.equal(hub.kitchen, true));
-    it('hides Tables tile',   () => assert.equal(hub.tables, false));
-  });
-
-  describe('pro plan — all modules ON', () => {
-    const allOn: ModuleConfig = {
-      enable_table_management: true, enable_kitchen_ticket: true,
-      enable_loyalty: true, enable_delivery: true, enable_inventory: true,
-      enable_inventory_advanced: true, enable_appointments: true, enable_multi_location: true,
-    };
-    const hub = hubVisibility('pro', allOn, PRO_FEATURES);
-
-    it('shows Tables tile',         () => assert.equal(hub.tables, true));
-    it('shows Kitchen tile',        () => assert.equal(hub.kitchen, true));
-    it('shows analytics dashboard', () => assert.equal(hub.dashboard, true));
-    it('shows Multi-Location tile', () => assert.equal(hub.multiLocation, true));
-  });
-
-  describe('pro plan — multi_location OFF in DB', () => {
-    const config: ModuleConfig = { ...DEFAULT_FREE_CONFIG, enable_table_management: true, enable_kitchen_ticket: true };
-    const hub = hubVisibility('pro', config, PRO_FEATURES);
-
-    it('hides Multi-Location tile (module disabled in DB)', () => assert.equal(hub.multiLocation, false));
-    it('shows Tables tile', () => assert.equal(hub.tables, true));
-  });
-});
-
-// ─── Sidebar & mobile nav visibility ─────────────────────────────────────────
-
-describe('Sidebar (desktop) nav visibility', () => {
-  it('free plan: Tables and Kitchen items hidden', () => {
-    const nav = navVisibility('free', DEFAULT_FREE_CONFIG);
-    assert.equal(nav.tables,  false);
+    const nav = navVisibility(map);
+    assert.equal(nav.tables, false);
     assert.equal(nav.kitchen, false);
-  });
 
-  it('growth plan, modules off: items hidden', () => {
-    const nav = navVisibility('growth', DEFAULT_FREE_CONFIG);
-    assert.equal(nav.tables,  false);
-    assert.equal(nav.kitchen, false);
-  });
-
-  it('growth plan, enable_table_management ON: Tables shown', () => {
-    const config: ModuleConfig = { ...DEFAULT_FREE_CONFIG, enable_table_management: true };
-    const nav = navVisibility('growth', config);
-    assert.equal(nav.tables, true);
-    assert.equal(nav.kitchen, false);
-  });
-
-  it('growth plan, enable_kitchen_ticket ON: Kitchen shown', () => {
-    const config: ModuleConfig = { ...DEFAULT_FREE_CONFIG, enable_kitchen_ticket: true };
-    const nav = navVisibility('growth', config);
-    assert.equal(nav.tables,  false);
-    assert.equal(nav.kitchen, true);
-  });
-
-  it('growth plan, both modules ON: both shown', () => {
-    const config: ModuleConfig = { ...DEFAULT_FREE_CONFIG, enable_table_management: true, enable_kitchen_ticket: true };
-    const nav = navVisibility('growth', config);
-    assert.equal(nav.tables,  true);
-    assert.equal(nav.kitchen, true);
-  });
-
-  it('free plan with stale DB (both modules = true): both hidden', () => {
-    const staleConfig: ModuleConfig = { ...DEFAULT_FREE_CONFIG, enable_table_management: true, enable_kitchen_ticket: true };
-    const nav = navVisibility('free', staleConfig);
-    assert.equal(nav.tables,  false, 'free plan ceiling must block tables even with stale DB');
-    assert.equal(nav.kitchen, false, 'free plan ceiling must block kitchen even with stale DB');
-  });
-
-  it('pro plan with both modules ON: both shown', () => {
-    const config: ModuleConfig = { ...DEFAULT_FREE_CONFIG, enable_table_management: true, enable_kitchen_ticket: true };
-    const nav = navVisibility('pro', config);
-    assert.equal(nav.tables,  true);
-    assert.equal(nav.kitchen, true);
+    const stock = stockGates(map);
+    assert.equal(stock.basic, true);
+    assert.equal(stock.advanced, false);
   });
 });
 
-describe('Mobile bottom nav visibility (same logic as Sidebar)', () => {
-  it('free plan: Tables button hidden', () => {
-    assert.equal(hasModule('enable_table_management', 'free', DEFAULT_FREE_CONFIG), false);
+describe('Per-business-type starter initial state', () => {
+  const types = ['CAFE_RESTAURANT', 'RETAIL_MINIMARKET', 'LAUNDRY', 'SERVICE_APPOINTMENT', 'DIGITAL_PPOB'] as const;
+  for (const businessType of types) {
+    it(`${businessType}: commercial nav hidden, basic stock on (default entitlement)`, async () => {
+      const map = await effectiveMap({ planCode: 'starter', businessType });
+      assert.equal(navVisibility(map).tables, false);
+      assert.equal(navVisibility(map).kitchen, false);
+      assert.equal(hubVisibility(map).multiLocation, false);
+      assert.equal(stockGates(map).basic, true);
+    });
+  }
+});
+
+describe('Growth plan — kitchen ops + advanced reports unlocked', () => {
+  it('shows kitchen + dashboard, hides tables (add-on) and multi-location', async () => {
+    const map = await effectiveMap({ planCode: 'growth', businessType: 'CAFE_RESTAURANT' });
+    const hub = hubVisibility(map);
+    assert.equal(hub.kitchen, true);
+    assert.equal(hub.dashboard, true);
+    assert.equal(hub.tables, false);
+    assert.equal(hub.multiLocation, false);
+
+    const guards = routeGuards(map);
+    assert.equal(guards.kitchenRoute, true);
+    assert.equal(guards.tablesRoute, false);
   });
-  it('free plan: Kitchen button hidden', () => {
-    assert.equal(hasModule('enable_kitchen_ticket', 'free', DEFAULT_FREE_CONFIG), false);
-  });
-  it('growth plan + modules on: both buttons shown', () => {
-    const config: ModuleConfig = { ...DEFAULT_FREE_CONFIG, enable_table_management: true, enable_kitchen_ticket: true };
-    assert.equal(hasModule('enable_table_management', 'growth', config), true);
-    assert.equal(hasModule('enable_kitchen_ticket',   'growth', config), true);
+
+  it('an active restaurant_table_service grant reveals tables nav + route', async () => {
+    const map = await effectiveMap({
+      planCode: 'growth',
+      businessType: 'CAFE_RESTAURANT',
+      grants: [{ entitlementCode: 'restaurant_table_service', status: 'active' }],
+    });
+    assert.equal(navVisibility(map).tables, true);
+    assert.equal(routeGuards(map).tablesRoute, true);
   });
 });
 
-// ─── Per-business-type initial state ─────────────────────────────────────────
-
-describe('Hub initial state per business type (right after free-plan registration)', () => {
-  describe('CAFE_RESTAURANT', () => {
-    // Template: all modules false, free features only
-    const hub = hubVisibility('free', DEFAULT_FREE_CONFIG, FREE_FEATURES);
-    it('Tables hidden (Tables module off, free plan)', () => assert.equal(hub.tables, false));
-    it('Kitchen hidden (Kitchen module off, free plan)', () => assert.equal(hub.kitchen, false));
-    it('Dashboard hidden (growth feature, free plan)', () => assert.equal(hub.dashboard, false));
-    it('Multi-Location hidden', () => assert.equal(hub.multiLocation, false));
-  });
-
-  describe('RETAIL_MINIMARKET', () => {
-    // Template: enable_inventory = true, all others false, free features only
-    const hub = hubVisibility('free', RETAIL_FREE_CONFIG, FREE_FEATURES);
-    it('Tables hidden', () => assert.equal(hub.tables, false));
-    it('Kitchen hidden', () => assert.equal(hub.kitchen, false));
-    it('Dashboard hidden', () => assert.equal(hub.dashboard, false));
-  });
-
-  describe('LAUNDRY', () => {
-    const hub = hubVisibility('free', DEFAULT_FREE_CONFIG, FREE_FEATURES);
-    it('Tables hidden', () => assert.equal(hub.tables, false));
-    it('Kitchen hidden', () => assert.equal(hub.kitchen, false));
-  });
-
-  describe('SERVICE_APPOINTMENT', () => {
-    const hub = hubVisibility('free', DEFAULT_FREE_CONFIG, FREE_FEATURES);
-    it('Tables hidden', () => assert.equal(hub.tables, false));
-    it('Kitchen hidden', () => assert.equal(hub.kitchen, false));
-  });
-
-  describe('DIGITAL_PPOB', () => {
-    const hub = hubVisibility('free', DEFAULT_FREE_CONFIG, FREE_FEATURES);
-    it('Tables hidden', () => assert.equal(hub.tables, false));
-    it('Kitchen hidden', () => assert.equal(hub.kitchen, false));
+describe('Pro plan — everything cumulative', () => {
+  it('shows multi-location, advanced stock, and growth kitchen', async () => {
+    const map = await effectiveMap({ planCode: 'pro', businessType: 'CAFE_RESTAURANT' });
+    assert.equal(hubVisibility(map).multiLocation, true);
+    assert.equal(stockGates(map).advanced, true);
+    assert.equal(hubVisibility(map).kitchen, true);
   });
 });
 
-// ─── CAFE_RESTAURANT after growth upgrade ────────────────────────────────────
-
-describe('CAFE_RESTAURANT after upgrade to growth plan', () => {
-  describe('owner has not yet activated any modules', () => {
-    const hub = hubVisibility('growth', DEFAULT_FREE_CONFIG, GROWTH_FEATURES);
-    it('Tables still hidden (module not yet activated)', () => assert.equal(hub.tables, false));
-    it('Kitchen still hidden (module not yet activated)', () => assert.equal(hub.kitchen, false));
-    it('Dashboard now visible (it is a feature, always on for growth)', () => assert.equal(hub.dashboard, true));
+describe('Expired / cancelled grants do not reveal nav', () => {
+  it('expired table-service grant keeps tables hidden', async () => {
+    const map = await effectiveMap({
+      planCode: 'growth',
+      businessType: 'CAFE_RESTAURANT',
+      grants: [{ entitlementCode: 'restaurant_table_service', status: 'active', expiresAt: '2000-01-01T00:00:00.000Z' }],
+    });
+    assert.equal(navVisibility(map).tables, false);
   });
 
-  describe('owner activates Tables module in Marketplace', () => {
-    const config: ModuleConfig = { ...DEFAULT_FREE_CONFIG, enable_table_management: true };
-    const hub = hubVisibility('growth', config, GROWTH_FEATURES);
-    it('Tables now visible', () => assert.equal(hub.tables, true));
-    it('Kitchen still hidden (not yet activated)', () => assert.equal(hub.kitchen, false));
-  });
-
-  describe('owner activates both Tables and Kitchen modules', () => {
-    const config: ModuleConfig = { ...DEFAULT_FREE_CONFIG, enable_table_management: true, enable_kitchen_ticket: true };
-    const hub     = hubVisibility('growth', config, GROWTH_FEATURES);
-    const sidebar = navVisibility('growth', config);
-    it('hub: Tables visible',  () => assert.equal(hub.tables, true));
-    it('hub: Kitchen visible', () => assert.equal(hub.kitchen, true));
-    it('sidebar: Tables item visible',  () => assert.equal(sidebar.tables, true));
-    it('sidebar: Kitchen item visible', () => assert.equal(sidebar.kitchen, true));
-  });
-});
-
-// ─── Analytics dashboard — feature (not module) gating ───────────────────────
-
-describe('Analytics dashboard gating (feature, not module)', () => {
-  it('free plan: hidden even if in DB feature list', () => {
-    assert.equal(hasFeature('analytics_dashboard', 'free', [...FREE_FEATURES, 'analytics_dashboard']), false);
-  });
-  it('growth plan + feature active: shown', () => {
-    assert.equal(hasFeature('analytics_dashboard', 'growth', GROWTH_FEATURES), true);
-  });
-  it('growth plan + feature NOT in list: hidden', () => {
-    assert.equal(hasFeature('analytics_dashboard', 'growth', FREE_FEATURES), false);
-  });
-  it('pro plan + feature active: shown', () => {
-    assert.equal(hasFeature('analytics_dashboard', 'pro', PRO_FEATURES), true);
+  it('cancelled table-service grant keeps tables hidden', async () => {
+    const map = await effectiveMap({
+      planCode: 'growth',
+      businessType: 'CAFE_RESTAURANT',
+      grants: [{ entitlementCode: 'restaurant_table_service', status: 'cancelled' }],
+    });
+    assert.equal(navVisibility(map).tables, false);
   });
 });

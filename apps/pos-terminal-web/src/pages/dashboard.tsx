@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { useFeatures } from "@/hooks/useFeatures";
+import { useTenant } from "@/context/TenantContext";
 import { FeatureGate } from "@/components/ui/FeatureGate";
 import {
   Calendar, ChevronDown, Wallet, ShoppingBag,
@@ -60,8 +60,8 @@ function norm(o: any) {
 export default function DashboardPage() {
   const [, setLocation] = useLocation();
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodKey>("today");
-  const { hasFeature } = useFeatures();
-  const hasAnalytics = hasFeature("analytics_dashboard");
+  const { can } = useTenant();
+  const hasAnalytics = can("reports_advanced");
   const [activeChartItem, setActiveChartItem] = useState<ChartDataPoint | null>(null);
 
   const { startDate, endDate } = useMemo(() => getPeriodRange(selectedPeriod), [selectedPeriod]);

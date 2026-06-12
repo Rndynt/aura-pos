@@ -19,8 +19,6 @@ import { DrizzleCreateAndPayOrderRepository } from '@pos/infrastructure/reposito
 import { DrizzleRecordPaymentRepository } from '@pos/infrastructure/repositories/orders/DrizzleRecordPaymentRepository';
 import { DrizzleSyncOfflineOrderRepository } from '@pos/infrastructure/repositories/sync/DrizzleSyncOfflineOrderRepository';
 import { TenantRepository } from '@pos/infrastructure/repositories/tenants/TenantRepository';
-import { TenantFeatureRepository } from '@pos/infrastructure/repositories/tenants/TenantFeatureRepository';
-import { TenantModuleConfigRepository } from '@pos/infrastructure/repositories/tenants/TenantModuleConfigRepository';
 import { DrizzleUnitOfWork } from '@pos/infrastructure/unit-of-work';
 import {
   DrizzleInventoryPolicyRepository,
@@ -56,12 +54,6 @@ import { ConfirmOrderWorkflow } from '@pos/application/orders/services/ConfirmOr
 import { CancelOrderWorkflow } from '@pos/application/orders/services/CancelOrderWorkflow';
 import { SyncOfflineOrder } from '@pos/application/sync/SyncOfflineOrder';
 
-// Use Cases - Tenants
-import { GetActiveFeaturesForTenant } from '@pos/application/tenants/GetActiveFeaturesForTenant';
-import { CheckFeatureAccess } from '@pos/application/tenants/CheckFeatureAccess';
-import { CreateTenant } from '@pos/application/tenants/CreateTenant';
-import { GetTenantProfile } from '@pos/application/tenants/GetTenantProfile';
-
 /**
  * Container class that holds all dependencies
  */
@@ -84,8 +76,6 @@ class Container {
 
   // Tenant Repositories
   public readonly tenantRepository: TenantRepository;
-  public readonly tenantFeatureRepository: TenantFeatureRepository;
-  public readonly tenantModuleConfigRepository: TenantModuleConfigRepository;
 
   // Inventory Adapters
   public readonly inventoryPolicyRepository: DrizzleInventoryPolicyRepository;
@@ -119,12 +109,6 @@ class Container {
   /** Sprint 4: batch offline order sync */
   public readonly syncOfflineOrder: SyncOfflineOrder;
 
-  // Tenant Use Cases
-  public readonly getActiveFeaturesForTenant: GetActiveFeaturesForTenant;
-  public readonly checkFeatureAccess: CheckFeatureAccess;
-  public readonly createTenant: CreateTenant;
-  public readonly getTenantProfile: GetTenantProfile;
-
   constructor() {
     // Initialize Repositories
     this.productRepository = new ProductRepository(db);
@@ -137,8 +121,6 @@ class Container {
     this.kitchenTicketRepository = new KitchenTicketRepository(db);
     this.orderTypeRepository = new OrderTypeRepository(db);
     this.tenantRepository = new TenantRepository(db);
-    this.tenantFeatureRepository = new TenantFeatureRepository(db);
-    this.tenantModuleConfigRepository = new TenantModuleConfigRepository(db);
     this.unitOfWork = new DrizzleUnitOfWork(db);
     this.inventoryPolicyRepository = new DrizzleInventoryPolicyRepository(db);
     this.inventorySyncErrorRepository = new DrizzleInventorySyncErrorRepository(db);
@@ -221,25 +203,6 @@ class Container {
     this.listOrderHistory = new ListOrderHistory(
       this.orderRepository as any,
       this.tenantRepository as any
-    );
-
-    // Tenants
-    this.getActiveFeaturesForTenant = new GetActiveFeaturesForTenant(
-      this.tenantFeatureRepository as any
-    );
-    this.checkFeatureAccess = new CheckFeatureAccess(
-      this.tenantFeatureRepository as any
-    );
-    this.createTenant = new CreateTenant(
-      this.tenantRepository as any,
-      this.tenantModuleConfigRepository as any,
-      this.tenantFeatureRepository as any,
-      this.orderTypeRepository as any
-    );
-    this.getTenantProfile = new GetTenantProfile(
-      this.tenantRepository as any,
-      this.tenantFeatureRepository as any,
-      this.tenantModuleConfigRepository as any
     );
 
   }

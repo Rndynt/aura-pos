@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { db } from '@pos/infrastructure/database';
-import { tenants, outlets, tenantModuleConfigs, tenantFeatures, tenantOrderTypes, orderTypes, productCategories, products } from '@pos/infrastructure/db/schema';
+import { tenants, outlets, tenantOrderTypes, orderTypes, productCategories, products } from '@pos/infrastructure/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 
 async function run() {
@@ -19,7 +19,7 @@ async function run() {
     businessAddress: 'Jl. Kebahagiaan No. 1, Depok',
     businessPhone: '+62811-1111-2222',
     businessEmail: 'owner@warungbahagia.id',
-    planTier: 'free',
+    planTier: 'starter',
     subscriptionStatus: 'active',
     timezone: 'Asia/Jakarta',
     currency: 'IDR',
@@ -39,28 +39,11 @@ async function run() {
   } as any).returning();
   console.log('✅ Outlet:', outlet.name);
 
-  await db.insert(tenantModuleConfigs).values({
-    tenantId: tenant.id,
-    enableTableManagement: false,
-    enableKitchenTicket: false,
-    enableLoyalty: false,
-    enableDelivery: false,
-    enableInventory: true,
-    enableInventoryAdvanced: false,
-    enableAppointments: false,
-    enableMultiLocation: false,
-  } as any);
-  console.log('✅ Module config: Stok Dasar ON, paid modules OFF');
-
-  await db.insert(tenantFeatures).values([
-    { tenantId: tenant.id, featureCode: 'product_variants', source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'partial_payment',  source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'discounts',        source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'order_queue',      source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'receipt_printer',  source: 'plan_default', isActive: true },
-    { tenantId: tenant.id, featureCode: 'sales_reports',    source: 'plan_default', isActive: true },
-  ] as any);
-  console.log('✅ 6 free features + Stok Dasar module (no kitchen, no analytics, no advanced inventory)');
+  // Entitlements are NOT seeded. Effective entitlements (inventory_basic_stock,
+  // payments_partial_payment, etc.) are derived at runtime from the SOT based on
+  // planTier=starter + businessType. Only purchased add-ons would live in
+  // tenant_entitlements.
+  console.log('✅ Entitlements derived from SOT (starter + CAFE_RESTAURANT) — no DB grant rows');
 
   const ots = await db.select().from(orderTypes).where(
     inArray(orderTypes.code, ['DINE_IN', 'TAKE_AWAY'])

@@ -88,8 +88,8 @@ export function OrderTypeSelectionDialog({
   initialSelectedOrderTypeId,
   initialTableNumber,
 }: OrderTypeSelectionDialogProps) {
-  const { hasModule } = useTenant();
-  const hasTableManagement = hasModule("enable_table_management");
+  const { can } = useTenant();
+  const hasTableManagement = can("restaurant_table_service");
   const { data: tablesData, isLoading: tablesLoading } = useTables("available");
 
   // Filter active order types - memoized to prevent infinite loop

@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { db } from '@pos/infrastructure/database';
-import { outlets, userOutletAssignments, tenantFeatures, insertOutletSchema, outletProductConfigs } from '@pos/infrastructure/db/schema';
+import { outlets, userOutletAssignments, insertOutletSchema, outletProductConfigs } from '@pos/infrastructure/db/schema';
 import { eq, and, count, inArray } from 'drizzle-orm';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { z } from 'zod';
 import { requireManager } from '../middleware/rbac';
 import { cacheKeys, getCacheJson, setCacheJson } from '../../services/distributedCache';
 import { invalidateOutletCache } from '../../services/cacheInvalidation';
+import { getEffectiveEntitlementMap } from '../../services/tenantEntitlements';
 
 const router = Router();
 
@@ -15,22 +16,16 @@ const OUTLET_CACHE_TTL_SECONDS = 60;
 
 type OutletRow = typeof outlets.$inferSelect;
 
-async function getPurchasedOutletSlots(tenantId: string): Promise<number> {
-  const rows = await db
-    .select()
-    .from(tenantFeatures)
-    .where(
-      and(
-        eq(tenantFeatures.tenantId, tenantId),
-        eq(tenantFeatures.featureCode, 'multi_outlet'),
-        eq(tenantFeatures.isActive, true),
-      ),
-    )
-    .limit(1);
+/**
+ * Multi-outlet capacity is governed by the `multi_location` commercial
+ * entitlement. Tenants without it are capped at a single outlet; tenants with
+ * it may create additional branches.
+ */
+const MULTI_LOCATION_OUTLET_SLOTS = 999;
 
-  if (!rows.length) return MAX_FREE_OUTLETS;
-  const cfg = rows[0].config as { purchased_slots?: number } | null;
-  return (cfg?.purchased_slots ?? MAX_FREE_OUTLETS);
+async function getAllowedOutletSlots(tenantId: string): Promise<number> {
+  const map = await getEffectiveEntitlementMap(tenantId);
+  return map.multi_location ? MULTI_LOCATION_OUTLET_SLOTS : MAX_FREE_OUTLETS;
 }
 
 // GET /api/outlets — list all outlets for tenant
@@ -81,7 +76,7 @@ router.get('/current', asyncHandler(async (req, res) => {
 router.post('/', requireManager, asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
 
-  const allowedSlots = await getPurchasedOutletSlots(tenantId);
+  const allowedSlots = await getAllowedOutletSlots(tenantId);
   const [{ value: existingCount }] = await db
     .select({ value: count() })
     .from(outlets)

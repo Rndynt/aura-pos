@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from 'express';
 import { db } from '@pos/infrastructure/database';
+import * as TenantsController from '../controllers/TenantsController';
 import catalogRoutes from './catalog';
 import ordersRoutes from './orders';
 import tenantsRoutes from './tenants';
@@ -33,6 +34,7 @@ router.use(outletMiddleware);
 router.use('/catalog', catalogRoutes);
 router.use('/orders', asExpress4Handler(orderLimiter), ordersRoutes);
 router.use('/tenants', tenantsRoutes);
+router.get('/me/entitlements', TenantsController.getMyEntitlements);
 router.use('/tables', createTablesRouter(db));
 router.use('/sync', syncRoutes);
 router.use('/terminals', terminalsRoutes);

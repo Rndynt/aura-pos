@@ -5,7 +5,6 @@ import { PaymentMethodDialog } from "@/components/pos/PaymentMethodDialog";
 import { CombinedDraftSheet } from "@/components/pos/CombinedDraftSheet";
 import type { PaymentMethod } from "@/hooks/useCart";
 import { useCart } from "@/hooks/useCart";
-import { useFeatures } from "@/hooks/useFeatures";
 import { useProducts, useCreateOrder, useUpdateOrder, useCreateKitchenTicket, useOrderTypes, useRecordPayment, useOrders } from "@/lib/api/hooks";
 import { useOfflineOrderSubmit } from "@/hooks/useOfflineOrderSubmit";
 import type { Product, ProductVariant } from "@pos/domain/catalog/types";
@@ -54,8 +53,9 @@ export default function POSPage() {
     orderNumber: string;
   } | null>(null);
   const cart = useCart();
-  const { hasFeature } = useFeatures();
-  const hasProductVariants = hasFeature("product_variants");
+  const { can } = useTenant();
+  // Product variants / options are base catalog behavior — never commercially gated.
+  const hasProductVariants = true;
   const hasPairedPrinter = hasPairedReceiptPrinter();
   const shouldAutoPrintReceipt = hasPairedPrinter; // browser print disabled — only auto-print when BT printer is actually paired
   const { toast } = useToast();
@@ -64,6 +64,7 @@ export default function POSPage() {
   const { sendToKDS } = useKitchenChannelSender();
   const { tenantId } = useTenant();
   const { data: tenantProfile } = useTenantProfile(tenantId);
+  // `can` is destructured above from useTenant().
   const tenantName = tenantProfile?.tenant?.name || 'AuraPOS';
 
   // Prevent cart-change effect from overriding payment/completed CFD state
@@ -152,8 +153,8 @@ export default function POSPage() {
   const recordPaymentMutation = useRecordPayment();
   const { submitOrder, isSubmitting: isOfflineSubmitting } = useOfflineOrderSubmit();
 
-  const hasPartialPayment = hasFeature("partial_payment");
-  const hasKitchenTicket = hasFeature("kitchen_ticket");
+  const hasPartialPayment = can("payments_partial_payment");
+  const hasKitchenTicket = can("restaurant_kitchen_ops");
 
   const ensureCartHasItems = () => {
     if (cart.items.length === 0) {

@@ -7,15 +7,12 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import type { Product } from "@pos/domain/catalog/types";
 import type { Order, OrderItem, OrderPayment, KitchenTicket, SelectedOption, OrderType, TenantOrderType } from "@pos/domain/orders/types";
-import type { TenantFeature, FeatureCheck } from "@pos/domain/tenants/types";
 import { getActiveTenantId } from "@/lib/tenant";
 import { buildApiHeaders, getActiveOutletId } from "@/lib/outlet";
 import {
   getCachedOrderTypes,
   saveCachedOrderTypes,
   updateTenantCachedAt,
-  getCachedFeatures,
-  saveCachedFeatures,
   getCachedProducts,
   saveCachedProducts,
   updateCatalogCachedAt,
@@ -550,46 +547,5 @@ export function useCancelOrder() {
       queryClient.invalidateQueries({ queryKey: ["/api/orders/history"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders", variables.orderId] });
     },
-  });
-}
-
-// ============================================================================
-// TENANT HOOKS
-// ============================================================================
-
-/**
- * Fetch active features for tenant — with offline IndexedDB fallback
- */
-export function useTenantFeatures() {
-  const tenantId = getActiveTenantId();
-  return useQuery<{ features: FeatureCheck[]; total: number }>({
-    queryKey: ["/api/tenants/features", tenantId],
-    queryFn: async () => {
-      try {
-        const data = await fetchWithTenantHeader("/api/tenants/features");
-        const features: FeatureCheck[] = data?.features ?? [];
-        saveCachedFeatures(tenantId, features).catch(() => undefined);
-        updateTenantCachedAt(tenantId).catch(() => undefined);
-        return { features, total: features.length };
-      } catch (err) {
-        const cached = await getCachedFeatures(tenantId) as FeatureCheck[];
-        if (cached.length > 0) return { features: cached, total: cached.length };
-        throw err;
-      }
-    },
-    staleTime: 30_000,
-  });
-}
-
-/**
- * Check feature access for tenant
- */
-export type CheckFeatureInput = {
-  feature_code: string;
-};
-
-export function useCheckFeature() {
-  return useMutation<FeatureCheck, Error, CheckFeatureInput>({
-    mutationFn: (data) => mutateWithTenantHeader("POST", "/api/tenants/features/check", data),
   });
 }

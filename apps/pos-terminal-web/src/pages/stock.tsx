@@ -33,7 +33,6 @@ import {
   type StockProduct,
   type MovementsFilter,
 } from "@/hooks/api/useInventory";
-import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import { useTenant } from "@/context/TenantContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -599,10 +598,9 @@ function UpgradePrompt({ feature }: { feature: string }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function StockPage() {
   const [, setLocation] = useLocation();
-  const { tenantId } = useTenant();
-  const { data: profile } = useTenantProfile(tenantId);
-  const isBasic = profile?.moduleConfig?.enable_inventory === true;
-  const isAdvanced = profile?.moduleConfig?.enable_inventory_advanced === true;
+  const { can } = useTenant();
+  const isBasic = can("inventory_basic_stock");
+  const isAdvanced = can("inventory_advanced_stock");
 
   const { data, isLoading, refetch, isFetching } = useStockProducts();
   const items = data?.data.items ?? [];

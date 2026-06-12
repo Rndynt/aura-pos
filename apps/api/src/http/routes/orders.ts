@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import * as OrdersController from '../controllers/OrdersController';
 import * as OrderTypesController from '../controllers/OrderTypesController';
-import { requireModule } from '../middleware/featureGuard';
+import { requireEntitlement } from '../middleware/entitlementGuard';
 import { requireCashier, requireKitchen, requireManager } from '../middleware/rbac';
 
 const router = Router();
@@ -64,7 +64,7 @@ router.post('/:id/cancel', requireCashier, OrdersController.cancelOrder);
 // POST /api/orders/:id/payments - Record payment
 router.post('/:id/payments', requireCashier, OrdersController.recordPayment);
 
-// POST /api/orders/:id/kitchen-ticket - Create kitchen ticket (requires kitchen module)
-router.post('/:id/kitchen-ticket', requireCashier, requireModule('enableKitchenTicket'), OrdersController.createKitchenTicket);
+// POST /api/orders/:id/kitchen-ticket - Create kitchen ticket (requires restaurant kitchen ops entitlement)
+router.post('/:id/kitchen-ticket', requireCashier, requireEntitlement('restaurant_kitchen_ops'), OrdersController.createKitchenTicket);
 
 export default router;

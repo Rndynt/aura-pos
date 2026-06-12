@@ -26,7 +26,6 @@ import { UnifiedBottomNav } from "@/components/navigation/UnifiedBottomNav";
 import { useToast } from "@/hooks/use-toast";
 import { useTenant } from "@/context/TenantContext";
 import { useTenantProfile } from "@/hooks/api/useTenantProfile";
-import { useFeatures } from "@/hooks/useFeatures";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { useOutlet } from "@/context/OutletContext";
@@ -70,15 +69,14 @@ function getInitials(name: string): string {
 export default function HomePage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { tenantId, hasModule } = useTenant();
+  const { tenantId, can } = useTenant();
   const { data: profile, isLoading: profileLoading } = useTenantProfile(tenantId);
-  const { hasFeature } = useFeatures();
 
-  // Feature gates — controls hub menu visibility
-  const showDashboard     = hasFeature("analytics_dashboard");
-  const showTables        = hasModule("enable_table_management");
-  const showKitchen       = hasModule("enable_kitchen_ticket");
-  const showMultiLocation = hasModule("enable_multi_location");
+  // Entitlement gates — controls hub menu visibility
+  const showDashboard     = can("reports_advanced");
+  const showTables        = can("restaurant_table_service");
+  const showKitchen       = can("restaurant_kitchen_ops");
+  const showMultiLocation = can("multi_location");
   const { user, loading: userLoading } = useCurrentUser();
   const { activeOutlet, outlets, setActiveOutlet, isLoading: outletLoading } = useOutlet();
   const [showOutletPicker, setShowOutletPicker] = useState(false);

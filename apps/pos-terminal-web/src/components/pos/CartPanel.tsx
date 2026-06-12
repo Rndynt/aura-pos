@@ -60,7 +60,7 @@ export function CartPanel({
   orderDiscount, setOrderDiscount,
   itemsDiscountTotal, orderDiscountAmount,
 }: CartPanelProps) {
-  const { hasModule, isLoading } = useTenant();
+  const { can, isLoading } = useTenant();
   const [expanded, setExpanded] = useState(false);
   const { data: tablesData } = useTables();
 
@@ -70,7 +70,7 @@ export function CartPanel({
     orderDiscount && orderDiscount.value > 0 ? String(orderDiscount.value) : ""
   );
 
-  const showTable = !isLoading && hasModule("enable_table_management");
+  const showTable = !isLoading && can("restaurant_table_service");
 
   const displayOrderTypes = activeOrderTypes.length > 0
     ? activeOrderTypes.map(ot => ({ code: ot.code.toLowerCase().replace(/_/g, "-") as OrderType, id: ot.id, name: ot.name }))

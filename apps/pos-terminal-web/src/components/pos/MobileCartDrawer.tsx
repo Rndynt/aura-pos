@@ -109,7 +109,7 @@ export function MobileCartDrawer({
   itemsDiscountTotal,
   orderDiscountAmount,
 }: MobileCartDrawerProps) {
-  const { hasModule, isLoading } = useTenant();
+  const { can, isLoading } = useTenant();
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
   const { data: tablesData, isLoading: tablesLoading } = useTables();
   const vpHeight = useVisualViewportHeight();
@@ -118,7 +118,7 @@ export function MobileCartDrawer({
   const orderType = externalOrderType ?? internalOrderType;
   const setOrderType = externalSetOrderType ?? setInternalOrderType;
 
-  const showTableNumber = !isLoading && hasModule("enable_table_management");
+  const showTableNumber = !isLoading && can("restaurant_table_service");
 
   // Order discount UI state
   const [orderDiscountOpen, setOrderDiscountOpen] = useState(false);

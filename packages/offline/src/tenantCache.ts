@@ -68,3 +68,27 @@ export function isTenantCacheStale(cachedAt: string | null, maxAgeMs = 24 * 60 *
   if (!cachedAt) return true;
   return Date.now() - new Date(cachedAt).getTime() > maxAgeMs;
 }
+
+// ── Effective entitlement map cache (offline-first) ──────────────────────────
+
+const META_KEY_ENTITLEMENTS = "tenant_entitlements_map";
+
+export async function saveCachedEntitlements(
+  tenantId: string,
+  entitlements: Record<string, boolean>,
+): Promise<void> {
+  const key = `${META_KEY_ENTITLEMENTS}:${tenantId}`;
+  const now = nowIso();
+  await offlineDb.sync_meta.put({ key, value: JSON.stringify(entitlements), updatedAt: now });
+}
+
+export async function getCachedEntitlements(tenantId: string): Promise<Record<string, boolean> | null> {
+  const key = `${META_KEY_ENTITLEMENTS}:${tenantId}`;
+  const row = await offlineDb.sync_meta.get(key);
+  if (!row?.value) return null;
+  try {
+    return JSON.parse(row.value) as Record<string, boolean>;
+  } catch {
+    return null;
+  }
+}
