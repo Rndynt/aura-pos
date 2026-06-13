@@ -225,7 +225,7 @@ export function MobileCartDrawer({
               <div className="p-4 bg-white border-b border-slate-100 shadow-sm z-10">
                 <div
                   className="bg-slate-100 p-1 rounded-xl grid gap-1 mb-4"
-                  style={{ gridTemplateColumns: `repeat(${Math.min(displayOrderTypes.length, 3)}, 1fr)` }}
+                  style={{ gridTemplateColumns: `repeat(${displayOrderTypes.length <= 3 ? displayOrderTypes.length : 2}, 1fr)` }}
                 >
                   {displayOrderTypes.map((ot) => (
                     <button
@@ -525,7 +525,7 @@ export function MobileCartDrawer({
                           <>
                             <div className="flex items-center gap-1.5 text-sm">
                               <ChefHat size={18} />
-                              <span>Kirim ke Dapur</span>
+                              <span>Dapur</span>
                             </div>
                             <span className="text-[9px] opacity-80 font-normal">Bayar belakangan</span>
                           </>

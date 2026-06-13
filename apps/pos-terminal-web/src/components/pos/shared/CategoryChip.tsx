@@ -28,14 +28,19 @@ export function CategoryChip({
     <button
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all",
+        "flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all duration-150",
         isActive
-          ? "bg-slate-800 text-white"
-          : "bg-white text-slate-500 border border-slate-200"
+          ? "bg-blue-600 text-white shadow-md shadow-blue-200/60 scale-[1.03]"
+          : "bg-white text-slate-500 border border-slate-200 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50/60"
       )}
       data-testid={testId}
     >
-      {Icon && <Icon size={16} />}
+      {Icon && (
+        <Icon
+          size={15}
+          className={isActive ? "text-white/90" : "text-slate-400 group-hover:text-blue-500"}
+        />
+      )}
       {name}
     </button>
   );

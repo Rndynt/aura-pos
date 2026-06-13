@@ -365,7 +365,7 @@ export default function OrdersPage() {
           {/* Orders List */}
           <div className="flex-1 flex flex-col overflow-hidden md:border-r border-slate-200">
             <ScrollArea className="flex-1 overflow-auto">
-              <div className="p-4 md:p-6 space-y-4">
+              <div className="p-4 md:p-6 pb-24 md:pb-8 space-y-4">
                 {isLoading ? (
                   <div className="text-center py-16 text-slate-500">
                     Memuat pesanan...

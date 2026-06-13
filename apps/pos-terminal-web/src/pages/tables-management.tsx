@@ -238,7 +238,7 @@ export default function TablesManagementPage() {
         />
 
         {/* ── TABLE GRID ── */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-8">
           {filteredTables.length === 0 ? (
             <div className="h-40 flex flex-col items-center justify-center text-slate-300 gap-2">
               <UtensilsCrossed size={32} className="opacity-50" />

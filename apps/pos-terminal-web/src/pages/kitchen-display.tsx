@@ -169,7 +169,7 @@ export default function KitchenDisplayPage() {
         onBack={() => setLocation("/hub")}
       />
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-2xl mx-auto w-full">
+      <div className="flex-1 overflow-y-auto p-4 pb-24 space-y-4 max-w-2xl mx-auto w-full">
 
         {/* Status Banner */}
         <div className={`rounded-2xl border p-4 flex items-center gap-4 ${

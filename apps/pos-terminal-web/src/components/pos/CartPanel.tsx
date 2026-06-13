@@ -137,7 +137,7 @@ export function CartPanel({
         {/* Order type tabs */}
         <div
           className="bg-slate-100 p-0.5 rounded-lg grid gap-0.5"
-          style={{ gridTemplateColumns: `repeat(${Math.min(displayOrderTypes.length, 3)}, 1fr)` }}
+          style={{ gridTemplateColumns: `repeat(${displayOrderTypes.length <= 3 ? displayOrderTypes.length : 2}, 1fr)` }}
         >
           {displayOrderTypes.map(ot => (
             <button
@@ -397,7 +397,7 @@ export function CartPanel({
                   ? <Loader2 size={16} className="animate-spin" />
                   : <ChefHat size={16} />
                 }
-                Kirim ke Dapur
+                Dapur
               </button>
             )}
 
