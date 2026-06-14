@@ -135,12 +135,16 @@ export function MobileCartDrawer({
         code: ot.code.toLowerCase().replace(/_/g, "-") as OrderType,
         id: ot.id,
         name: ot.name,
+        needTableNumber: ot.needTableNumber ?? false,
       }))
     : [
-        { code: "dine-in" as OrderType, id: null, name: "Dine In" },
-        { code: "take-away" as OrderType, id: null, name: "Take Away" },
-        { code: "delivery" as OrderType, id: null, name: "Delivery" },
+        { code: "dine-in" as OrderType, id: null, name: "Dine In", needTableNumber: true },
+        { code: "take-away" as OrderType, id: null, name: "Take Away", needTableNumber: false },
+        { code: "delivery" as OrderType, id: null, name: "Delivery", needTableNumber: false },
       ];
+
+  const currentOrderType = displayOrderTypes.find(ot => ot.code === orderType);
+  const orderTypeNeedsTable = currentOrderType?.needTableNumber ?? orderType === "dine-in";
 
   const handleOrderTypeSelect = useCallback((type: OrderType, orderTypeId: string | null) => {
     setOrderType(type);
@@ -256,7 +260,7 @@ export function MobileCartDrawer({
                     />
                   </div>
 
-                  {orderType === "dine-in" && showTableNumber && setTableNumber && (
+                  {orderTypeNeedsTable && showTableNumber && setTableNumber && (
                     <Select value={tableNumber} onValueChange={setTableNumber}>
                       <SelectTrigger
                         className="h-10 min-w-[76px] max-w-[96px] flex-shrink-0 border border-slate-200 bg-white rounded-xl px-3 text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-blue-50 focus:border-blue-400 gap-1.5 transition-all"

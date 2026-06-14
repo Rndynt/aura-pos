@@ -159,8 +159,11 @@ async function seedThamada(createdOrderTypes: any[]) {
   });
   console.log('');
 
-  // Order types
-  const tenantOTs = createdOrderTypes.map(ot => ({ tenantId: tenant.id, orderTypeId: ot.id, isEnabled: true }));
+  // Order types — only CAFE_RESTAURANT applicable types
+  const cafeAllowedCodes = ['DINE_IN', 'TAKE_AWAY', 'DELIVERY'];
+  const tenantOTs = createdOrderTypes
+    .filter(ot => cafeAllowedCodes.includes(ot.code))
+    .map(ot => ({ tenantId: tenant.id, orderTypeId: ot.id, isEnabled: true }));
   await db.insert(tenantOrderTypes).values(tenantOTs as InsertTenantOrderType[]);
   console.log(`✅ Order types enabled: Dine In, Take Away, Delivery\n`);
 

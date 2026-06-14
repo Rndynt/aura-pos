@@ -73,12 +73,20 @@ export function CartPanel({
   const showTable = !isLoading && can("restaurant_table_service");
 
   const displayOrderTypes = activeOrderTypes.length > 0
-    ? activeOrderTypes.map(ot => ({ code: ot.code.toLowerCase().replace(/_/g, "-") as OrderType, id: ot.id, name: ot.name }))
+    ? activeOrderTypes.map(ot => ({
+        code: ot.code.toLowerCase().replace(/_/g, "-") as OrderType,
+        id: ot.id,
+        name: ot.name,
+        needTableNumber: ot.needTableNumber ?? false,
+      }))
     : [
-        { code: "dine-in" as OrderType, id: null, name: "Dine In" },
-        { code: "take-away" as OrderType, id: null, name: "Take Away" },
-        { code: "delivery" as OrderType, id: null, name: "Delivery" },
+        { code: "dine-in" as OrderType, id: null, name: "Dine In", needTableNumber: true },
+        { code: "take-away" as OrderType, id: null, name: "Take Away", needTableNumber: false },
+        { code: "delivery" as OrderType, id: null, name: "Delivery", needTableNumber: false },
       ];
+
+  const currentOrderType = displayOrderTypes.find(ot => ot.code === orderType);
+  const orderTypeNeedsTable = currentOrderType?.needTableNumber ?? orderType === "dine-in";
 
   const handleOrderTypeSelect = useCallback((type: OrderType, id: string | null) => {
     setOrderType(type);
@@ -171,7 +179,7 @@ export function CartPanel({
           </div>
 
           {/* Table number */}
-          {orderType === "dine-in" && showTable && setTableNumber && (
+          {orderTypeNeedsTable && showTable && setTableNumber && (
             <Select value={tableNumber} onValueChange={setTableNumber}>
               <SelectTrigger
                 className="h-7 min-w-[64px] max-w-[80px] flex-shrink-0 border border-slate-200 bg-white rounded-md px-2 text-xs font-semibold text-slate-700 focus:ring-1 focus:ring-blue-100 focus:border-blue-400 gap-1 transition-all"

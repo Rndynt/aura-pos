@@ -3,7 +3,7 @@ import { useSearch, useLocation } from "wouter";
 import { ProductOptionsDialog } from "@/components/pos/ProductOptionsDialog";
 import { PaymentMethodDialog } from "@/components/pos/PaymentMethodDialog";
 import { CombinedDraftSheet } from "@/components/pos/CombinedDraftSheet";
-import type { PaymentMethod } from "@/hooks/useCart";
+import type { PaymentMethod, OrderType } from "@/hooks/useCart";
 import { useCart } from "@/hooks/useCart";
 import { useProducts, useCreateOrder, useUpdateOrder, useCreateKitchenTicket, useOrderTypes, useRecordPayment, useOrders } from "@/lib/api/hooks";
 import { useOfflineOrderSubmit } from "@/hooks/useOfflineOrderSubmit";
@@ -140,9 +140,13 @@ export default function POSPage() {
   }, [continueOrderId]);
 
   // Auto-select first ACTIVE order type when loaded (only if not already in cart)
+  // Also sync cart.orderType so the visual selection matches the selected order type ID
   useEffect(() => {
     if (!orderTypesLoading && activeOrderTypes.length > 0 && !cart.selectedOrderTypeId) {
-      cart.setSelectedOrderTypeId(activeOrderTypes[0].id);
+      const firstType = activeOrderTypes[0];
+      cart.setSelectedOrderTypeId(firstType.id);
+      const code = firstType.code.toLowerCase().replace(/_/g, "-") as OrderType;
+      cart.setOrderType(code);
     }
   }, [activeOrderTypes, orderTypesLoading, cart]);
 
