@@ -182,12 +182,10 @@ describe('entitlement catalog and engine', () => {
     );
   });
 
-  it('offer requiredPlan rules are enforced and included entitlements cannot be purchased again', () => {
+  it('offer requiredPlan rules are enforced for active catalog offers', () => {
     assert.equal(canPurchaseOffer({ offerCode: 'receipt_compact_monthly', planCode: 'starter' }), true);
-    assert.equal(canPurchaseOffer({ offerCode: 'orders_queue_addon', planCode: 'starter' }), false);
-    assert.equal(canPurchaseOffer({ offerCode: 'orders_queue_addon', planCode: 'growth' }), false);
-    assert.equal(canPurchaseOffer({ offerCode: 'inventory_advanced_stock_addon', planCode: 'growth' }), true);
-    assert.equal(canPurchaseOffer({ offerCode: 'inventory_advanced_stock_addon', planCode: 'pro' }), false);
+    assert.equal(canPurchaseOffer({ offerCode: 'integrations_webhook_monthly', planCode: 'starter' }), false);
+    assert.equal(canPurchaseOffer({ offerCode: 'integrations_webhook_monthly', planCode: 'growth' }), true);
   });
 
   it('business type defaults include only Basic Stock from SOT by default', () => {

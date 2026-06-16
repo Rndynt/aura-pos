@@ -7,7 +7,9 @@ import { PageHeader } from "@/components/design";
 import { Crown, Sparkles, ChevronRight, X, Lock, Info, CheckCircle2, ShieldCheck, Zap } from "lucide-react";
 import {
   ENTITLEMENT_CATALOG,
+  canPurchaseOffer,
   getPlanIncludedEntitlements,
+  isComingSoonEntitlementCode,
   type EntitlementCode,
   type EntitlementBundleItem,
   type PlanCode,
@@ -16,7 +18,11 @@ import {
 import { ENTITLEMENT_ICONS, FALLBACK_ICON, type EntitlementIconStyle } from "@/lib/entitlementIcons";
 
 type IconStyle = EntitlementIconStyle;
-type CatalogOffer = (typeof ENTITLEMENT_CATALOG.offers)[OfferCode];
+type CatalogOffer = {
+  billingInterval: keyof typeof ENTITLEMENT_CATALOG.billingIntervals;
+  price: number;
+  requiredPlan: PlanCode | string;
+};
 
 const PLAN_ORDER: PlanCode[] = (Object.keys(ENTITLEMENT_CATALOG.plans) as PlanCode[]).sort(
   (a, b) => ENTITLEMENT_CATALOG.plans[a].sortOrder - ENTITLEMENT_CATALOG.plans[b].sortOrder,
@@ -64,6 +70,7 @@ type EntitlementRow = IconStyle & {
   bundleItems: EntitlementBundleItem[];
   includedFromPlan: PlanCode | null;
   offerCode: OfferCode | null;
+  comingSoon: boolean;
 };
 
 function buildEntitlementRows(): EntitlementRow[] {
@@ -88,6 +95,7 @@ function buildEntitlementRows(): EntitlementRow[] {
       longDesc?: string;
       bundleItems?: EntitlementBundleItem[];
     };
+    const comingSoon = isComingSoonEntitlementCode(code);
     const planIncluded = includedFrom.get(code) ?? null;
     return {
       code,
@@ -97,7 +105,8 @@ function buildEntitlementRows(): EntitlementRow[] {
       longDesc: meta.longDesc ?? meta.description ?? "",
       bundleItems: [...(meta.bundleItems ?? [])],
       includedFromPlan: planIncluded,
-      offerCode: planIncluded ? null : offerByEntitlement.get(code) ?? null,
+      offerCode: comingSoon || planIncluded ? null : offerByEntitlement.get(code) ?? null,
+      comingSoon,
       ...(ENTITLEMENT_ICONS[code] ?? FALLBACK_ICON),
     };
   });
@@ -130,17 +139,20 @@ export default function MarketplacePage() {
   const rows = useMemo(() => buildEntitlementRows(), []);
   const categories = useMemo(() => ["Semua", ...Array.from(new Set(rows.map((r) => r.category)))], [rows]);
   const can = (code: EntitlementCode) => entitlements[code] === true;
-  const includedByPlan = (row: EntitlementRow) => row.includedFromPlan !== null && planSortOrder(currentPlan) >= planSortOrder(row.includedFromPlan);
+  const includedByPlan = (row: EntitlementRow) =>
+    !row.comingSoon &&
+    row.includedFromPlan !== null &&
+    planSortOrder(currentPlan) >= planSortOrder(row.includedFromPlan);
   const canPurchase = (row: EntitlementRow): boolean => {
-    if (!row.offerCode) return false;
-    if (includedByPlan(row)) return false;
-    const offer = ENTITLEMENT_CATALOG.offers[row.offerCode];
-    return planSortOrder(currentPlan) >= planSortOrder(offer.requiredPlan as PlanCode);
+    return !row.comingSoon && row.offerCode
+      ? canPurchaseOffer({ offerCode: row.offerCode, planCode: currentPlan })
+      : false;
   };
   const grantFor = (code: EntitlementCode) => grants.find((g) => g.entitlement_code === code) ?? null;
 
-  type Status = "active" | "included" | "purchasable" | "locked";
+  type Status = "coming_soon" | "active" | "included" | "purchasable" | "locked";
   const statusOf = (row: EntitlementRow): Status => {
+    if (row.comingSoon) return "coming_soon";
     if (can(row.code)) return "active";
     if (includedByPlan(row)) return "included";
     if (canPurchase(row)) return "purchasable";
@@ -153,7 +165,7 @@ export default function MarketplacePage() {
     const list = category === "Semua" ? rows : rows.filter((r) => r.category === category);
     const rank = (r: EntitlementRow) => {
       const s = statusOf(r);
-      return s === "active" ? 0 : s === "included" ? 1 : s === "purchasable" ? 2 : 3;
+      return s === "active" ? 0 : s === "included" ? 1 : s === "purchasable" ? 2 : s === "coming_soon" ? 3 : 4;
     };
     return [...list].sort((a, b) => rank(a) - rank(b));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -236,13 +248,14 @@ export default function MarketplacePage() {
               const offer = row.offerCode ? ENTITLEMENT_CATALOG.offers[row.offerCode] : null;
               const Icon = row.icon;
               return (
-                <button key={row.code} onClick={() => setSelected(row)} className={`text-left bg-white rounded-2xl border-2 p-4 transition-all duration-200 ${status === "active" ? "border-emerald-300 shadow-md shadow-emerald-50" : status === "locked" ? "border-slate-100 opacity-70" : "border-slate-200 hover:border-slate-300 hover:shadow-md"}`} data-testid={`card-entitlement-${row.code}`}>
+                <button key={row.code} onClick={() => setSelected(row)} className={`text-left bg-white rounded-2xl border-2 p-4 transition-all duration-200 ${status === "active" ? "border-emerald-300 shadow-md shadow-emerald-50" : status === "locked" ? "border-slate-100 opacity-70" : status === "coming_soon" ? "border-slate-100 opacity-75" : "border-slate-200 hover:border-slate-300 hover:shadow-md"}`} data-testid={`card-entitlement-${row.code}`}>
                   <div className="flex items-start justify-between mb-3">
                     <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${row.iconBg}`}>
                       <Icon size={18} className={row.iconColor} />
                     </div>
                     <div className="flex items-center gap-1.5">
                       {status === "active" && <span className="flex items-center gap-1 text-[10px] font-black bg-emerald-500 text-white px-2 py-0.5 rounded-full"><CheckCircle2 size={9} /> Aktif</span>}
+                      {status === "coming_soon" && <span className="text-[10px] font-black bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-full">Segera Hadir</span>}
                       {status === "included" && <span className="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded-full">Termasuk paket</span>}
                       {offer && status !== "active" && status !== "included" && (
                         <span className={`text-[10px] font-black border px-2 py-0.5 rounded-full ${status === "purchasable" ? "bg-orange-50 text-orange-600 border-orange-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>{formatOfferPrice(offer)}</span>
@@ -275,7 +288,7 @@ export default function MarketplacePage() {
                   <div>
                     <h3 className="font-black text-slate-800 text-base">{selected.label}</h3>
                     <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${statusOf(selected) === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}><span className={`w-1.5 h-1.5 rounded-full ${statusOf(selected) === "active" ? "bg-emerald-500" : "bg-slate-300"}`} />{statusOf(selected) === "active" ? "Aktif" : "Tidak Aktif"}</span>
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${statusOf(selected) === "active" ? "bg-emerald-50 text-emerald-700" : statusOf(selected) === "coming_soon" ? "bg-slate-100 text-slate-500" : "bg-slate-100 text-slate-400"}`}><span className={`w-1.5 h-1.5 rounded-full ${statusOf(selected) === "active" ? "bg-emerald-500" : "bg-slate-300"}`} />{statusOf(selected) === "active" ? "Aktif" : statusOf(selected) === "coming_soon" ? "Segera Hadir" : "Tidak Aktif"}</span>
                       <span className="text-[10px] font-medium text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">{selected.category}</span>
                     </div>
                   </div>
@@ -285,7 +298,7 @@ export default function MarketplacePage() {
 
               <p className="text-sm text-slate-600 leading-relaxed mb-3">{selected.longDesc}</p>
               <BundleChips items={selected.bundleItems} />
-              {selected.offerCode && statusOf(selected) !== "active" && statusOf(selected) !== "included" && (
+              {selected.offerCode && statusOf(selected) !== "active" && statusOf(selected) !== "included" && statusOf(selected) !== "coming_soon" && (
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-wide mb-1">Harga Add-on</p>
                   <p className="text-lg font-black text-slate-800">{formatOfferPrice(ENTITLEMENT_CATALOG.offers[selected.offerCode])}</p>
@@ -293,7 +306,9 @@ export default function MarketplacePage() {
                 </div>
               )}
               <div className="mt-5">
-                {statusOf(selected) === "active" ? (
+                {statusOf(selected) === "coming_soon" ? (
+                  <div className="w-full py-3.5 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center gap-2"><Info size={16} className="text-slate-500" /><span className="text-sm font-black text-slate-600">Segera Hadir</span></div>
+                ) : statusOf(selected) === "active" ? (
                   <div className="w-full py-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center gap-2"><ShieldCheck size={16} className="text-emerald-600" /><span className="text-sm font-black text-emerald-700">Sudah Aktif</span></div>
                 ) : statusOf(selected) === "included" ? (
                   <div className="w-full py-3.5 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center gap-2"><CheckCircle2 size={16} className="text-blue-600" /><span className="text-sm font-black text-blue-700">Termasuk Paket Aktif</span></div>
@@ -337,12 +352,18 @@ export default function MarketplacePage() {
                             <span className="text-xs font-bold text-slate-700">Semua fitur {inheritedPlan.label}</span>
                           </div>
                         )}
-                        {directIncluded.map((code) => (
-                          <div key={code} className="flex items-center gap-2">
-                            <CheckCircle2 size={12} className="text-slate-400" />
-                            <span className="text-xs text-slate-600">{ENTITLEMENT_CATALOG.entitlements[code]?.label ?? code}</span>
-                          </div>
-                        ))}
+                        {directIncluded.map((code) => {
+                          const comingSoon = isComingSoonEntitlementCode(code);
+                          return (
+                            <div key={code} className="flex items-center gap-2">
+                              <CheckCircle2 size={12} className="text-slate-400" />
+                              <span className="text-xs text-slate-600">
+                                {ENTITLEMENT_CATALOG.entitlements[code]?.label ?? code}
+                                {comingSoon && <span className="font-semibold text-slate-400"> (Coming Soon)</span>}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );

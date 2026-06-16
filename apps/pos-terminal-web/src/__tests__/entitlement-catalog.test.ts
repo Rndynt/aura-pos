@@ -132,12 +132,11 @@ describe('Effective entitlements + grants', () => {
 });
 
 describe('Offer purchase rules', () => {
-  it('an entitlement already included by the plan cannot be purchased again', () => {
-    // pro already includes inventory_advanced_stock → its add-on offer must be unpurchasable on pro.
-    assert.equal(canPurchaseOffer({ offerCode: 'inventory_advanced_stock_addon', planCode: 'pro' }), false);
+  it('an add-on is locked when the plan is below requiredPlan', () => {
+    assert.equal(canPurchaseOffer({ offerCode: 'integrations_webhook_monthly', planCode: 'starter' }), false);
   });
 
   it('an add-on is purchasable when plan meets requiredPlan and lacks the entitlement', () => {
-    assert.equal(canPurchaseOffer({ offerCode: 'inventory_advanced_stock_addon', planCode: 'growth' }), true);
+    assert.equal(canPurchaseOffer({ offerCode: 'integrations_webhook_monthly', planCode: 'growth' }), true);
   });
 });

@@ -8,10 +8,10 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import type { AnyEntitlementCode } from '@pos/application/entitlements';
+import type { EntitlementCode } from '@pos/application/entitlements';
 import { getEffectiveEntitlementMap } from '../../services/tenantEntitlements';
 
-export function requireEntitlement(entitlementCode: AnyEntitlementCode) {
+export function requireEntitlement(entitlementCode: EntitlementCode) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -38,7 +38,7 @@ export function requireEntitlement(entitlementCode: AnyEntitlementCode) {
   };
 }
 
-export function requireAnyEntitlement(entitlementCodes: AnyEntitlementCode[]) {
+export function requireAnyEntitlement(entitlementCodes: EntitlementCode[]) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const tenantId = req.tenantId;
     if (!tenantId) {
