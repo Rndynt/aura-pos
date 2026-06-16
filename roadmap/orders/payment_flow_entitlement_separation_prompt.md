@@ -1,238 +1,83 @@
-# Payment Flow Entitlement Separation — DP, Multi Payment, Split Bill
+# Payment Flow Entitlement Separation — Clean Refactor Prompt
 
-## Context
+## Non-negotiable project context
 
-The current POS payment UX is still conceptually ambiguous because “partial payment” can be interpreted as several different business flows:
+AuraPoS is still in development and has no production users/data that must be preserved.
+
+Therefore this task must be a clean refactor, not a compatibility patch.
+
+Do not add:
 
 ```txt
-- DP / uang muka / bayar sebagian
-- multi-payment / multiple tender methods
-- split bill / split by selected order items or by payer
+legacy alias
+legacy compatibility
+legacy resolver
+fallback to old key
+old key support
+backward compatibility bridge
+compat wrapper
+migration preserving old payment feature semantics
 ```
 
-These must be separated as independent commercial entitlements, independent UI flows, and independent backend commands. They may share low-level payment records, but the cashier-facing process must not mix them.
+Remove ambiguous naming instead of preserving it.
 
-## Current SOT problem
+If old code uses `payments_split_payment`, refactor it cleanly to the final key below. Do not keep both keys.
 
-Current entitlement keys already exist for payment features, but the wording is ambiguous:
+## Final product decision
+
+There are four cashier payment choices:
+
+```txt
+1. Bayar Penuh
+   - Built-in base POS feature.
+   - Available to all tenants/plans.
+   - No commercial entitlement required.
+
+2. DP / Bayar Sebagian
+   - Commercial entitlement: payments_partial_payment
+   - Meaning: customer pays part of one bill now, remaining is paid later.
+
+3. Multi Payment
+   - Commercial entitlement: payments_multi_payment
+   - Meaning: one bill is fully paid in one checkout using multiple payment methods.
+
+4. Split Bill
+   - Commercial entitlement: payments_split_bill
+   - Meaning: one confirmed order is split into multiple bills by selected order items/quantities, then each bill is paid independently.
+```
+
+Important separation:
+
+```txt
+DP is not multi-payment.
+DP is not split bill.
+Multi-payment is not DP.
+Multi-payment is not split bill.
+Split bill is not DP.
+Split bill is not multi-payment.
+```
+
+Each flow must have its own entitlement guard, UI flow/dialog/wizard, backend command/use case, audit semantics, reports, and receipt text.
+
+## Final entitlement keys
+
+Use exactly these keys:
 
 ```txt
 payments_partial_payment
 payments_multi_payment
+payments_split_bill
+```
+
+Remove/refactor away:
+
+```txt
 payments_split_payment
 ```
 
-`payments_partial_payment` currently describes “split bill & cicilan”, which mixes business meanings. This must be corrected.
+Do not keep it as alias.
 
-## Product decision
-
-Treat these as three separate product features:
-
-```txt
-1. DP / Bayar Sebagian / Uang Muka
-   Canonical entitlement: payments_partial_payment
-
-2. Multi Payment / Multi Metode Pembayaran
-   Canonical entitlement: payments_multi_payment
-
-3. Split Bill / Pecah Tagihan per item or per payer
-   Canonical entitlement: payments_split_bill
-   Legacy/current key compatibility if needed: payments_split_payment
-```
-
-Important:
-
-```txt
-DP is not split bill.
-DP is not multi-payment.
-Multi-payment is not split bill.
-Split bill is not DP.
-```
-
-Each feature has its own permission, UI, dialog/wizard, backend command, validation, audit semantics, and smoke tests.
-
-## Definitions
-
-### 1. DP / Bayar Sebagian
-
-Business meaning:
-
-```txt
-One order.
-One total bill.
-Customer pays less than the total now.
-Remaining balance is paid later.
-```
-
-Example:
-
-```txt
-Order total: Rp100.000
-DP now: Rp30.000
-Remaining: Rp70.000
-```
-
-Correct statuses:
-
-```txt
-orders.status = confirmed
-orders.payment_status = partial
-orders.paid_amount = 30000
-remaining_amount = 70000
-```
-
-UI wording:
-
-```txt
-Bayar Sebagian
-DP / Uang Muka
-Nominal Dibayar Sekarang
-Dibayar
-Sisa Tagihan
-Lunasi Sisa
-Tambah Pembayaran
-```
-
-Do not use these labels for DP:
-
-```txt
-Split Bill
-Split Payment
-Multi Payment
-Continue Draft
-```
-
-### 2. Multi Payment / Multiple Tender
-
-Business meaning:
-
-```txt
-One order.
-One total bill.
-The same bill is paid using more than one payment method in the same checkout flow.
-The target is usually fully paid in a single payment session.
-```
-
-Example:
-
-```txt
-Order total: Rp100.000
-Cash: Rp40.000
-QRIS: Rp60.000
-Remaining: Rp0
-```
-
-Correct statuses after successful full multi-payment:
-
-```txt
-orders.status = confirmed or completed depending explicit fulfillment mode
-orders.payment_status = paid
-orders.paid_amount = 100000
-remaining_amount = 0
-```
-
-If multi-payment is saved before fully allocated, it is a pending/incomplete payment session, not a DP flow. Do not silently convert it into DP unless the user explicitly chooses “Bayar Sebagian”.
-
-UI wording:
-
-```txt
-Multi Payment
-Multi Metode
-Tambah Metode
-Metode 1
-Metode 2
-Total Dialokasikan
-Sisa Dialokasikan
-Bayar Semua
-```
-
-Rules:
-
-```txt
-- Sum of tender lines must not exceed order total.
-- To finalize as paid, sum must equal order total.
-- Each tender line has method + amount.
-- Same method can be allowed or blocked by product decision, but validation must be explicit.
-- Payment lines should be grouped under one payment session/batch for audit.
-```
-
-### 3. Split Bill
-
-Business meaning:
-
-```txt
-One order.
-The order is split into multiple bills/sub-bills.
-Cashier can choose which order items go into each bill.
-Each split bill can then be paid independently.
-```
-
-Example:
-
-```txt
-Order:
-- Nasi Goreng Rp30.000
-- Kopi Rp20.000
-- Pasta Rp50.000
-Total Rp100.000
-
-Split Bill A:
-- Nasi Goreng
-- Kopi
-Total Rp50.000
-
-Split Bill B:
-- Pasta
-Total Rp50.000
-```
-
-Correct UX:
-
-```txt
-Open order detail / POS payment flow
-→ choose Split Bill
-→ select item(s) to split
-→ create Bill A / Bill B / Bill C
-→ pay each bill separately
-```
-
-Split method scope for this patch:
-
-```txt
-Primary: split by selected order items.
-Optional later: split equally by number of people.
-Optional later: split by custom amount.
-```
-
-Rules:
-
-```txt
-- A split bill contains selected order item references and quantities.
-- One order item quantity can be split partially if quantity > 1.
-- The same item quantity must not be assigned beyond available quantity.
-- Each split bill has total, paid amount, remaining amount, and status.
-- Paying a split bill updates aggregate order paid amount.
-- The parent order payment_status can be partial while some split bills are unpaid.
-- This aggregate payment_status partial is not the same as the DP feature.
-```
-
-UI wording:
-
-```txt
-Split Bill
-Pecah Tagihan
-Pilih Item
-Buat Tagihan
-Bill 1
-Bill 2
-Bayar Bill Ini
-Sisa Belum Dibagi
-Sisa Belum Dibayar
-```
-
-Do not call this “Bayar Sebagian”.
-
-## Required entitlement SOT changes
+## Entitlement SOT requirements
 
 Update:
 
@@ -240,11 +85,13 @@ Update:
 packages/application/entitlements/entitlementCatalog.ts
 ```
 
+### Bayar Penuh
+
+Do not add an entitlement for full payment. It is base POS behavior.
+
 ### payments_partial_payment
 
-Keep key for compatibility, but change wording to DP/bayar sebagian only.
-
-Expected metadata:
+Final metadata:
 
 ```ts
 payments_partial_payment: {
@@ -257,40 +104,33 @@ payments_partial_payment: {
 }
 ```
 
-It must not mention split bill or multi-payment.
+Must not mention:
+
+```txt
+split bill
+split payment
+multi payment
+multiple tender
+```
 
 ### payments_multi_payment
 
-Expected metadata:
+Final metadata:
 
 ```ts
 payments_multi_payment: {
   label: 'Multi Payment',
+  kind: 'feature',
+  area: 'payments',
+  category: 'Pembayaran',
   description: 'Lunasi satu tagihan dengan beberapa metode pembayaran.',
   longDesc: 'Satu order dibayar dalam satu checkout menggunakan beberapa metode, misalnya tunai + QRIS. Target normalnya adalah lunas dalam satu sesi bayar.',
 }
 ```
 
-### Split bill entitlement
+### payments_split_bill
 
-Preferred canonical key:
-
-```txt
-payments_split_bill
-```
-
-If changing keys is risky, keep `payments_split_payment` as legacy alias, but UI and product wording must say Split Bill.
-
-Recommended migration path:
-
-```txt
-1. Add canonical payments_split_bill to SOT.
-2. If existing stored grants use payments_split_payment, map alias payments_split_payment -> payments_split_bill in entitlement resolution.
-3. Replace plan included key from payments_split_payment to payments_split_bill only if DB/dev state allows it.
-4. Do not show both as separate marketplace cards.
-```
-
-Expected metadata:
+Final metadata:
 
 ```ts
 payments_split_bill: {
@@ -299,94 +139,330 @@ payments_split_bill: {
   area: 'payments',
   category: 'Pembayaran',
   description: 'Pecah satu order menjadi beberapa tagihan berdasarkan item yang dipilih.',
-  longDesc: 'Kasir dapat memilih item atau sebagian quantity item dari satu order untuk dibuat menjadi bill terpisah, lalu tiap bill dibayar masing-masing.',
+  longDesc: 'Kasir dapat memilih item atau sebagian quantity item dari satu order confirmed untuk dibuat menjadi bill terpisah, lalu tiap bill dibayar masing-masing.',
 }
 ```
 
-## UI flow requirements
-
-### Payment entry point
-
-Current `PaymentMethodDialog` mixes DP toggle into the same payment method dialog. That is acceptable only as a short-term implementation, but the UX must expose three clearly separate choices when the tenant has the entitlements.
-
-Recommended layout:
+Remove `payments_split_payment` from:
 
 ```txt
-Payment Dialog / Payment Action Sheet
-
-Primary actions:
-1. Bayar Penuh
-2. DP / Bayar Sebagian            shown only if can('payments_partial_payment')
-3. Multi Payment                  shown only if can('payments_multi_payment')
-4. Split Bill                     shown only if can('payments_split_bill') or legacy alias grants access
+ENTITLEMENT_CATALOG.entitlements
+ENTITLEMENT_CATALOG.plans[*].included
+ENTITLEMENT_CATALOG.offers
+frontend can() checks
+marketplace cards
+route/backend guards
+tests
+reports
 ```
 
-Do not show DP toggle as if it is split/multi payment.
+Replace with `payments_split_bill` only.
 
-### DP dialog
+## Product / UX answers to implement
 
-Separate DP panel/dialog:
+### 1. Payment entry point display
+
+The payment entry point must always show:
 
 ```txt
-Title: DP / Bayar Sebagian
-Fields:
-- Total Tagihan
-- Nominal Dibayar Sekarang
-- Sisa Tagihan
-- Payment Method
-Actions:
-- Simpan DP
-- Batal
+Bayar Penuh
 ```
 
-Validation:
+because it is built-in base behavior.
+
+The entry point must show entitlement-based options only when tenant has them:
+
+```txt
+DP / Bayar Sebagian       only if can('payments_partial_payment')
+Multi Payment             only if can('payments_multi_payment')
+Split Bill                only if can('payments_split_bill')
+```
+
+If tenant does not have an entitlement, do not let them use that flow.
+
+Optionally show a locked/upsell row in marketplace or payment dialog, but it must not be clickable as a working payment flow.
+
+### 2. Multi-payment sum less than total
+
+Best behavior:
+
+```txt
+In Multi Payment mode, submit as Multi Payment is disabled until sum(payment lines) == total.
+```
+
+If sum is less than total:
+
+```txt
+- Show remaining amount.
+- Show validation text: “Multi Payment harus lunas. Tambahkan metode/nominal sampai sisa Rp0.”
+- If tenant also has payments_partial_payment, show secondary action: “Simpan sebagai DP / Bayar Sebagian”.
+- If tenant does not have payments_partial_payment, do not allow underpaid multi-payment. User must adjust until full or upgrade DP feature.
+```
+
+This keeps the meaning clean:
+
+```txt
+Multi Payment = full settlement with multiple tenders.
+DP = underpaid bill with remaining balance.
+```
+
+### 3. Split Bill availability
+
+Split Bill is available only for existing confirmed/active orders.
+
+Allowed parent order statuses:
+
+```txt
+confirmed
+preparing
+ready
+served
+```
+
+Do not allow Split Bill for:
+
+```txt
+draft
+completed
+cancelled
+```
+
+Reason:
+
+```txt
+Split bill is used after an order exists/has been confirmed, commonly in restaurant pay-later flow or other businesses where the order is already accepted.
+```
+
+### 4. Split Bill before kitchen
+
+Do not allow split bill before order confirmation.
+
+If order is still a cart/new order/draft, cashier must confirm/create order first.
+
+### 5. DP for quick retail transaction
+
+Best behavior:
+
+```txt
+DP / Bayar Sebagian may be available for any order type if tenant has payments_partial_payment.
+```
+
+Reason:
+
+```txt
+Retail may use DP for pre-order, reservation, custom order, service deposit, or customer pay-later scenario.
+```
+
+But UX must make it clear this is not normal quick-sale full checkout:
+
+```txt
+- Full payment remains default.
+- DP is a separate explicit choice.
+- DP creates confirmed order with outstanding balance.
+```
+
+## Backend / Data Model decisions
+
+### 1. payment_sessions is required
+
+Add a table/model:
+
+```txt
+payment_sessions
+```
+
+Purpose:
+
+```txt
+- Audit one checkout/payment attempt as a unit.
+- Group multi-payment lines.
+- Distinguish flow type cleanly.
+- Support report breakdown.
+- Support receipt display.
+```
+
+Recommended schema:
+
+```txt
+payment_sessions
+- id uuid primary key
+- tenant_id uuid not null
+- order_id uuid not null
+- split_bill_id uuid nullable
+- flow_type varchar not null -- full | dp | multi_payment | split_bill
+- status varchar not null -- pending | completed | failed | voided
+- total_due numeric not null
+- amount_collected numeric not null default 0
+- remaining_amount numeric not null default 0
+- idempotency_key varchar nullable
+- metadata jsonb nullable
+- created_at timestamp not null
+- updated_at timestamp not null
+```
+
+### 2. order_payments flow fields
+
+Use `payment_sessions.flow_type` as the main semantic source.
+
+Update `order_payments` to reference the session:
+
+```txt
+order_payments.payment_session_id nullable/not null depending migration scope
+order_payments.split_bill_id nullable
+```
+
+Avoid putting the main flow semantics only on individual payment lines.
+
+A payment line is a tender/money movement. A session is the business payment flow.
+
+Examples:
+
+```txt
+Full payment:
+  payment_sessions.flow_type = full
+  order_payments: 1 line
+
+DP:
+  payment_sessions.flow_type = dp
+  order_payments: 1 line
+
+Multi Payment:
+  payment_sessions.flow_type = multi_payment
+  order_payments: 2+ lines
+
+Split Bill:
+  payment_sessions.flow_type = split_bill
+  split_bill_id set
+  order_payments: 1+ lines for that split bill
+```
+
+### 3. Split bill totals snapshot is required
+
+Split bill totals must store a snapshot at the time the split bill is created.
+
+Reason:
+
+```txt
+Audit must remain stable even if parent order/item prices/tax/discount display logic changes later.
+```
+
+Add tables:
+
+```txt
+order_split_bills
+- id uuid primary key
+- tenant_id uuid not null
+- order_id uuid not null
+- bill_number varchar/text not null
+- label text nullable
+- payer_name text nullable
+- subtotal numeric not null
+- tax_amount numeric not null
+- service_charge numeric not null
+- discount_amount numeric not null
+- total numeric not null
+- paid_amount numeric not null default 0
+- payment_status varchar not null -- unpaid | partial | paid
+- status varchar not null -- open | paid | voided
+- created_at timestamp not null
+- updated_at timestamp not null
+
+order_split_bill_items
+- id uuid primary key
+- tenant_id uuid not null
+- split_bill_id uuid not null
+- order_id uuid not null
+- order_item_id uuid not null
+- quantity numeric/integer not null
+- unit_price_snapshot numeric not null
+- item_subtotal_snapshot numeric not null
+- item_name_snapshot text not null
+- metadata jsonb nullable
+```
+
+### 4. Split bill item allocation immutability
+
+After any payment exists for a split bill, its item allocation is immutable.
+
+Rules:
+
+```txt
+- Cannot add/remove/change split bill items after payment exists.
+- Cannot change quantity allocation after payment exists.
+- Can void/cancel a split bill only through explicit void flow, with audit.
+```
+
+### 5. Endpoint semantics
+
+Do not keep one generic `recordPayment` as the semantic entry point for every payment flow.
+
+Create explicit endpoints/use cases:
+
+```txt
+POST /api/orders/:id/payments/full
+POST /api/orders/:id/payments/dp
+POST /api/orders/:id/payments/multi
+POST /api/orders/:id/split-bills
+POST /api/orders/:id/split-bills/:splitBillId/pay
+```
+
+Existing generic endpoint may be refactored internally or removed if not needed. Since the app is development-only, prefer clean explicit endpoints.
+
+Guard each endpoint independently:
+
+```txt
+full payment: no entitlement
+DP: require payments_partial_payment
+multi: require payments_multi_payment
+split-bill create/pay: require payments_split_bill
+```
+
+## Backend flow details
+
+### Full payment
+
+Input:
+
+```txt
+order_id
+method
+amount = remaining or total depending context
+```
+
+Rules:
+
+```txt
+- Built-in base behavior.
+- Can create payment_session flow_type=full.
+- Amount must settle the order unless explicit partial flow is used.
+- If amount < remaining, reject with message telling user to use DP if entitled.
+```
+
+### DP / Bayar Sebagian
+
+Input:
+
+```txt
+order_id or create order payload
+method
+amount
+```
+
+Rules:
 
 ```txt
 amount > 0
-amount < orderTotal
-cannot exceed total
+amount < total/remaining
+requires payments_partial_payment
+creates payment_session flow_type=dp
+creates payment line
+updates parent order paid_amount and payment_status=partial
+if draft/new order, order.status becomes confirmed
 ```
 
-Backend action:
+### Multi Payment
 
-```txt
-New order: create-and-pay with amount < total
-Existing order: POST /api/orders/:id/payments with amount <= remaining
-```
-
-### Multi Payment dialog
-
-Separate multi payment dialog:
-
-```txt
-Title: Multi Payment
-Rows:
-- method
-- amount
-Actions:
-- Tambah Metode
-- Hapus Metode
-- Bayar Semua
-```
-
-Validation:
-
-```txt
-sum(paymentLines.amount) <= total
-To submit as paid: sum == total
-If sum < total, require explicit choice: “Simpan sebagai DP/Bayar Sebagian” and require payments_partial_payment entitlement.
-```
-
-Backend requirement:
-
-Prefer a new atomic endpoint:
-
-```txt
-POST /api/orders/create-and-pay-multi
-POST /api/orders/:id/payments/multi
-```
-
-Payload:
+Input:
 
 ```json
 {
@@ -398,247 +474,321 @@ Payload:
 }
 ```
 
-If implementing minimal patch first, the frontend can call existing payment endpoint sequentially only with backend safeguards/idempotency, but the final intended design should be atomic.
-
-### Split Bill dialog/wizard
-
-Separate split bill wizard:
+Rules:
 
 ```txt
-Step 1: Select items to split
-Step 2: Review bill total
-Step 3: Pay bill or save bill
+requires payments_multi_payment
+all lines must have amount > 0
+sum(lines) must equal total/remaining for pure multi-payment submit
+sum(lines) > total rejected
+sum(lines) < total rejected unless user explicitly chooses DP fallback and has DP entitlement
+creates one payment_session flow_type=multi_payment
+creates multiple order_payments linked to that session
+updates paid_amount/payment_status atomically
 ```
 
-UI requirements:
+### Split Bill
+
+Create split bill:
+
+```json
+{
+  "label": "Bill A",
+  "payer_name": "Rendy",
+  "items": [
+    { "order_item_id": "...", "quantity": 1 },
+    { "order_item_id": "...", "quantity": 2 }
+  ]
+}
+```
+
+Rules:
 
 ```txt
-- Display all order items.
-- Allow selecting item lines.
-- For quantity > 1, allow selecting quantity to move into split bill.
-- Show total selected amount.
-- Show unassigned remaining items/amount.
-- Create Bill A/B/C.
-- Pay selected bill.
+requires payments_split_bill
+parent order.status must be confirmed/preparing/ready/served
+cannot split draft/completed/cancelled
+item quantity allocation cannot exceed available unallocated quantity
+snapshot item price/tax/service/discount into split bill tables
 ```
 
-Backend requirements for split bill:
-
-Add domain/API for split bills. Do not fake split bill as a DP payment.
-
-Recommended tables if not already present:
+Pay split bill:
 
 ```txt
-order_split_bills
-- id
-- tenant_id
-- order_id
-- bill_number
-- label / payer_name nullable
-- subtotal
-- tax_amount
-- service_charge
-- discount_amount
-- total
-- paid_amount
-- payment_status: unpaid | partial | paid
-- status: open | paid | voided
-- created_at
-- updated_at
-
-order_split_bill_items
-- id
-- split_bill_id
-- order_item_id
-- quantity
-- amount
-- metadata
+POST /api/orders/:id/split-bills/:splitBillId/pay
 ```
 
-Payment records should be linkable to a split bill:
+Rules:
 
 ```txt
-order_payments.order_id
-order_payments.split_bill_id nullable
-order_payments.payment_session_id nullable
+requires payments_split_bill
+creates payment_session flow_type=split_bill
+links order_payments.split_bill_id
+updates split_bill paid_amount/payment_status
+updates parent order aggregate paid_amount/payment_status
+if all split bills/order total paid, parent payment_status=paid
+if some outstanding, parent payment_status=partial
 ```
 
-If schema change is too large for this patch, create a roadmap task and implement UI/flow only after backend split bill tables are ready. Do not claim split bill is complete without item-level split persistence.
+## UI requirements
 
-## Backend entitlement guards
+### Payment entry point
 
-Add/verify guards:
+Replace ambiguous DP toggle with clear choices:
 
 ```txt
-DP/Bayar Sebagian endpoint or flow requires payments_partial_payment.
-Multi Payment endpoint or flow requires payments_multi_payment.
-Split Bill endpoint or flow requires payments_split_bill or legacy alias access.
+Bayar Penuh                         always visible
+DP / Bayar Sebagian                 visible if can('payments_partial_payment')
+Multi Payment                       visible if can('payments_multi_payment')
+Split Bill                          visible if can('payments_split_bill') and order is confirmed/active
 ```
 
-Do not allow:
+### New order/cart payment
+
+Available flows:
 
 ```txt
-payments_partial_payment to unlock multi-payment.
-payments_multi_payment to unlock split bill.
-payments_split_bill to unlock DP.
+Bayar Penuh
+DP / Bayar Sebagian if entitled
+Multi Payment if entitled
 ```
 
-## Internal status model clarification
+Split Bill must not be available for new cart/draft order.
 
-`orders.payment_status = partial` is an aggregate financial state, not a product feature.
+### Existing order detail payment
 
-It may happen because:
+For confirmed/active order:
 
 ```txt
-- DP / bayar sebagian
-- split bill where only some bills are paid
-- other future payment allocations
+Bayar Sisa / Bayar Penuh
+DP / Tambah Pembayaran if entitled and not fully paid
+Multi Payment if entitled and not fully paid
+Split Bill if entitled and status is confirmed/preparing/ready/served
 ```
 
-But the source flow should be clear via:
+### DP dialog
+
+Dedicated dialog/panel:
 
 ```txt
-- payment session type
-- split bill records
-- payment notes/metadata
-- UI context
+Title: DP / Bayar Sebagian
+Fields:
+- Total Tagihan
+- Sudah Dibayar (if existing order)
+- Sisa Saat Ini
+- Nominal Dibayar Sekarang
+- Sisa Setelah DP
+- Payment Method
+Actions:
+- Simpan DP
+- Batal
 ```
 
-Do not infer feature flow from payment_status alone.
+### Multi Payment dialog
 
-## Suggested implementation phases
-
-### Phase A — Product wording and entitlement cleanup
-
-Scope:
+Dedicated dialog/panel:
 
 ```txt
-- Update ENTITLEMENT_CATALOG labels/descriptions.
-- Add canonical payments_split_bill or map legacy payments_split_payment cleanly.
-- Marketplace displays DP, Multi Payment, Split Bill as separate cards.
-- Sidebar/payment dialog uses can() checks independently.
+Title: Multi Payment
+Rows:
+- Method
+- Amount
+Actions:
+- Tambah Metode
+- Hapus Metode
+- Bayar Semua
 ```
 
-### Phase B — UI separation without deep schema changes
-
-Scope:
+Display:
 
 ```txt
-- Payment dialog entry point presents separate actions.
-- DP dialog is separate.
-- Multi Payment dialog is separate for full settlement.
-- Split Bill action exists only if backend split bill is implemented; otherwise show disabled “coming soon” state and do not pretend it works.
+Total Tagihan
+Total Dialokasikan
+Sisa Dialokasikan
 ```
 
-### Phase C — Backend multi-payment atomic endpoint
-
-Scope:
+Validation:
 
 ```txt
-- Add payment session/batch if needed.
-- Record multiple order_payments atomically.
-- Validate sums and idempotency.
-- Return paid/remaining.
+Submit disabled unless sisa = 0
+If sisa > 0 and tenant has DP: show secondary action “Simpan Sisa sebagai DP”
+If sisa > 0 and tenant has no DP: show text “Multi Payment harus lunas.”
 ```
 
-### Phase D — Backend split bill model
+### Split Bill wizard
 
-Scope:
+Dedicated wizard, only for confirmed/active order:
 
 ```txt
-- Add split bill tables.
-- Add create/update split bill APIs.
-- Add item/quantity allocation validation.
-- Add pay split bill API.
-- Aggregate parent order payment status from split bills/payments.
+Step 1: Pilih Item
+Step 2: Atur Qty jika item qty > 1
+Step 3: Review Bill
+Step 4: Simpan Bill / Bayar Bill Ini
 ```
 
-## Tests
+Display:
+
+```txt
+All order items
+Selected items
+Available quantity
+Selected quantity
+Bill total
+Unassigned remaining items
+Existing split bills
+Payment status per bill
+```
+
+## Reporting / Audit requirements
+
+Reports must distinguish:
+
+```txt
+Revenue paid
+Outstanding DP
+Outstanding split bill
+Multi tender breakdown
+```
+
+A report row with aggregate `payment_status=partial` must show reason/source:
+
+```txt
+DP outstanding
+Split bill unpaid
+Payment session incomplete/failed
+```
+
+Use `payment_sessions.flow_type` and split bill records to determine this. Do not infer only from `orders.payment_status`.
+
+## Receipt requirements
+
+Receipts must be concise but flow-aware.
+
+### Full payment receipt
+
+```txt
+Total: Rp100.000
+Dibayar: Rp100.000
+Metode: Tunai
+```
+
+### DP receipt
+
+```txt
+DP Dibayar: Rp30.000
+Sisa Tagihan: Rp70.000
+Metode: QRIS
+```
+
+### Multi payment receipt
+
+```txt
+Total: Rp100.000
+Tunai: Rp40.000
+QRIS: Rp60.000
+```
+
+### Split bill receipt
+
+```txt
+Split Bill: Bill A
+Item: Nasi Goreng, Kopi
+Total Bill: Rp50.000
+Dibayar: Rp50.000
+```
+
+## Tests required
 
 ### Entitlement tests
 
 ```txt
-- payments_partial_payment label/description does not mention split bill/multi payment.
-- payments_multi_payment is independent.
-- payments_split_bill is independent or legacy alias maps correctly.
-- Marketplace shows separate cards.
-- DP can() does not unlock multi/split.
-- Multi can() does not unlock DP/split.
-- Split bill can() does not unlock DP/multi.
+Bayar Penuh does not require entitlement.
+payments_partial_payment unlocks DP only.
+payments_multi_payment unlocks Multi Payment only.
+payments_split_bill unlocks Split Bill only.
+payments_split_payment no longer exists anywhere in active source.
 ```
 
 ### DP tests
 
 ```txt
-- DP amount < total creates status confirmed + payment_status partial.
-- DP UI shows Dibayar/Sisa/Lunasi Sisa.
-- DP cannot exceed/equal total in DP mode.
+DP amount < total creates confirmed + partial.
+DP amount >= total rejected in DP endpoint.
+DP is hidden/blocked without payments_partial_payment.
 ```
 
-### Multi payment tests
+### Multi-payment tests
 
 ```txt
-- Multiple tender lines sum to total -> payment_status paid.
-- Sum > total rejected.
-- Sum < total requires explicit DP fallback and DP entitlement.
-- Multi-payment is not shown without payments_multi_payment.
+Multiple tender lines sum to total -> paid.
+Sum greater than total -> rejected.
+Sum less than total -> rejected as multi-payment.
+Sum less than total can only be saved through explicit DP fallback with DP entitlement.
+Multi-payment hidden/blocked without payments_multi_payment.
 ```
 
 ### Split bill tests
 
 ```txt
-- Select item(s) into split bill.
-- Quantity allocation cannot exceed order item quantity.
-- Bill total is correct.
-- Paying Bill A does not automatically pay Bill B.
-- Parent order aggregate paid/remaining is correct.
-- Split bill is not shown without payments_split_bill.
+Cannot split draft order.
+Can split confirmed order by selected items.
+Can allocate partial quantity from item with quantity > 1.
+Cannot allocate more quantity than available.
+Cannot modify split bill items after payment exists.
+Paying Bill A does not auto-pay Bill B.
+Parent order aggregate paid/remaining is correct.
+Split bill hidden/blocked without payments_split_bill.
 ```
 
-## Manual smoke scenarios
-
-### DP smoke
+### Report tests
 
 ```txt
-Order total Rp100.000
-Choose DP / Bayar Sebagian
-Pay Rp30.000
-Expected:
-status confirmed
-payment_status partial
-Dibayar Rp30.000
-Sisa Rp70.000
-Lunasi Sisa visible
+DP outstanding appears as DP outstanding.
+Split bill unpaid appears as split bill outstanding.
+Multi-payment report shows tender breakdown.
 ```
 
-### Multi payment smoke
+### Receipt tests
 
 ```txt
-Order total Rp100.000
-Choose Multi Payment
-Cash Rp40.000
-QRIS Rp60.000
-Expected:
-payment_status paid
-Dibayar Rp100.000
-Sisa Rp0
-Payment history has two methods or one grouped session with two lines
+DP receipt shows paid DP and remaining.
+Multi-payment receipt shows method breakdown.
+Split bill receipt shows bill label and selected items summary.
 ```
 
-### Split bill smoke
+## Audit commands
+
+Run after implementation:
+
+```bash
+rg -n "payments_split_payment|legacy alias|legacyAlias|compat|compatibility|fallback old|old key" apps packages shared migrations roadmap
+```
+
+Expected:
 
 ```txt
-Order has 3 items
-Choose Split Bill
-Select item 1 + item 2 for Bill A
-Pay Bill A
-Expected:
-Bill A paid
-Bill B/open remaining items still unpaid
-Parent order shows aggregate paid/remaining
+No active source code uses payments_split_payment.
+No legacy alias/compat wording in active implementation.
+Only roadmap/history text may mention removed terms if unavoidable, but prefer cleaning prompt/report text too.
 ```
 
-## Required report
+## Validation commands
+
+Run:
+
+```bash
+pnpm --filter @pos/api type-check
+pnpm --filter @pos/application type-check
+pnpm --filter @pos/infrastructure type-check
+pnpm --filter @pos/terminal-web type-check
+pnpm type-check
+pnpm run db:check
+pnpm --filter @pos/api test
+```
+
+Run focused frontend tests if available.
+
+## Required implementation report
 
 Create:
 
@@ -653,27 +803,41 @@ Report format:
 
 ## Summary
 
+## Clean refactor confirmation
+- No legacy alias retained: yes/no
+- payments_split_payment removed from active source: yes/no
+- payments_split_bill is canonical: yes/no
+
 ## Product definitions applied
-- DP/Bayar Sebagian:
+- Bayar Penuh:
+- DP / Bayar Sebagian:
 - Multi Payment:
 - Split Bill:
 
 ## Entitlement changes
-- payments_partial_payment wording fixed: yes/no
+- payments_partial_payment independent: yes/no
 - payments_multi_payment independent: yes/no
-- payments_split_bill canonical or legacy alias: yes/no
+- payments_split_bill independent: yes/no
 - marketplace cards separated: yes/no
 
 ## UI changes
 - payment entry point separated: yes/no
 - DP dialog/panel: yes/no
 - Multi Payment dialog/panel: yes/no
-- Split Bill wizard: yes/no/not implemented yet
+- Split Bill item selection wizard: yes/no
 
 ## Backend changes
-- DP endpoint/flow guarded: yes/no
-- Multi-payment atomic endpoint: yes/no/not implemented yet
-- Split bill item allocation model: yes/no/not implemented yet
+- payment_sessions added: yes/no
+- DP endpoint/use case: yes/no
+- Multi-payment endpoint/use case: yes/no
+- Split bill tables/use cases: yes/no
+- Split bill allocation immutable after payment: yes/no
+
+## Reporting and receipt
+- DP outstanding breakdown: yes/no
+- Split bill outstanding breakdown: yes/no
+- Multi tender breakdown: yes/no
+- Flow-aware receipt text: yes/no
 
 ## Tests/commands run
 
@@ -685,7 +849,7 @@ Report format:
 Use commit message:
 
 ```bash
-git commit -m "fix(payments): separate DP multi payment and split bill flows"
+git commit -m "refactor(payments): separate DP multi payment and split bill flows"
 ```
 
 Then push.
@@ -695,15 +859,19 @@ Then push.
 Return:
 
 ```txt
-Payment flow separation status:
+Payment flow clean refactor status:
 Commit SHA:
 Files changed:
+No legacy alias retained: yes/no
+payments_split_bill canonical: yes/no
+Full payment base flow: yes/no
 DP entitlement independent: yes/no
 Multi-payment entitlement independent: yes/no
 Split-bill entitlement independent: yes/no
-DP UI separated: yes/no
-Multi-payment UI separated: yes/no
+payment_sessions added: yes/no
 Split-bill item selection implemented: yes/no
+Reports breakdown implemented: yes/no
+Receipts flow-aware: yes/no
 Tests/commands run:
 Remaining blockers:
 ```
