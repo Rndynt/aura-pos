@@ -4,6 +4,16 @@ import { useOrder, useOrders, useRecordPayment } from "@/lib/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { UnifiedBottomNav } from "@/components/navigation/UnifiedBottomNav";
 import { PageHeader } from "@/components/design";
@@ -17,6 +27,9 @@ import {
   Search,
   ShoppingBag,
   Printer,
+  CreditCard,
+  Banknote,
+  Wallet,
 } from "lucide-react";
 import type { Order, OrderItem, SelectedOption } from "@pos/domain/orders/types";
 import { enqueuePrintJob, markPrinting, markPrinted, markPrintFailed, getOrCreateTerminalIdentity } from "@pos/offline";
@@ -121,6 +134,8 @@ export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [settleDialogOpen, setSettleDialogOpen] = useState(false);
+  const [settlePaymentMethod, setSettlePaymentMethod] = useState<"cash" | "card" | "ewallet">("cash");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -265,24 +280,28 @@ export default function OrdersPage() {
     }
   };
 
-  const handleProcessTransaction = async () => {
+  const handleOpenSettleDialog = () => {
     if (!selectedOrder) return;
     const remainingAmount = selectedOrder.total_amount - selectedOrder.paid_amount;
-
     if (remainingAmount <= 0) {
-      toast({
-        title: "Sudah Terbayar",
-        description: "Pesanan ini sudah lunas.",
-        variant: "destructive",
-      });
+      toast({ title: "Sudah Terbayar", description: "Pesanan ini sudah lunas.", variant: "destructive" });
       return;
     }
+    setSettlePaymentMethod("cash");
+    setSettleDialogOpen(true);
+  };
 
+  const handleConfirmSettle = async () => {
+    if (!selectedOrder) return;
+    const remainingAmount = selectedOrder.total_amount - selectedOrder.paid_amount;
+    if (remainingAmount <= 0) return;
+
+    setSettleDialogOpen(false);
     try {
       await recordPaymentMutation.mutateAsync({
         orderId: selectedOrder.id,
         amount: remainingAmount,
-        payment_method: "cash",
+        payment_method: settlePaymentMethod,
       });
       toast({
         title: "Berhasil",
@@ -644,7 +663,7 @@ export default function OrdersPage() {
                   <Button 
                     className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-sm"
                     data-testid="button-process-transaction"
-                    onClick={handleProcessTransaction}
+                    onClick={handleOpenSettleDialog}
                     disabled={recordPaymentMutation.isPending || selectedOrder.payment_status === "paid"}
                   >
                     {recordPaymentMutation.isPending
@@ -675,6 +694,75 @@ export default function OrdersPage() {
 
       {/* Mobile Bottom Navigation */}
       <UnifiedBottomNav cartCount={0} />
+
+      {/* Settle Payment Confirmation Dialog */}
+      <AlertDialog open={settleDialogOpen} onOpenChange={setSettleDialogOpen}>
+        <AlertDialogContent className="max-w-sm mx-4 rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base font-bold text-slate-800">
+              Konfirmasi Pembayaran
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 pt-1">
+                {selectedOrder && (
+                  <div className="bg-slate-50 rounded-xl p-3 space-y-1.5 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Order</span>
+                      <span className="font-bold text-slate-800">#{selectedOrder.order_number}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Sisa tagihan</span>
+                      <span className="font-bold text-amber-700">
+                        {formatPrice(Math.max(0, selectedOrder.total_amount - selectedOrder.paid_amount))}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Payment method picker */}
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">Metode Pembayaran</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        { value: "cash",    label: "Tunai",  Icon: Banknote },
+                        { value: "card",    label: "Kartu",  Icon: CreditCard },
+                        { value: "ewallet", label: "E-Wallet", Icon: Wallet },
+                      ] as const
+                    ).map(({ value, label, Icon }) => (
+                      <button
+                        key={value}
+                        onClick={() => setSettlePaymentMethod(value)}
+                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 text-xs font-semibold transition-all ${
+                          settlePaymentMethod === value
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                        }`}
+                        data-testid={`settle-method-${value}`}
+                      >
+                        <Icon size={18} />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 mt-2">
+            <AlertDialogCancel className="flex-1 rounded-xl font-semibold" data-testid="button-settle-cancel">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold"
+              onClick={handleConfirmSettle}
+              data-testid="button-settle-confirm"
+            >
+              Lunasi Sekarang
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
