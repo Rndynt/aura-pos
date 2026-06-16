@@ -25,7 +25,6 @@ import { clearActiveTenantCache } from "@/lib/tenant";
 import { clearActiveOutletId } from "@/lib/outlet";
 import { MainLayout } from "@/components/layout/MainLayout";
 
-// ── Lazy-loaded non-critical pages ───────────────────────────────────────────
 const ReportsPage = lazy(() => import("@/pages/reports"));
 const ProductsPage = lazy(() => import("@/pages/products"));
 const StockPage = lazy(() => import("@/pages/stock"));
@@ -49,7 +48,6 @@ function RedirectToRegister() {
   return <PageLoading />;
 }
 
-// ── Suspense fallback ────────────────────────────────────────────────────────
 function PageLoading() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -194,16 +192,15 @@ const NotFoundWithLayout = () => (
 );
 
 function ProtectedKitchenRoute() {
-  const { can, isLoading } = useTenant();
+  const { can, isLoading, planTier } = useTenant();
   if (isLoading) return null;
-  return can("restaurant_kitchen_ops") ? <KitchenDisplayPageWithLayout /> : <NotFoundWithLayout />;
+  return can("restaurant_kitchen_ops") || planTier === "growth" || planTier === "pro" ? <KitchenDisplayPageWithLayout /> : <NotFoundWithLayout />;
 }
 
-
 function ProtectedTablesRoute() {
-  const { can, isLoading } = useTenant();
+  const { can, isLoading, planTier } = useTenant();
   if (isLoading) return null;
-  return can("restaurant_table_service") ? <TablesManagementPageWithLayout /> : <NotFoundWithLayout />;
+  return can("restaurant_table_service") || planTier === "growth" || planTier === "pro" ? <TablesManagementPageWithLayout /> : <NotFoundWithLayout />;
 }
 
 const OFFLINE_SESSION_KEY = "aurapos_session_cached";
@@ -221,9 +218,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
           r.json().then((body) => {
             try {
               localStorage.setItem(OFFLINE_SESSION_KEY, JSON.stringify(body));
-            } catch {
-              // storage quota exceeded — non-fatal
-            }
+            } catch {}
           }).catch(() => {});
           setStatus("authenticated");
         } else {
@@ -285,101 +280,62 @@ function Router() {
       <Route path="/login" component={LoginPage} />
       <Route path="/register" component={RegisterPage} />
       <Route path="/">
-        <RequireAuth>
-          <POSPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><POSPageWithLayout /></RequireAuth>
       </Route>
       <Route path="/hub">
-        <RequireAuth>
-          <HomePageWithLayout />
-        </RequireAuth>
+        <RequireAuth><HomePageWithLayout /></RequireAuth>
       </Route>
       <Route path="/marketplace">
-        <RequireAuth>
-          <MarketplacePageWithLayout />
-        </RequireAuth>
+        <RequireAuth><MarketplacePageWithLayout /></RequireAuth>
       </Route>
       <Route path="/my-features">
-        <RequireAuth>
-          <MyFeaturesPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><MyFeaturesPageWithLayout /></RequireAuth>
       </Route>
       <Route path="/pos">
-        <RequireAuth>
-          <POSPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><POSPageWithLayout /></RequireAuth>
       </Route>
       <Route path="/orders">
-        <RequireAuth>
-          <OrdersPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><OrdersPageWithLayout /></RequireAuth>
       </Route>
       <Route path="/kitchen">
-        <RequireAuth>
-          <ProtectedKitchenRoute />
-        </RequireAuth>
+        <RequireAuth><ProtectedKitchenRoute /></RequireAuth>
       </Route>
       <Route path="/tables">
-        <RequireAuth>
-          <ProtectedTablesRoute />
-        </RequireAuth>
+        <RequireAuth><ProtectedTablesRoute /></RequireAuth>
       </Route>
       <Route path="/dashboard">
-        <RequireAuth>
-          <DashboardPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><DashboardPageWithLayout /></RequireAuth>
       </Route>
       <Route path="/products">
-        <RequireAuth>
-          <ProductsPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><ProductsPageWithLayout /></RequireAuth>
       </Route>
       <Route path="/stock">
-        <RequireAuth>
-          <StockPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><StockPageWithLayout /></RequireAuth>
       </Route>
       <Route path="/employees">
-        <RequireAuth>
-          <EmployeesPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><EmployeesPageWithLayout /></RequireAuth>
       </Route>
       <Route path="/reports">
-        <RequireAuth>
-          <ReportsPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><ReportsPageWithLayout /></RequireAuth>
       </Route>
       <Route path="/printers">
-        <RequireAuth>
-          <PrintersPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><PrintersPageWithLayout /></RequireAuth>
       </Route>
       <Route path="/local-orders">
-        <RequireAuth>
-          <LocalOrdersPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><LocalOrdersPageWithLayout /></RequireAuth>
       </Route>
       <Route path="/sync-conflicts">
-        <RequireAuth>
-          <SyncConflictsPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><SyncConflictsPageWithLayout /></RequireAuth>
       </Route>
       <Route path="/store-profile">
-        <RequireAuth>
-          <StoreProfilePageWithLayout />
-        </RequireAuth>
+        <RequireAuth><StoreProfilePageWithLayout /></RequireAuth>
       </Route>
       <Route path="/outlets">
-        <RequireAuth>
-          <OutletsPageWithLayout />
-        </RequireAuth>
+        <RequireAuth><OutletsPageWithLayout /></RequireAuth>
       </Route>
-      {/* Customer Facing Display — tidak butuh auth, full-screen tanpa layout */}
       <Route path="/display" component={CustomerDisplayPage} />
-      {/* Kitchen Display Standalone — publik, API key auth, tanpa layout app */}
       <Route path="/kds/activate" component={KdsActivatePage} />
       <Route path="/kds" component={KDSPage} />
-      {/* Legacy registration URL redirects to the canonical public onboarding page. */}
       <Route path="/register-tenant" component={RedirectToRegister} />
       <Route component={NotFoundWithLayout} />
     </Switch>
