@@ -10,7 +10,7 @@ import type { ElementType } from "react";
 import {
   Package, PackageSearch, SplitSquareVertical, Wallet, Layers, Receipt,
   ClipboardList, UtensilsCrossed, ChefHat, BarChart3, Download, MapPin,
-  Tag, ScanLine, CreditCard, BookOpen, Webhook, KeyRound,
+  Monitor, Tag, ScanLine, CreditCard, BookOpen, Webhook, KeyRound,
 } from "lucide-react";
 import type { EntitlementCode } from "@pos/application/entitlements";
 
@@ -33,6 +33,7 @@ export const ENTITLEMENT_ICONS: Record<EntitlementCode, EntitlementIconStyle> = 
   reports_advanced:             { icon: BarChart3,           iconBg: "bg-violet-100",  iconColor: "text-violet-600" },
   reports_export:               { icon: Download,            iconBg: "bg-blue-100",    iconColor: "text-blue-600" },
   multi_location:               { icon: MapPin,              iconBg: "bg-cyan-100",    iconColor: "text-cyan-600" },
+  customer_display:             { icon: Monitor,             iconBg: "bg-sky-100",     iconColor: "text-sky-600" },
   hardware_label_printer:       { icon: Tag,                 iconBg: "bg-teal-100",    iconColor: "text-teal-600" },
   hardware_barcode_scanner:     { icon: ScanLine,            iconBg: "bg-purple-100",  iconColor: "text-purple-600" },
   integrations_payment_gateway: { icon: CreditCard,          iconBg: "bg-green-100",   iconColor: "text-green-600" },
