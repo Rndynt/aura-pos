@@ -31,6 +31,7 @@ import {
 // Everything else (label, category, description, longDesc) is read from the catalog.
 
 type IconStyle = EntitlementIconStyle;
+type CatalogOffer = (typeof ENTITLEMENT_CATALOG.offers)[OfferCode];
 
 const PLAN_ORDER: PlanCode[] = (Object.keys(ENTITLEMENT_CATALOG.plans) as PlanCode[]).sort(
   (a, b) => ENTITLEMENT_CATALOG.plans[a].sortOrder - ENTITLEMENT_CATALOG.plans[b].sortOrder,
@@ -43,6 +44,28 @@ function planSortOrder(plan: PlanCode): number {
 function formatPrice(price: number): string {
   if (!price) return "Gratis";
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(price);
+}
+
+function offerPriceSuffix(offer: CatalogOffer): string {
+  switch (offer.billingInterval) {
+    case "monthly":
+      return "/bulan";
+    case "yearly":
+      return "/tahun";
+    case "one_time":
+      return " sekali";
+    case "none":
+    default:
+      return "";
+  }
+}
+
+function formatOfferPrice(offer: CatalogOffer): string {
+  return `${formatPrice(offer.price)}${offerPriceSuffix(offer)}`;
+}
+
+function requiredPlanLabel(offer: CatalogOffer): string {
+  return ENTITLEMENT_CATALOG.plans[offer.requiredPlan as PlanCode]?.label ?? offer.requiredPlan;
 }
 
 type EntitlementRow = IconStyle & {
@@ -258,6 +281,7 @@ export default function MarketplacePage() {
             {filteredRows.map((row) => {
               const status = statusOf(row);
               const grant = grantFor(row.code);
+              const offer = row.offerCode ? ENTITLEMENT_CATALOG.offers[row.offerCode] : null;
               const Icon = row.icon;
               return (
                 <button
@@ -285,9 +309,13 @@ export default function MarketplacePage() {
                           Termasuk paket
                         </span>
                       )}
-                      {status === "purchasable" && row.offerCode && (
-                        <span className="text-[10px] font-black bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full">
-                          {formatPrice(ENTITLEMENT_CATALOG.offers[row.offerCode].price)}
+                      {offer && status !== "active" && status !== "included" && (
+                        <span className={`text-[10px] font-black border px-2 py-0.5 rounded-full ${
+                          status === "purchasable"
+                            ? "bg-orange-50 text-orange-600 border-orange-200"
+                            : "bg-slate-50 text-slate-500 border-slate-200"
+                        }`}>
+                          {formatOfferPrice(offer)}
                         </span>
                       )}
                       {status === "locked" && <Lock size={11} className="text-slate-300" />}
@@ -301,6 +329,11 @@ export default function MarketplacePage() {
                   <h3 className="font-black text-slate-800 text-sm mb-1">{row.label}</h3>
                   <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">{row.description}</p>
                   <BundleChips items={row.bundleItems} />
+                  {offer && status === "locked" && (
+                    <p className="text-[10px] text-violet-600 font-semibold mt-2">
+                      Butuh paket {requiredPlanLabel(offer)} untuk add-on ini
+                    </p>
+                  )}
                   {(grant?.status === "expired" || grant?.status === "cancelled") && (
                     <p className="text-[10px] text-amber-600 font-semibold mt-1.5">
                       {grant.status === "expired" ? "Grant kedaluwarsa" : "Grant dibatalkan"}
@@ -349,6 +382,19 @@ export default function MarketplacePage() {
 
               <p className="text-sm text-slate-600 leading-relaxed mb-3">{selected.longDesc}</p>
               <BundleChips items={selected.bundleItems} />
+              {selected.offerCode && statusOf(selected) !== "active" && statusOf(selected) !== "included" && (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wide mb-1">Harga Add-on</p>
+                  <p className="text-lg font-black text-slate-800">
+                    {formatOfferPrice(ENTITLEMENT_CATALOG.offers[selected.offerCode])}
+                  </p>
+                  {statusOf(selected) === "locked" && (
+                    <p className="text-[11px] text-violet-600 font-semibold mt-1">
+                      Butuh paket {requiredPlanLabel(ENTITLEMENT_CATALOG.offers[selected.offerCode])} untuk mengaktifkan add-on ini.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="mt-5">
                 {statusOf(selected) === "active" ? (
                   <div className="w-full py-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center gap-2">
@@ -367,7 +413,7 @@ export default function MarketplacePage() {
                   >
                     <Zap size={16} /> Aktifkan Add-on
                     {selected.offerCode && (
-                      <span className="opacity-80">· {formatPrice(ENTITLEMENT_CATALOG.offers[selected.offerCode].price)}/bln</span>
+                      <span className="opacity-80">· {formatOfferPrice(ENTITLEMENT_CATALOG.offers[selected.offerCode])}</span>
                     )}
                   </button>
                 ) : (
@@ -375,7 +421,10 @@ export default function MarketplacePage() {
                     onClick={() => { setSelected(null); setShowPlans(true); }}
                     className="w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-violet-600 text-white hover:bg-violet-700"
                   >
-                    <Crown size={16} /> Upgrade Paket
+                    <Crown size={16} />
+                    {selected.offerCode
+                      ? `Upgrade ke ${requiredPlanLabel(ENTITLEMENT_CATALOG.offers[selected.offerCode])}`
+                      : "Upgrade Paket"}
                   </button>
                 )}
               </div>
