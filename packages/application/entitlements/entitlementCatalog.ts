@@ -239,20 +239,6 @@ export const ENTITLEMENT_CATALOG = {
       billingInterval: "none",
       expires: false,
     },
-    inventory_advanced_stock_addon: {
-      entitlement: "inventory_advanced_stock",
-      requiredPlan: "growth",
-      price: 59000,
-      billingInterval: "monthly",
-      expires: true,
-    },
-    orders_queue_addon: {
-      entitlement: "orders_queue",
-      requiredPlan: "growth",
-      price: 25000,
-      billingInterval: "monthly",
-      expires: true,
-    },
     integrations_webhook_monthly: {
       entitlement: "integrations_webhook",
       requiredPlan: "growth",
@@ -350,10 +336,3 @@ export type OfferCode = keyof EntitlementCatalog["offers"];
 export type BusinessTypeCode = keyof EntitlementCatalog["businessTypes"];
 export type BillingIntervalCode = keyof EntitlementCatalog["billingIntervals"];
 export type EntitlementBundleItem = { label: string };
-
-export const ENTITLEMENT_ALIASES = {
-  payments_split_payment: "payments_split_bill",
-} as const satisfies Record<string, EntitlementCode>;
-
-export type LegacyEntitlementCode = keyof typeof ENTITLEMENT_ALIASES;
-export type AnyEntitlementCode = EntitlementCode | LegacyEntitlementCode;
