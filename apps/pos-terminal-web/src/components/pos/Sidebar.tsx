@@ -1,7 +1,7 @@
 import {
   ShoppingBag, LayoutGrid, UtensilsCrossed, ChefHat, Grip,
   AlertTriangle, WifiOff, RefreshCw,
-  CheckCircle2, Clock3, XCircle, Receipt,
+  CheckCircle2, Clock3, Receipt, Monitor,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useTenant } from "@/context/TenantContext";
@@ -9,7 +9,6 @@ import { useEffect, useState, useCallback } from "react";
 import { offlineDb, runSyncEngine } from "@pos/offline";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
-// ─── Compact sync status button for the sidebar ───────────────────────────────
 function SidebarSyncButton() {
   const [pending, setPending]   = useState(0);
   const [failed, setFailed]     = useState(0);
@@ -36,7 +35,7 @@ function SidebarSyncButton() {
   const handleSync = useCallback(async () => {
     if (isSyncing || !isOnline) return;
     setIsSyncing(true);
-    try { await runSyncEngine(); } catch { /* no-op */ } finally { setIsSyncing(false); }
+    try { await runSyncEngine(); } catch { /* ignore */ } finally { setIsSyncing(false); }
   }, [isSyncing, isOnline]);
 
   const severity = !isOnline ? "gray"
@@ -52,7 +51,6 @@ function SidebarSyncButton() {
   }[severity];
 
   const Icon = isSyncing ? RefreshCw : colorMap.icon;
-
   const total = pending + failed + conflict;
   const tooltipText = !isOnline ? "Offline"
     : isSyncing ? "Sedang sync…"
@@ -73,13 +71,11 @@ function SidebarSyncButton() {
         strokeWidth={1.8}
         className={`${severity === "red" ? "text-red-500" : severity === "yellow" ? "text-amber-500" : severity === "green" ? "text-emerald-500" : "text-slate-400"} ${isSyncing ? "animate-spin" : ""}`}
       />
-      {/* Badge count */}
       {total > 0 && (
         <span className={`absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-0.5 rounded-full text-[10px] font-bold flex items-center justify-center text-white ${colorMap.dot}`}>
           {total > 9 ? "9+" : total}
         </span>
       )}
-      {/* Tooltip */}
       <span className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 z-50">
         {tooltipText}
         <span className="absolute -left-1 top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-800" />
@@ -88,7 +84,6 @@ function SidebarSyncButton() {
   );
 }
 
-// ─── Desktop icon-only sidebar ────────────────────────────────────────────────
 function SidebarItem({
   icon: Icon, label, isActive = false, onClick, testId,
 }: {
@@ -107,8 +102,6 @@ function SidebarItem({
       }`}
     >
       <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
-
-      {/* Tooltip */}
       <span className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 z-50">
         {label}
         <span className="absolute -left-1 top-1/2 -translate-y-1/2 border-4 border-transparent border-r-slate-800" />
@@ -119,96 +112,56 @@ function SidebarItem({
 
 export function Sidebar() {
   const [location, setLocation] = useLocation();
-  const { can, isLoading } = useTenant();
+  const { can, isLoading, planTier } = useTenant();
 
-  const showTables  = !isLoading && can("restaurant_table_service");
-  const showKitchen = !isLoading && can("restaurant_kitchen_ops");
+  const planIncludesRestaurantOps = planTier === "growth" || planTier === "pro";
+  const showTables = !isLoading && (can("restaurant_table_service") || planIncludesRestaurantOps);
+  const showKitchen = !isLoading && (can("restaurant_kitchen_ops") || planIncludesRestaurantOps);
+  const showCustomerDisplay = !isLoading && (can("customer_display") || planTier === "pro");
 
   const nav = (path: string) => setLocation(path);
   const isHub = ["/hub", "/dashboard", "/products", "/stock", "/reports", "/employees", "/store-profile"].some(p => location === p || location.startsWith(p));
 
   return (
     <aside className="hidden md:flex flex-col items-center w-[68px] h-screen bg-white border-r border-slate-100 py-5 flex-shrink-0 z-30 gap-2">
-
-      {/* Logo */}
       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-md shadow-blue-300/40 mb-3 flex-shrink-0">
         <ShoppingBag size={18} className="text-white" strokeWidth={2.5} />
       </div>
 
-      {/* Nav items — hanya item prioritas harian POS */}
       <nav className="flex flex-col items-center gap-1.5 flex-1">
-        <SidebarItem
-          icon={LayoutGrid}
-          label="Kasir / POS"
-          isActive={location === "/pos" || location === "/"}
-          onClick={() => nav("/pos")}
-          testId="button-nav-pos"
-        />
-
-        <SidebarItem
-          icon={Receipt}
-          label="Pesanan"
-          isActive={location.startsWith("/orders")}
-          onClick={() => nav("/orders")}
-          testId="button-nav-orders"
-        />
-
-        {showTables && (
-          <SidebarItem
-            icon={UtensilsCrossed}
-            label="Meja"
-            isActive={location.startsWith("/tables")}
-            onClick={() => nav("/tables")}
-            testId="button-nav-tables"
-          />
-        )}
-
-        {showKitchen && (
-          <SidebarItem
-            icon={ChefHat}
-            label="Dapur / Kitchen"
-            isActive={location.startsWith("/kitchen")}
-            onClick={() => nav("/kitchen")}
-            testId="button-nav-kitchen"
-          />
-        )}
-
-        {/* Separator */}
+        <SidebarItem icon={LayoutGrid} label="Kasir / POS" isActive={location === "/pos" || location === "/"} onClick={() => nav("/pos")} testId="button-nav-pos" />
+        <SidebarItem icon={Receipt} label="Pesanan" isActive={location.startsWith("/orders")} onClick={() => nav("/orders")} testId="button-nav-orders" />
+        {showTables && <SidebarItem icon={UtensilsCrossed} label="Meja" isActive={location.startsWith("/tables")} onClick={() => nav("/tables")} testId="button-nav-tables" />}
+        {showKitchen && <SidebarItem icon={ChefHat} label="Dapur / Kitchen" isActive={location.startsWith("/kitchen")} onClick={() => nav("/kitchen")} testId="button-nav-kitchen" />}
+        {showCustomerDisplay && <SidebarItem icon={Monitor} label="Customer Display" isActive={location.startsWith("/display")} onClick={() => nav("/display")} testId="button-nav-display" />}
         <div className="w-6 h-px bg-slate-100 my-1 flex-shrink-0" />
-
-        <SidebarItem
-          icon={Grip}
-          label="Hub / Manajemen"
-          isActive={isHub}
-          onClick={() => nav("/hub")}
-          testId="button-nav-hub"
-        />
+        <SidebarItem icon={Grip} label="Hub / Manajemen" isActive={isHub} onClick={() => nav("/hub")} testId="button-nav-hub" />
       </nav>
 
-      {/* Sync status indicator — selalu tampil, penting untuk offline */}
       <SidebarSyncButton />
     </aside>
   );
 }
 
-// ─── SidebarContent (used in mobile sheet/drawer if needed) ───────────────────
 export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
   const [location, setLocation] = useLocation();
-  const { can, isLoading } = useTenant();
+  const { can, isLoading, planTier } = useTenant();
 
-  const showTables  = !isLoading && can("restaurant_table_service");
-  const showKitchen = !isLoading && can("restaurant_kitchen_ops");
+  const planIncludesRestaurantOps = planTier === "growth" || planTier === "pro";
+  const showTables = !isLoading && (can("restaurant_table_service") || planIncludesRestaurantOps);
+  const showKitchen = !isLoading && (can("restaurant_kitchen_ops") || planIncludesRestaurantOps);
+  const showCustomerDisplay = !isLoading && (can("customer_display") || planTier === "pro");
 
   const nav = (path: string) => { setLocation(path); onItemClick?.(); };
   const isHub = ["/hub", "/dashboard", "/products", "/stock", "/reports", "/employees", "/store-profile"].some(p => location === p || location.startsWith(p));
 
-  // Mobile drawer hanya item prioritas — logout ada di halaman Hub/Home
   const items = [
-    { path: "/pos",    icon: LayoutGrid,      label: "Kasir / POS",     active: location === "/pos" || location === "/", show: true        },
-    { path: "/orders", icon: Receipt,         label: "Pesanan",         active: location.startsWith("/orders"),          show: true        },
-    { path: "/tables", icon: UtensilsCrossed, label: "Denah Meja",      active: location.startsWith("/tables"),          show: showTables  },
-    { path: "/kitchen",icon: ChefHat,         label: "Dapur / Kitchen", active: location.startsWith("/kitchen"),         show: showKitchen },
-    { path: "/hub",    icon: Grip,            label: "Hub / Manajemen", active: isHub,                                   show: true        },
+    { path: "/pos", icon: LayoutGrid, label: "Kasir / POS", active: location === "/pos" || location === "/", show: true },
+    { path: "/orders", icon: Receipt, label: "Pesanan", active: location.startsWith("/orders"), show: true },
+    { path: "/tables", icon: UtensilsCrossed, label: "Denah Meja", active: location.startsWith("/tables"), show: showTables },
+    { path: "/kitchen", icon: ChefHat, label: "Dapur / Kitchen", active: location.startsWith("/kitchen"), show: showKitchen },
+    { path: "/display", icon: Monitor, label: "Customer Display", active: location.startsWith("/display"), show: showCustomerDisplay },
+    { path: "/hub", icon: Grip, label: "Hub / Manajemen", active: isHub, show: true },
   ];
 
   return (
