@@ -77,7 +77,7 @@ type EntitlementRow = IconStyle & {
   bundleItems: EntitlementBundleItem[];
   /** Lowest plan that includes this entitlement cumulatively, if any. */
   includedFromPlan: PlanCode | null;
-  /** Offer that sells this entitlement as an add-on, if any. */
+  /** Offer that sells this entitlement as an add-on, if any. Ignored when a plan already includes it. */
   offerCode: OfferCode | null;
 };
 
@@ -99,6 +99,7 @@ function buildEntitlementRows(): EntitlementRow[] {
       label: string; category?: string; area?: string; description?: string; longDesc?: string;
       bundleItems?: EntitlementBundleItem[];
     };
+    const planIncluded = includedFrom.get(code) ?? null;
     return {
       code,
       label: meta.label,
@@ -106,8 +107,8 @@ function buildEntitlementRows(): EntitlementRow[] {
       description: meta.description ?? "",
       longDesc: meta.longDesc ?? meta.description ?? "",
       bundleItems: [...(meta.bundleItems ?? [])],
-      includedFromPlan: includedFrom.get(code) ?? null,
-      offerCode: offerByEntitlement.get(code) ?? null,
+      includedFromPlan: planIncluded,
+      offerCode: planIncluded ? null : offerByEntitlement.get(code) ?? null,
       ...(ENTITLEMENT_ICONS[code] ?? FALLBACK_ICON),
     };
   });
