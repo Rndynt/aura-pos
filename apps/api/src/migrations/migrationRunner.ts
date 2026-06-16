@@ -14,7 +14,6 @@ export type MigrationRunSummary = {
 
 const ALREADY_APPLIED_CODES = new Set([
   '42P07', // relation already exists
-  '42P01', // relation does not exist used in IF EXISTS on drifted DBs
   '42710', // duplicate object
   '42701', // duplicate column
   '23505', // unique violation on DDL/tracking insert
@@ -32,7 +31,6 @@ export function isAlreadyAppliedMigrationError(error: unknown): boolean {
     || message.includes('already exists')
     || message.includes('duplicate')
     || message.includes('cannot be implemented')
-    || message.includes('does not exist')
   );
 }
 
