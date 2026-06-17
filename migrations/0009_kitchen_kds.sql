@@ -23,20 +23,18 @@ CREATE TABLE "kitchen_tickets" (
     FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action
 );
 
-
-
-
 CREATE INDEX "kitchen_tickets_tenant_idx"   ON "kitchen_tickets" ("tenant_id");
 CREATE INDEX "kitchen_tickets_outlet_idx"   ON "kitchen_tickets" ("outlet_id");
 CREATE INDEX "kitchen_tickets_order_idx"    ON "kitchen_tickets" ("order_id");
 CREATE INDEX "kitchen_tickets_status_idx"   ON "kitchen_tickets" ("status");
 
 -- ── KDS Devices (managed outside Drizzle schema) ──────────────────────────────
+-- id is varchar because the runtime creates device ids with nanoid(), not UUID.
 -- api_key stores only a SHA-256 hex hash; the raw key is returned once from
 -- /api/kds/verify-code and is never stored in plaintext.
 -- activation_locked_until protects against brute-force of the 6-digit code.
 CREATE TABLE "kds_devices" (
-  "id"                      uuid        PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "id"                      varchar     PRIMARY KEY DEFAULT gen_random_uuid()::text NOT NULL,
   "tenant_id"               uuid        NOT NULL,
   "outlet_id"               uuid,
   "device_name"             text,
@@ -54,8 +52,6 @@ CREATE TABLE "kds_devices" (
   CONSTRAINT "kds_devices_outlet_id_outlets_id_fk"
     FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action
 );
-
-
 
 CREATE INDEX "kds_devices_tenant_idx"
   ON "kds_devices" ("tenant_id");
