@@ -27,7 +27,13 @@ CREATE TABLE "orders" (
   "client_created_at"   timestamp,
   "local_order_id"      varchar(128),
   "created_at"          timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at"          timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at"          timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "orders_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "orders_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "orders_order_type_id_order_types_id_fk"
+    FOREIGN KEY ("order_type_id") REFERENCES "public"."order_types"("id") ON DELETE no action ON UPDATE no action
 );
 
 CREATE TABLE "order_items" (
@@ -43,7 +49,11 @@ CREATE TABLE "order_items" (
   "notes"         text,
   "status"        varchar(50)    NOT NULL DEFAULT 'pending',
   "created_at"    timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at"    timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at"    timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "order_items_order_id_orders_id_fk"
+    FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "order_items_product_id_products_id_fk"
+    FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE no action ON UPDATE no action
 );
 
 CREATE TABLE "order_item_modifiers" (
@@ -54,7 +64,9 @@ CREATE TABLE "order_item_modifiers" (
   "option_id"         uuid           NOT NULL,
   "option_name"       text           NOT NULL,
   "price_delta"       numeric(10, 2) NOT NULL DEFAULT '0',
-  "created_at"        timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "created_at"        timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "order_item_modifiers_order_item_id_order_items_id_fk"
+    FOREIGN KEY ("order_item_id") REFERENCES "public"."order_items"("id") ON DELETE cascade ON UPDATE no action
 );
 
 CREATE TABLE "order_payments" (
@@ -66,34 +78,13 @@ CREATE TABLE "order_payments" (
   "reference_number" text,
   "notes"            text,
   "idempotency_key"  varchar(128),
-  "created_at"       timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "created_at"       timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "order_payments_order_id_orders_id_fk"
+    FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action
 );
 
--- ── Foreign keys ──────────────────────────────────────────────────────────────
-ALTER TABLE "orders"
-  ADD CONSTRAINT "orders_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "orders"
-  ADD CONSTRAINT "orders_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "orders"
-  ADD CONSTRAINT "orders_order_type_id_order_types_id_fk"
-  FOREIGN KEY ("order_type_id") REFERENCES "public"."order_types"("id") ON DELETE no action ON UPDATE no action;
 
-ALTER TABLE "order_items"
-  ADD CONSTRAINT "order_items_order_id_orders_id_fk"
-  FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "order_items"
-  ADD CONSTRAINT "order_items_product_id_products_id_fk"
-  FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE no action ON UPDATE no action;
 
-ALTER TABLE "order_item_modifiers"
-  ADD CONSTRAINT "order_item_modifiers_order_item_id_order_items_id_fk"
-  FOREIGN KEY ("order_item_id") REFERENCES "public"."order_items"("id") ON DELETE cascade ON UPDATE no action;
-
-ALTER TABLE "order_payments"
-  ADD CONSTRAINT "order_payments_order_id_orders_id_fk"
-  FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 CREATE INDEX "orders_tenant_idx"

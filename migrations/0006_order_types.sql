@@ -27,7 +27,13 @@ CREATE TABLE "tenant_order_types" (
   "is_enabled"    boolean   NOT NULL DEFAULT true,
   "config"        json,
   "created_at"    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at"    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at"    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "tenant_order_types_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "tenant_order_types_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "tenant_order_types_order_type_id_order_types_id_fk"
+    FOREIGN KEY ("order_type_id") REFERENCES "public"."order_types"("id") ON DELETE cascade ON UPDATE no action
 );
 
 -- Composite PK (tenant_id, business_date) for atomic sequence increments.
@@ -38,23 +44,10 @@ CREATE TABLE "order_number_sequences" (
   "created_at"    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updated_at"    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "order_number_sequences_tenant_id_business_date_pk"
-    PRIMARY KEY ("tenant_id", "business_date")
+    PRIMARY KEY ("tenant_id", "business_date"),
+  CONSTRAINT "order_number_sequences_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action
 );
-
--- ── Foreign keys ──────────────────────────────────────────────────────────────
-ALTER TABLE "tenant_order_types"
-  ADD CONSTRAINT "tenant_order_types_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "tenant_order_types"
-  ADD CONSTRAINT "tenant_order_types_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "tenant_order_types"
-  ADD CONSTRAINT "tenant_order_types_order_type_id_order_types_id_fk"
-  FOREIGN KEY ("order_type_id") REFERENCES "public"."order_types"("id") ON DELETE cascade ON UPDATE no action;
-
-ALTER TABLE "order_number_sequences"
-  ADD CONSTRAINT "order_number_sequences_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 CREATE INDEX "order_types_code_idx"

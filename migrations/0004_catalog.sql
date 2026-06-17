@@ -9,7 +9,9 @@ CREATE TABLE "product_categories" (
   "is_active"     boolean   NOT NULL DEFAULT true,
   "display_order" integer   NOT NULL DEFAULT 0,
   "created_at"    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at"    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at"    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "product_categories_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action
 );
 
 CREATE TABLE "products" (
@@ -28,7 +30,11 @@ CREATE TABLE "products" (
   "sku"                   text,
   "is_active"             boolean        NOT NULL DEFAULT true,
   "created_at"            timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at"            timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at"            timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "products_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "products_category_id_product_categories_id_fk"
+    FOREIGN KEY ("category_id") REFERENCES "public"."product_categories"("id") ON DELETE set null ON UPDATE no action
 );
 
 -- Per-outlet product availability override (hybrid catalog).
@@ -38,7 +44,11 @@ CREATE TABLE "outlet_product_configs" (
   "product_id"   uuid      NOT NULL,
   "is_available" boolean   NOT NULL DEFAULT true,
   "created_at"   timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at"   timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at"   timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "outlet_product_configs_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "outlet_product_configs_product_id_products_id_fk"
+    FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action
 );
 
 CREATE TABLE "product_option_groups" (
@@ -52,7 +62,11 @@ CREATE TABLE "product_option_groups" (
   "is_required"     boolean      NOT NULL DEFAULT false,
   "display_order"   integer      NOT NULL DEFAULT 0,
   "created_at"      timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at"      timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at"      timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "product_option_groups_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "product_option_groups_product_id_products_id_fk"
+    FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action
 );
 
 CREATE TABLE "product_options" (
@@ -65,41 +79,17 @@ CREATE TABLE "product_options" (
   "is_available"    boolean        NOT NULL DEFAULT true,
   "display_order"   integer        NOT NULL DEFAULT 0,
   "created_at"      timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at"      timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at"      timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "product_options_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "product_options_option_group_id_product_option_groups_id_fk"
+    FOREIGN KEY ("option_group_id") REFERENCES "public"."product_option_groups"("id") ON DELETE cascade ON UPDATE no action
 );
 
--- ── Foreign keys ──────────────────────────────────────────────────────────────
-ALTER TABLE "product_categories"
-  ADD CONSTRAINT "product_categories_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
 
-ALTER TABLE "products"
-  ADD CONSTRAINT "products_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "products"
-  ADD CONSTRAINT "products_category_id_product_categories_id_fk"
-  FOREIGN KEY ("category_id") REFERENCES "public"."product_categories"("id") ON DELETE set null ON UPDATE no action;
 
-ALTER TABLE "outlet_product_configs"
-  ADD CONSTRAINT "outlet_product_configs_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "outlet_product_configs"
-  ADD CONSTRAINT "outlet_product_configs_product_id_products_id_fk"
-  FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
 
-ALTER TABLE "product_option_groups"
-  ADD CONSTRAINT "product_option_groups_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "product_option_groups"
-  ADD CONSTRAINT "product_option_groups_product_id_products_id_fk"
-  FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
 
-ALTER TABLE "product_options"
-  ADD CONSTRAINT "product_options_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "product_options"
-  ADD CONSTRAINT "product_options_option_group_id_product_option_groups_id_fk"
-  FOREIGN KEY ("option_group_id") REFERENCES "public"."product_option_groups"("id") ON DELETE cascade ON UPDATE no action;
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 CREATE INDEX "product_categories_tenant_idx"

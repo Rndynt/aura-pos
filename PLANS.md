@@ -7500,3 +7500,91 @@ Memisahkan DP/Bayar Sebagian, Multi Payment, dan Split Bill sebagai entitlement,
 
 ### Continuation Notes
 Next safest batch: implement real atomic multi-payment backend session endpoints before enabling Multi Payment submit; then add split bill schema/domain/API before enabling the Split Bill wizard.
+
+## Plan: P2 No-ALTER Baseline Migration Patch
+
+### Source
+- Tasklist: `roadmap/migrations/replit_codex_P2_inline_fk_no_alter_patch_prompt.md`
+- User request: Eksekusi roadmap/migrations/replit_codex_P2_inline_fk_no_alter_patch_prompt.md
+- Date started: 2026-06-17
+- Current status: Implemented — FK constraints inlined; static validation and type-check passed; clean DB smoke not run because no disposable clean DB was configured
+
+### Goal
+Patch existing active baseline SQL migrations so root `migrations/*.sql` contain no `ALTER TABLE` / `ADD CONSTRAINT` statements, without creating new migrations or changing app logic.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active roadmap prompt
+- [x] Relevant docs/report (`roadmap/migrations/clean_baseline_migration_refactor_report.md`, `docs/migration-report.md`)
+- [x] Relevant source files (active root SQL migrations)
+
+### Workstreams
+#### Database/Schema Workstream
+- Scope: Active root baseline SQL migration files only.
+- Files inspected: `migrations/0002_tenants.sql` through `migrations/0010_cfd_sync.sql`.
+- Findings: Active baseline migrations used `ALTER TABLE ... ADD CONSTRAINT` for FKs after table creation.
+- Tasks: Move FK constraints into each owning `CREATE TABLE` statement.
+- Risks: Clean DB smoke requires a configured clean PostgreSQL database.
+- Validation: Required ripgrep/type-check commands.
+
+#### Documentation Workstream
+- Scope: Migration roadmap/report/plan updates.
+- Files inspected: `roadmap/migrations/replit_codex_P2_inline_fk_no_alter_patch_prompt.md`, `roadmap/migrations/clean_baseline_migration_refactor_report.md`.
+- Findings: Report needed P2 section with actual validation results.
+- Tasks: Add P2 No-ALTER Patch Result after validation.
+- Risks: Must honestly document any unrun clean DB smoke.
+- Validation: Review report contents.
+
+### Execution Order
+1. Inline FK constraints into active root migration `CREATE TABLE` statements.
+2. Verify no active root `ALTER TABLE` / `ADD CONSTRAINT` remains.
+3. Run type-check commands requested by the roadmap.
+4. Run clean DB smoke if a clean database is available/configured; otherwise document exact blocker.
+5. Update migration report and plan with actual results.
+6. Commit only migration SQL and report/plan roadmap tracking changes.
+
+### Progress
+#### Completed
+- [x] Inlined FK constraints in active baseline migration files.
+  - Files changed: `migrations/0002_tenants.sql`, `migrations/0003_outlets.sql`, `migrations/0004_catalog.sql`, `migrations/0005_seating.sql`, `migrations/0006_order_types.sql`, `migrations/0007_orders.sql`, `migrations/0008_inventory.sql`, `migrations/0009_kitchen_kds.sql`, `migrations/0010_cfd_sync.sql`
+  - Validation: ripgrep no-match scans and type-check commands passed
+  - Docs updated: `roadmap/migrations/clean_baseline_migration_refactor_report.md`
+
+#### Partially Completed
+- [ ] Clean DB smoke.
+  - Completed: Static migration scans and TypeScript validation.
+  - Remaining: Apply active baseline to a fresh disposable PostgreSQL database and smoke endpoints.
+  - Reason: Current `DATABASE_URL` targets a remote Neon database, not an explicitly disposable clean database/schema.
+
+### Validation Log
+- Command: `rg -n "ALTER TABLE" migrations --glob "*.sql" --glob "!migrations/backup/**"`
+- Result: pass — no matches
+- Notes: active root migrations only
+- Command: `rg -n "ADD CONSTRAINT" migrations --glob "*.sql" --glob "!migrations/backup/**"`
+- Result: pass — no matches
+- Notes: active root migrations only
+- Command: `rg -n "ensure_|repair_|drift_|hotfix_" migrations --glob "*.sql" --glob "!migrations/backup/**"`
+- Result: pass — no matches
+- Notes: active root migrations only
+- Command: `pnpm type-check`
+- Result: pass — 10/10 packages successful
+- Notes: completed in 37.486s
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: `tsc --noEmit` exit code 0
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: `tsc --noEmit` exit code 0
+
+### Documentation Updates
+- File: `roadmap/migrations/clean_baseline_migration_refactor_report.md`
+- Change: Added `P2 No-ALTER Patch Result` with patched files, FK inline explanation, soft-reference notes, validation output, and clean DB smoke blocker.
+
+### Checklist Updates
+- File: `roadmap/migrations/clean_baseline_migration_refactor_report.md`
+- Change: Added honest P2 result section; no tasklist checkbox was present to mark complete.
+
+### Continuation Notes
+Next safe step is clean DB smoke on a disposable PostgreSQL target, then endpoint smoke with a seeded/registered tenant context.

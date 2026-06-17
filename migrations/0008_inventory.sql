@@ -19,7 +19,15 @@ CREATE TABLE "inventory_movements" (
   "unit_cost"      numeric(10, 2),
   "notes"          text,
   "actor_id"       varchar(255),
-  "created_at"     timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "created_at"     timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "inventory_movements_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "inventory_movements_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action,
+  CONSTRAINT "inventory_movements_product_id_products_id_fk"
+    FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "inventory_movements_order_id_orders_id_fk"
+    FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE set null ON UPDATE no action
 );
 
 CREATE TABLE "inventory_sync_errors" (
@@ -36,35 +44,20 @@ CREATE TABLE "inventory_sync_errors" (
   "next_retry_at" timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "resolved_at"   timestamp,
   "created_at"    timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at"    timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at"    timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "inventory_sync_errors_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "inventory_sync_errors_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action,
+  CONSTRAINT "inventory_sync_errors_order_id_orders_id_fk"
+    FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE set null ON UPDATE no action,
+  CONSTRAINT "inventory_sync_errors_product_id_products_id_fk"
+    FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action
 );
 
--- ── Foreign keys ──────────────────────────────────────────────────────────────
-ALTER TABLE "inventory_movements"
-  ADD CONSTRAINT "inventory_movements_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "inventory_movements"
-  ADD CONSTRAINT "inventory_movements_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action;
-ALTER TABLE "inventory_movements"
-  ADD CONSTRAINT "inventory_movements_product_id_products_id_fk"
-  FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "inventory_movements"
-  ADD CONSTRAINT "inventory_movements_order_id_orders_id_fk"
-  FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE set null ON UPDATE no action;
 
-ALTER TABLE "inventory_sync_errors"
-  ADD CONSTRAINT "inventory_sync_errors_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "inventory_sync_errors"
-  ADD CONSTRAINT "inventory_sync_errors_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action;
-ALTER TABLE "inventory_sync_errors"
-  ADD CONSTRAINT "inventory_sync_errors_order_id_orders_id_fk"
-  FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE set null ON UPDATE no action;
-ALTER TABLE "inventory_sync_errors"
-  ADD CONSTRAINT "inventory_sync_errors_product_id_products_id_fk"
-  FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
+
+
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 CREATE INDEX "inventory_movements_tenant_idx"
