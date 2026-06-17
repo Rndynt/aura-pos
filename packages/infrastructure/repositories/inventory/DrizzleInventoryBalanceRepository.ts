@@ -5,7 +5,7 @@ import type {
   SetBalanceInput,
 } from '@pos/application/inventory/ports';
 import { and, eq, sql } from 'drizzle-orm';
-import { inventoryBalances, outlets, products } from '@pos/infrastructure/db/schema';
+import { inventoryBalances } from '@pos/infrastructure/db/schema';
 import { db, type DbClient } from '../../database';
 import { DrizzleUnitOfWork } from '../../unit-of-work';
 import type { TransactionContext } from '@pos/application/shared/ports/UnitOfWorkPort';
@@ -30,31 +30,6 @@ function mapRow(row: typeof inventoryBalances.$inferSelect): InventoryBalanceRec
 
 function getClient(ctx?: TransactionContext): DbClient {
   return DrizzleUnitOfWork.fromContext(ctx) ?? db;
-}
-
-/**
- * Keep products.stock_qty in sync with inventory_balances.quantity for
- * backward compatibility with basic stock (which reads products.stock_qty).
- */
-async function syncProductStockQty(
-  client: DbClient,
-  tenantId: string,
-  outletId: string,
-  productId: string,
-  quantity: number,
-): Promise<void> {
-  const [outlet] = await client
-    .select({ isDefault: outlets.isDefault })
-    .from(outlets)
-    .where(and(eq(outlets.id, outletId), eq(outlets.tenantId, tenantId), eq(outlets.isActive, true)))
-    .limit(1);
-
-  if (!outlet?.isDefault) return;
-
-  await client
-    .update(products)
-    .set({ stockQty: quantity, updatedAt: new Date() })
-    .where(and(eq(products.id, productId), eq(products.tenantId, tenantId)));
 }
 
 export class DrizzleInventoryBalanceRepository implements InventoryBalanceRepositoryPort {
@@ -146,7 +121,6 @@ export class DrizzleInventoryBalanceRepository implements InventoryBalanceReposi
         result = mapRow(updated);
       }
 
-      await syncProductStockQty(client, tenantId, outletId, productId, result.quantity);
       return result;
     };
 
@@ -185,7 +159,6 @@ export class DrizzleInventoryBalanceRepository implements InventoryBalanceReposi
         .returning();
 
       const result = mapRow(upserted);
-      await syncProductStockQty(client, tenantId, outletId, productId, result.quantity);
       return result;
     };
 
@@ -216,27 +189,13 @@ export class DrizzleInventoryBalanceRepository implements InventoryBalanceReposi
       .limit(1);
 
     if (existing.length === 0) {
-      const [outlet] = await client
-        .select({ isDefault: outlets.isDefault })
-        .from(outlets)
-        .where(and(eq(outlets.id, outletId), eq(outlets.tenantId, tenantId), eq(outlets.isActive, true)))
-        .limit(1);
-
-      const [product] = outlet?.isDefault
-        ? await client
-          .select({ stockQty: products.stockQty })
-          .from(products)
-          .where(and(eq(products.id, productId), eq(products.tenantId, tenantId)))
-          .limit(1)
-        : [{ stockQty: 0 }];
-
       const [inserted] = await client
         .insert(inventoryBalances)
         .values({
           tenantId,
           outletId,
           productId,
-          quantity: product?.stockQty ?? 0,
+          quantity: 0,
           lowStockThreshold: threshold,
           updatedAt: new Date(),
         })

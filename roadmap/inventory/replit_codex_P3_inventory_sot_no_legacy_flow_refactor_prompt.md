@@ -466,6 +466,8 @@ Remaining issues should be `none` unless truly blocked by external dependency. D
 
 ## Completion Checklist
 
+> 2026-06-17 batch note: partially implemented. Completed audit/report, removed product-page operational stock entry/display, removed balance lazy seeding/mirroring from `products.stock_qty`, and added an opening-stock API. Checklist items remain unchecked unless the full prompt requirement is completely validated; remaining blockers are documented in `roadmap/inventory/inventory_sot_no_legacy_flow_refactor_report.md`.
+
 - [ ] Deep analysis completed before code changes.
 - [ ] Product page no longer manages operational stock.
 - [ ] Stock page owns opening stock.

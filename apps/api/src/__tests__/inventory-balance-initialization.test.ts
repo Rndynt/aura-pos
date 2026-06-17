@@ -47,13 +47,12 @@ class FakeBalanceRepo implements InventoryBalanceRepositoryPort {
 function deps(defaultOutletId: string, repo = new FakeBalanceRepo()) {
   const productReader: ProductStockReaderPort = {
     async getTrackedProductStock(tenantId, productId) {
-      const stockByProduct: Record<string, number> = { 'product-a': 50, 'product-b': 7 };
-      return { id: productId, tenantId, stockQty: stockByProduct[productId] ?? 0, stockTrackingEnabled: true };
+      return { id: productId, tenantId, stockTrackingEnabled: true };
     },
     async listTrackedProductStocks(tenantId) {
       return [
-        { id: 'product-a', tenantId, stockQty: 50, stockTrackingEnabled: true },
-        { id: 'product-b', tenantId, stockQty: 7, stockTrackingEnabled: true },
+        { id: 'product-a', tenantId, stockTrackingEnabled: true },
+        { id: 'product-b', tenantId, stockTrackingEnabled: true },
       ];
     },
   };
@@ -64,17 +63,17 @@ function deps(defaultOutletId: string, repo = new FakeBalanceRepo()) {
 }
 
 describe('inventory balance initialization', () => {
-  it('seeds the default outlet from legacy products.stock_qty', async () => {
+  it('initializes the default outlet from inventory SOT with zero until explicit opening stock', async () => {
     const balance = await ensureProductBalanceForOutlet(deps('outlet-a'), {
       tenantId: 'tenant-1',
       outletId: 'outlet-a',
       productId: 'product-a',
     });
 
-    assert.equal(balance.quantity, 50);
+    assert.equal(balance.quantity, 0);
   });
 
-  it('does not clone legacy stock into non-default outlets', async () => {
+  it('does not clone catalog stock into non-default outlets', async () => {
     const balance = await ensureProductBalanceForOutlet(deps('outlet-a'), {
       tenantId: 'tenant-1',
       outletId: 'outlet-b',
@@ -91,8 +90,8 @@ describe('inventory balance initialization', () => {
       outletId: 'outlet-a',
     });
 
-    assert.equal(result.get('product-a')?.quantity, 50);
-    assert.equal(result.get('product-b')?.quantity, 7);
+    assert.equal(result.get('product-a')?.quantity, 0);
+    assert.equal(result.get('product-b')?.quantity, 0);
     assert.equal(repo.balances.size, 2);
     assert.equal(await repo.getBalance('tenant-1', 'outlet-b', 'product-a'), null);
   });

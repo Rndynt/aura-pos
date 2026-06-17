@@ -94,7 +94,6 @@ router.get('/products', asyncHandler(async (req, res) => {
       basePrice: products.basePrice,
       imageUrl: products.imageUrl,
       sku: products.sku,
-      stockQty: products.stockQty,
       isActive: products.isActive,
       stockTrackingEnabled: products.stockTrackingEnabled,
     })
@@ -111,7 +110,7 @@ router.get('/products', asyncHandler(async (req, res) => {
     const balance = balances.get(row.id);
     return {
       ...row,
-      stockQty: balance?.quantity ?? row.stockQty ?? 0,
+      stockQty: balance?.quantity ?? 0,
       lowStockThreshold: balance?.lowStockThreshold ?? LOW_STOCK_THRESHOLD,
     };
   }), LOW_STOCK_THRESHOLD);
@@ -121,7 +120,7 @@ router.get('/products', asyncHandler(async (req, res) => {
 
 /**
  * PUT /api/inventory/products/:id/adjust
- * Simple direct adjustment — langsung update stock_qty.
+ * Simple direct adjustment — updates inventory_balances for the active outlet only.
  * Requires: inventory_basic_stock entitlement. Also logs movement if Stok Lanjutan aktif.
  */
 router.put('/products/:id/adjust', requireManager, asyncHandler(async (req, res) => {
@@ -138,7 +137,7 @@ router.put('/products/:id/adjust', requireManager, asyncHandler(async (req, res)
   }).parse(req.body);
 
   const [product] = await db
-    .select({ id: products.id, stockQty: products.stockQty, stockTrackingEnabled: products.stockTrackingEnabled })
+    .select({ id: products.id, stockTrackingEnabled: products.stockTrackingEnabled })
     .from(products)
     .where(and(eq(products.id, productId), eq(products.tenantId, tenantId)))
     .limit(1);
@@ -186,6 +185,70 @@ router.put('/products/:id/adjust', requireManager, asyncHandler(async (req, res)
   res.json({ success: true, data: { productId, before, after, delta: after - before } });
 }));
 
+
+/**
+ * POST /api/inventory/opening-stock
+ * Set opening stock for one tracked product in the active outlet only.
+ * Requires: inventory_basic_stock entitlement. Records INITIAL movement when
+ * inventory_advanced_stock is effective for the tenant.
+ */
+router.post('/opening-stock', requireManager, asyncHandler(async (req, res) => {
+  const tenantId = req.tenantId!;
+  await requireTenantEntitlement(db, tenantId, 'inventory_basic_stock');
+
+  const outletId = req.outletId;
+  if (!outletId) throw createError('Outlet context diperlukan', 400);
+
+  const body = z.object({
+    productId: z.string().uuid(),
+    quantity: z.number().int().min(0),
+    notes: z.string().optional(),
+    actorId: z.string().optional(),
+  }).parse(req.body);
+
+  const [product] = await db
+    .select({ id: products.id, stockTrackingEnabled: products.stockTrackingEnabled })
+    .from(products)
+    .where(and(eq(products.id, body.productId), eq(products.tenantId, tenantId)))
+    .limit(1);
+
+  if (!product) throw createError('Produk tidak ditemukan', 404);
+  if (!product.stockTrackingEnabled) throw createError('Produk ini tidak menggunakan tracking stok', 400);
+
+  const currentBalance = await ensureProductBalanceForOutlet(balanceDeps, { tenantId, outletId, productId: body.productId });
+  const before = currentBalance.quantity;
+  const after = body.quantity;
+  const delta = after - before;
+
+  let advanced = true;
+  try {
+    await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
+  } catch {
+    advanced = false;
+  }
+
+  await unitOfWork.transaction(async (ctx) => {
+    await balanceRepo.setQuantity({ tenantId, outletId, productId: body.productId, quantity: after }, ctx);
+    if (advanced && delta !== 0) {
+      await movementWriter.record({
+        tenantId,
+        outletId,
+        productId: body.productId,
+        movementType: 'INITIAL',
+        quantityDelta: delta,
+        quantityBefore: before,
+        quantityAfter: after,
+        notes: body.notes ?? 'Stok awal',
+        referenceType: 'opening_stock',
+        referenceId: body.productId,
+        metadata: { source: 'opening_stock', actorId: body.actorId ?? null },
+      }, ctx);
+    }
+  });
+
+  res.status(201).json({ success: true, data: { productId: body.productId, outletId, before, after, delta } });
+}));
+
 // ── STOK LANJUTAN (advanced) ──────────────────────────────────────────────────
 
 /**
@@ -208,7 +271,7 @@ router.post('/movements', requireManager, asyncHandler(async (req, res) => {
   }).parse(req.body);
 
   const [product] = await db
-    .select({ id: products.id, stockQty: products.stockQty })
+    .select({ id: products.id })
     .from(products)
     .where(and(eq(products.id, body.productId), eq(products.tenantId, tenantId)))
     .limit(1);
@@ -402,7 +465,7 @@ router.get('/report', asyncHandler(async (req, res) => {
   const toIso = to.toISOString();
   const outletId = req.outletId ?? null;
 
-  // 1. Top 10 produk terlaku (SALE plus legacy OFFLINE_SALE dalam periode)
+  // 1. Top 10 produk terlaku (SALE/OFFLINE_SALE dalam periode)
   const topSoldResult = await db.execute(sql`
     SELECT
       im.product_id   AS "productId",

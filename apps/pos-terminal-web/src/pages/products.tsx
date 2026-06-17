@@ -872,7 +872,6 @@ export default function ProductsPage() {
                       <div className="divide-y divide-slate-100 animate-in slide-in-from-top-2">
                         {items.map((product) => {
                           const variantsCount = product.option_groups?.length || 0;
-                          const stockQty = product.stock_qty ?? product.stockQty ?? 0;
                           const imageUrl = product.image_url || product.imageUrl || "";
                           const basePrice = product.base_price || product.basePrice || 0;
                           const isActive = product.is_active !== false;
@@ -922,14 +921,8 @@ export default function ProductsPage() {
                                       {formatIDR(basePrice)}
                                     </span>
                                     {product.stock_tracking_enabled || product.stockTrackingEnabled ? (
-                                      <span
-                                        className={`text-[10px] px-2 py-0.5 rounded font-bold ${
-                                          stockQty < 10
-                                            ? "bg-red-100 text-red-600"
-                                            : "bg-green-100 text-green-600"
-                                        }`}
-                                      >
-                                        Stok: {stockQty}
+                                      <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-blue-50 text-blue-600 border border-blue-100">
+                                        Stok dikelola di Inventaris
                                       </span>
                                     ) : null}
                                     {variantsCount > 0 && (

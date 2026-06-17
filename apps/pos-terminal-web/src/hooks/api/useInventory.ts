@@ -120,6 +120,21 @@ export function useStockProducts(outletIdOverride?: string) {
   });
 }
 
+
+export function useSetOpeningStock() {
+  const tenantId = getActiveTenantId();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ productId, quantity, notes }: { productId: string; quantity: number; notes?: string }) =>
+      apiPost("/api/inventory/opening-stock", { productId, quantity, notes }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/inventory/products", tenantId] });
+      qc.invalidateQueries({ queryKey: ["/api/inventory/movements", tenantId] });
+      qc.invalidateQueries({ queryKey: ["/api/inventory/report", tenantId] });
+    },
+  });
+}
+
 export function useAdjustStock() {
   const tenantId = getActiveTenantId();
   const qc = useQueryClient();
