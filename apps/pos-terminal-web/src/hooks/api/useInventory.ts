@@ -141,7 +141,32 @@ export function useAdjustStock() {
   return useMutation({
     mutationFn: ({ productId, qty, mode = "set", notes }: { productId: string; qty: number; mode?: "set" | "delta"; notes?: string }) =>
       apiPut(`/api/inventory/products/${productId}/adjust`, { qty, mode, notes }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/inventory/products", tenantId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/inventory/products", tenantId] });
+      qc.invalidateQueries({ queryKey: ["/api/inventory/movements", tenantId] });
+      qc.invalidateQueries({ queryKey: ["/api/inventory/low-stock", tenantId] });
+      qc.invalidateQueries({ queryKey: ["/api/inventory/report", tenantId] });
+    },
+  });
+}
+
+/**
+ * Set Stok / Ubah Stok — semantic alias for direct outlet stock entry from
+ * Stok & Inventaris. Wraps the basic adjust endpoint in `set` mode so both
+ * first-time stock input and later correction go through the same code path.
+ */
+export function useSetStock() {
+  const tenantId = getActiveTenantId();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ productId, quantity, notes }: { productId: string; quantity: number; notes?: string }) =>
+      apiPut(`/api/inventory/products/${productId}/adjust`, { qty: quantity, mode: "set", notes }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/inventory/products", tenantId] });
+      qc.invalidateQueries({ queryKey: ["/api/inventory/movements", tenantId] });
+      qc.invalidateQueries({ queryKey: ["/api/inventory/low-stock", tenantId] });
+      qc.invalidateQueries({ queryKey: ["/api/inventory/report", tenantId] });
+    },
   });
 }
 

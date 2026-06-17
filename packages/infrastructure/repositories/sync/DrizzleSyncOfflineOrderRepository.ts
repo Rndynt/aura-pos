@@ -21,6 +21,7 @@ import {
   orders,
   products,
   tables,
+  inventoryBalances,
 } from '@pos/infrastructure/db/schema';
 import { eq, and, inArray, ne } from 'drizzle-orm';
 import { ConflictType } from '@pos/application/sync/conflictTypes';
@@ -92,14 +93,35 @@ export class DrizzleSyncOfflineOrderRepository {
       .returning();
     const batchId = batch?.id ?? 'unknown';
 
-    // ── Pre-fetch current product prices + stock for conflict detection ───────
+    // ── Pre-fetch current product prices for conflict detection ───────────────
     const allProductIds = [...new Set(orderInputs.flatMap(o => o.items.map(i => i.product_id)))];
     const serverProducts = await this.db
-      .select({ id: products.id, basePrice: products.basePrice, stockQty: products.stockQty, stockTrackingEnabled: products.stockTrackingEnabled, name: products.name })
+      .select({ id: products.id, basePrice: products.basePrice, stockTrackingEnabled: products.stockTrackingEnabled, name: products.name })
       .from(products)
       .where(and(inArray(products.id, allProductIds), eq(products.tenantId, tenant_id)));
 
-    const productMap = new Map(serverProducts.map(p => [p.id, p]));
+    // Stock snapshot is per outlet (inventory_balances). Missing balance = 0.
+    const stockByProductId = new Map<string, number>();
+    if (outlet_id && allProductIds.length > 0) {
+      const balances = await this.db
+        .select({ productId: inventoryBalances.productId, quantity: inventoryBalances.quantity })
+        .from(inventoryBalances)
+        .where(
+          and(
+            eq(inventoryBalances.tenantId, tenant_id),
+            eq(inventoryBalances.outletId, outlet_id),
+            inArray(inventoryBalances.productId, allProductIds),
+          ),
+        );
+      for (const b of balances) stockByProductId.set(b.productId, b.quantity);
+    }
+
+    const productMap = new Map(
+      serverProducts.map((p) => [
+        p.id,
+        { ...p, stockQty: stockByProductId.get(p.id) ?? 0 },
+      ]),
+    );
 
     // ── Phase 15.2: Pre-fetch occupied tables for conflict detection ──────────
     const allTableNumbers = [...new Set(

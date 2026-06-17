@@ -5,8 +5,8 @@ import type {
   StockMovementPortOptions,
 } from '@pos/application/inventory/ports';
 import { InsufficientStockError } from '@pos/application/inventory/stockMovements';
-import { and, eq, gte, inArray, sql } from 'drizzle-orm';
-import { inventoryMovements, products } from '@pos/infrastructure/db/schema';
+import { and, eq, inArray } from 'drizzle-orm';
+import { inventoryBalances, inventoryMovements, products } from '@pos/infrastructure/db/schema';
 import { db, type DbClient } from '../../database';
 import { DrizzleUnitOfWork } from '../../unit-of-work';
 
@@ -17,6 +17,16 @@ function aggregateQuantities(items: StockItem[]): Record<string, number> {
     qtyMap[item.productId] = (qtyMap[item.productId] ?? 0) + item.quantity;
   }
   return qtyMap;
+}
+
+export class MissingOutletContextError extends Error {
+  readonly code = 'OUTLET_CONTEXT_REQUIRED';
+  readonly statusCode = 400;
+
+  constructor(readonly productId: string) {
+    super(`Outlet context is required for stock-tracked product ${productId}`);
+    this.name = 'MissingOutletContextError';
+  }
 }
 
 export class DrizzleStockMovementRepository implements StockMovementPort {
@@ -45,8 +55,8 @@ export class DrizzleStockMovementRepository implements StockMovementPort {
     if (!productIds.length) return;
 
     await this.withStockClient(options, async (client) => {
-      const lockedProducts = await client
-        .select({ id: products.id, stockQty: products.stockQty })
+      const trackedProducts = await client
+        .select({ id: products.id })
         .from(products)
         .where(
           and(
@@ -54,49 +64,60 @@ export class DrizzleStockMovementRepository implements StockMovementPort {
             inArray(products.id, productIds),
             eq(products.stockTrackingEnabled, true),
           ),
-        )
-        .for('update');
+        );
 
-      if (!lockedProducts.length) return;
+      if (!trackedProducts.length) return;
+
+      if (!outletId) {
+        throw new MissingOutletContextError(trackedProducts[0].id);
+      }
 
       const soldQtyMap = aggregateQuantities(items);
 
-      for (const product of lockedProducts) {
+      for (const product of trackedProducts) {
         const soldQty = soldQtyMap[product.id] ?? 0;
         if (soldQty === 0) continue;
 
-        const before = product.stockQty ?? 0;
+        const existing = await client
+          .select()
+          .from(inventoryBalances)
+          .where(
+            and(
+              eq(inventoryBalances.tenantId, tenantId),
+              eq(inventoryBalances.outletId, outletId),
+              eq(inventoryBalances.productId, product.id),
+            ),
+          )
+          .for('update')
+          .limit(1);
+
+        const before = existing[0]?.quantity ?? 0;
         const after = before - soldQty;
 
         if (!allowNegativeStock && before < soldQty) {
           throw new InsufficientStockError(product.id, before, soldQty);
         }
 
-        const updateWhere = allowNegativeStock
-          ? and(eq(products.id, product.id), eq(products.tenantId, tenantId))
-          : and(
-              eq(products.id, product.id),
-              eq(products.tenantId, tenantId),
-              gte(products.stockQty, soldQty),
-            );
-
-        const updatedProducts = await client
-          .update(products)
-          .set({
-            stockQty: sql`${products.stockQty} - ${soldQty}`,
-            updatedAt: new Date(),
-          })
-          .where(updateWhere)
-          .returning({ stockQty: products.stockQty });
-
-        if (!updatedProducts[0]) {
-          throw new InsufficientStockError(product.id, before, soldQty);
+        if (existing[0]) {
+          await client
+            .update(inventoryBalances)
+            .set({ quantity: after, updatedAt: new Date() })
+            .where(eq(inventoryBalances.id, existing[0].id));
+        } else {
+          await client
+            .insert(inventoryBalances)
+            .values({
+              tenantId,
+              outletId,
+              productId: product.id,
+              quantity: after,
+              updatedAt: new Date(),
+            });
         }
 
-        const quantityAfter = updatedProducts[0].stockQty ?? after;
-        if (quantityAfter < 0 && allowNegativeStock) {
+        if (after < 0 && allowNegativeStock) {
           console.warn(
-            `[stockDeduction] Stock went negative for product ${product.id}: ${before} - ${soldQty} = ${quantityAfter}`,
+            `[stockDeduction] Stock went negative for product ${product.id} at outlet ${outletId}: ${before} - ${soldQty} = ${after}`,
           );
         }
 
@@ -108,12 +129,12 @@ export class DrizzleStockMovementRepository implements StockMovementPort {
           referenceType: referenceType ?? 'sale',
           referenceId: referenceId ?? paymentId ?? orderId ?? null,
           metadata: metadata ?? null,
-          outletId: outletId ?? null,
+          outletId,
           terminalId: terminalId ?? null,
           movementType: 'SALE',
           quantityDelta: -soldQty,
           quantityBefore: before,
-          quantityAfter,
+          quantityAfter: after,
           notes: orderNumber ? `Penjualan — Order ${orderNumber}` : 'Penjualan',
         });
       }
@@ -133,8 +154,8 @@ export class DrizzleStockMovementRepository implements StockMovementPort {
     if (!productIds.length) return;
 
     await this.withStockClient(options, async (client) => {
-      const lockedProducts = await client
-        .select({ id: products.id, stockQty: products.stockQty })
+      const trackedProducts = await client
+        .select({ id: products.id })
         .from(products)
         .where(
           and(
@@ -142,28 +163,52 @@ export class DrizzleStockMovementRepository implements StockMovementPort {
             inArray(products.id, productIds),
             eq(products.stockTrackingEnabled, true),
           ),
-        )
-        .for('update');
+        );
 
-      if (!lockedProducts.length) return;
+      if (!trackedProducts.length) return;
+
+      if (!outletId) {
+        throw new MissingOutletContextError(trackedProducts[0].id);
+      }
 
       const returnQtyMap = aggregateQuantities(items);
 
-      for (const product of lockedProducts) {
+      for (const product of trackedProducts) {
         const returnQty = returnQtyMap[product.id] ?? 0;
         if (returnQty === 0) continue;
 
-        const before = product.stockQty ?? 0;
-        const updatedProducts = await client
-          .update(products)
-          .set({
-            stockQty: sql`${products.stockQty} + ${returnQty}`,
-            updatedAt: new Date(),
-          })
-          .where(and(eq(products.id, product.id), eq(products.tenantId, tenantId)))
-          .returning({ stockQty: products.stockQty });
+        const existing = await client
+          .select()
+          .from(inventoryBalances)
+          .where(
+            and(
+              eq(inventoryBalances.tenantId, tenantId),
+              eq(inventoryBalances.outletId, outletId),
+              eq(inventoryBalances.productId, product.id),
+            ),
+          )
+          .for('update')
+          .limit(1);
 
-        const quantityAfter = updatedProducts[0]?.stockQty ?? before + returnQty;
+        const before = existing[0]?.quantity ?? 0;
+        const after = before + returnQty;
+
+        if (existing[0]) {
+          await client
+            .update(inventoryBalances)
+            .set({ quantity: after, updatedAt: new Date() })
+            .where(eq(inventoryBalances.id, existing[0].id));
+        } else {
+          await client
+            .insert(inventoryBalances)
+            .values({
+              tenantId,
+              outletId,
+              productId: product.id,
+              quantity: after,
+              updatedAt: new Date(),
+            });
+        }
 
         await client.insert(inventoryMovements).values({
           tenantId,
@@ -173,12 +218,12 @@ export class DrizzleStockMovementRepository implements StockMovementPort {
           referenceType: referenceType ?? 'return',
           referenceId: referenceId ?? paymentId ?? orderId ?? null,
           metadata: metadata ?? null,
-          outletId: outletId ?? null,
+          outletId,
           terminalId: terminalId ?? null,
           movementType: 'RETURN',
           quantityDelta: returnQty,
           quantityBefore: before,
-          quantityAfter,
+          quantityAfter: after,
           notes: orderNumber ? `Pembatalan — Order ${orderNumber}` : 'Pembatalan order',
         });
       }

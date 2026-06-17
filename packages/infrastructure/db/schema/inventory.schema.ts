@@ -73,8 +73,11 @@ export type InsertInventorySyncError = z.infer<typeof insertInventorySyncErrorSc
 export type InventorySyncError = typeof inventorySyncErrors.$inferSelect;
 
 // ── Inventory Balances (per-outlet stock balance) ─────────────────────────────
-// Single source of truth for advanced stock. Single-outlet tenants use their
-// default outlet. products.stock_qty retained for basic stock compat.
+// Operational source of truth for stock across basic and advanced flows.
+// Scoped by tenant_id + outlet_id + product_id. Missing rows mean 0 until the
+// user sets stock from Stok & Inventaris. products.stock_qty is no longer used
+// by stock UI, stock API, sale/return, low stock, set stock, transfer, opname,
+// or reports — it remains only as physical catalog schema debt.
 
 export const inventoryBalances = pgTable("inventory_balances", {
   id: uuid("id").primaryKey().defaultRandom(),

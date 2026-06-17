@@ -10,7 +10,7 @@ const { CreateAndPayOrder } = await import('@pos/application/orders/CreateAndPay
 const { SyncOfflineOrder } = await import('@pos/application/sync/SyncOfflineOrder');
 const { DrizzleCreateAndPayOrderRepository } = await import('@pos/infrastructure/repositories/orders/DrizzleCreateAndPayOrderRepository');
 const { DrizzleSyncOfflineOrderRepository } = await import('@pos/infrastructure/repositories/sync/DrizzleSyncOfflineOrderRepository');
-const { inventoryMovements, orderItems, orderPayments, orders, products, tenants, syncBatches, syncEvents, serverSyncConflicts, tables } = await import('@pos/infrastructure/db/schema');
+const { inventoryBalances, inventoryMovements, orderItems, orderPayments, orders, products, tenants, syncBatches, syncEvents, serverSyncConflicts, tables } = await import('@pos/infrastructure/db/schema');
 const { getBusinessDateForTimezone } = await import('@pos/application/orders/orderNumberSequence');
 
 type ProductRow = {
@@ -18,11 +18,19 @@ type ProductRow = {
   tenantId: string;
   isActive: boolean;
   stockTrackingEnabled: boolean;
-  stockQty: number;
+};
+
+type BalanceRow = {
+  id: string;
+  tenantId: string;
+  outletId: string;
+  productId: string;
+  quantity: number;
 };
 
 type Store = {
   product: ProductRow;
+  balances: BalanceRow[];
   orders: any[];
   orderItems: any[];
   payments: any[];
@@ -30,6 +38,8 @@ type Store = {
   tenantTimezone: string;
   orderNumberSequences: Record<string, number>;
 };
+
+const OUTLET_ID = 'outlet-1';
 
 class AsyncMutex {
   private current = Promise.resolve();
@@ -62,6 +72,7 @@ class FakeDb {
         return await work(tx);
       } catch (error) {
         this.store.product = snapshot.product;
+        this.store.balances = snapshot.balances;
         this.store.orders = snapshot.orders;
         this.store.orderItems = snapshot.orderItems;
         this.store.payments = snapshot.payments;
@@ -130,7 +141,9 @@ class FakeSelect {
   }
 
   for() {
-    return this.execute();
+    // chainable: `.for('update')` can appear before or after `.limit(n)` and
+    // before `await`; thenable behavior below executes the query lazily.
+    return this;
   }
 
   then<TResult1 = any[], TResult2 = never>(
@@ -149,11 +162,17 @@ class FakeSelect {
       rows = [this.store.product].map((product) => ({
         id: product.id,
         isActive: product.isActive,
-        stockQty: product.stockQty,
         stockTrackingEnabled: product.stockTrackingEnabled,
         name: 'Limited Product',
         basePrice: '10',
       }));
+    } else if (this.table === inventoryBalances) {
+      const productId = this.conditionValues.find((value) => typeof value === 'string' && (value as string).startsWith('product-'));
+      const outletId = this.conditionValues.find((value) => typeof value === 'string' && (value as string).startsWith('outlet-'));
+      rows = this.store.balances.filter((b) =>
+        (!productId || b.productId === productId) &&
+        (!outletId || b.outletId === outletId),
+      );
     } else if (this.table === orders) {
       if ('value' in this.fields) {
         rows = [{ value: this.store.orders.length }];
@@ -238,6 +257,18 @@ class FakeInsert {
       return [{ id: `batch-${Date.now()}`, ...this.pendingValues }];
     }
 
+    if (this.table === inventoryBalances) {
+      const row = {
+        id: `balance-${this.store.balances.length + 1}`,
+        tenantId: this.pendingValues.tenantId,
+        outletId: this.pendingValues.outletId,
+        productId: this.pendingValues.productId,
+        quantity: this.pendingValues.quantity,
+      };
+      this.store.balances.push(row);
+      return [row];
+    }
+
     return [];
   }
 
@@ -257,6 +288,25 @@ class FakeInsert {
   private async execute(): Promise<void> {
     if (this.table === inventoryMovements) {
       this.store.movements.push({ id: `movement-${this.store.movements.length + 1}`, ...this.pendingValues });
+      return;
+    }
+
+    if (this.table === inventoryBalances) {
+      const existing = this.store.balances.find((b) =>
+        b.tenantId === this.pendingValues.tenantId
+        && b.outletId === this.pendingValues.outletId
+        && b.productId === this.pendingValues.productId,
+      );
+      if (!existing) {
+        this.store.balances.push({
+          id: `balance-${this.store.balances.length + 1}`,
+          tenantId: this.pendingValues.tenantId,
+          outletId: this.pendingValues.outletId,
+          productId: this.pendingValues.productId,
+          quantity: this.pendingValues.quantity,
+        });
+      }
+      return;
     }
 
     if (this.table === syncEvents || this.table === serverSyncConflicts) {
@@ -282,17 +332,21 @@ class FakeUpdate {
   }
 
   async returning() {
-    if (this.table === products) {
-      const quantityDelta = this.extractQuantityDelta(this.pendingSet.stockQty);
-      if (this.store.product.stockQty + quantityDelta < 0) return [];
-      this.store.product.stockQty += quantityDelta;
-      return [{ stockQty: this.store.product.stockQty }];
-    }
-
     if (this.table === orders) {
       const order = this.store.orders.at(-1);
       Object.assign(order, this.pendingSet);
       return [order];
+    }
+
+    if (this.table === inventoryBalances) {
+      const balanceId = this.conditionValues.find((value) => typeof value === 'string' && (value as string).startsWith('balance-'));
+      const balance = balanceId
+        ? this.store.balances.find((b) => b.id === balanceId)
+        : this.store.balances[0];
+      if (balance && typeof this.pendingSet.quantity === 'number') {
+        balance.quantity = this.pendingSet.quantity;
+      }
+      return balance ? [balance] : [];
     }
 
     return [];
@@ -319,16 +373,18 @@ class FakeUpdate {
         ? this.store.orders.find((candidate) => candidate.id === orderId)
         : this.store.orders.at(-1);
       if (order) Object.assign(order, this.pendingSet);
+      return;
     }
-  }
 
-  private extractQuantityDelta(sqlExpression: any): number {
-    const chunks = sqlExpression?.queryChunks ?? [];
-    const operator = chunks.some((chunk: any) => Array.isArray(chunk.value) && chunk.value.some((value: string) => value.includes('+')))
-      ? 1
-      : -1;
-    const amount = chunks.find((chunk: any) => typeof chunk === 'number') ?? 0;
-    return operator * amount;
+    if (this.table === inventoryBalances) {
+      const balanceId = this.conditionValues.find((value) => typeof value === 'string' && (value as string).startsWith('balance-'));
+      const balance = balanceId
+        ? this.store.balances.find((b) => b.id === balanceId)
+        : this.store.balances[0];
+      if (balance && typeof this.pendingSet.quantity === 'number') {
+        balance.quantity = this.pendingSet.quantity;
+      }
+    }
   }
 }
 
@@ -339,8 +395,16 @@ function buildUseCase(initialStockQty: number) {
       tenantId: 'tenant-1',
       isActive: true,
       stockTrackingEnabled: true,
-      stockQty: initialStockQty,
     },
+    balances: [
+      {
+        id: 'balance-1',
+        tenantId: 'tenant-1',
+        outletId: OUTLET_ID,
+        productId: 'product-1',
+        quantity: initialStockQty,
+      },
+    ],
     orders: [],
     orderItems: [],
     payments: [],
@@ -360,7 +424,7 @@ function buildUseCase(initialStockQty: number) {
 
 const orderInput = (idempotencyKey: string) => ({
   tenant_id: 'tenant-1',
-  outlet_id: null,
+  outlet_id: OUTLET_ID,
   items: [
     {
       product_id: 'product-1',
@@ -375,6 +439,10 @@ const orderInput = (idempotencyKey: string) => ({
   payment_method: 'cash' as const,
   idempotency_key: idempotencyKey,
 });
+
+function currentStockQty(store: Store): number {
+  return store.balances.find((b) => b.productId === 'product-1' && b.outletId === OUTLET_ID)?.quantity ?? 0;
+}
 
 describe('CreateAndPayOrder stock concurrency', () => {
   it('allows only one of two parallel quick-pay orders when tracked stock has one unit', async () => {
@@ -393,7 +461,7 @@ describe('CreateAndPayOrder stock concurrency', () => {
     const rejectionReason = (rejected[0] as PromiseRejectedResult).reason;
     assert.equal(rejectionReason?.name, 'InsufficientStockError');
     assert.equal(rejectionReason?.code, 'INSUFFICIENT_STOCK');
-    assert.equal(store.product.stockQty, 0);
+    assert.equal(currentStockQty(store), 0);
     assert.equal(store.orders.length, 1);
     assert.equal(store.payments.length, 1);
     assert.equal(store.movements.length, 1);
@@ -403,6 +471,7 @@ describe('CreateAndPayOrder stock concurrency', () => {
     assert.equal(store.movements[0].paymentId, store.payments[0].id);
     assert.equal(store.movements[0].referenceType, 'sale_payment');
     assert.equal(store.movements[0].referenceId, store.payments[0].id);
+    assert.equal(store.movements[0].outletId, OUTLET_ID);
   });
 
 
@@ -461,7 +530,7 @@ describe('CreateAndPayOrder stock concurrency', () => {
     assert.equal(store.orders.length, 1);
     assert.equal(store.payments.length, 1);
     assert.equal(store.movements.length, 1);
-    assert.equal(store.product.stockQty, 1);
+    assert.equal(currentStockQty(store), 1);
   });
 
   it('only auto-completes create-and-pay when explicit instant fulfillment mode is requested', async () => {
@@ -483,7 +552,7 @@ describe('CreateAndPayOrder stock concurrency', () => {
     const result = await syncUseCase.execute({
       tenant_id: 'tenant-1',
       terminal_id: 'terminal-sync-1',
-      outlet_id: null,
+      outlet_id: OUTLET_ID,
       orders: [
         {
           local_order_id: 'local-order-1',
@@ -508,7 +577,7 @@ describe('CreateAndPayOrder stock concurrency', () => {
 
     assert.equal(result.synced, 1);
     assert.equal(result.failed, 0);
-    assert.equal(store.product.stockQty, 3);
+    assert.equal(currentStockQty(store), 3);
     assert.equal(store.orders.length, 1);
     assert.equal(store.payments.length, 1);
     assert.equal(store.movements.length, 1);
@@ -520,6 +589,7 @@ describe('CreateAndPayOrder stock concurrency', () => {
     assert.equal(store.movements[0].orderId, store.orders[0].id);
     assert.equal(store.movements[0].paymentId, store.payments[0].id);
     assert.equal(store.movements[0].referenceType, 'sale_payment');
+    assert.equal(store.movements[0].outletId, OUTLET_ID);
   });
 
 });

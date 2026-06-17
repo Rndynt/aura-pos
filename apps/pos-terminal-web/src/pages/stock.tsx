@@ -29,11 +29,11 @@ import {
   Truck,
   CheckCircle2,
   XCircle,
+  Pencil,
 } from "lucide-react";
 import { PageHeader } from "@/components/design";
 import {
   useStockProducts,
-  useAdjustStock,
   useInventoryMovements,
   useProductMovements,
   useCreateMovement,
@@ -42,6 +42,8 @@ import {
   type StockProduct,
   type MovementsFilter,
 } from "@/hooks/api/useInventory";
+import { SetStockSheet } from "@/components/stock/SetStockSheet";
+import { useOutlet } from "@/context/OutletContext";
 import {
   useLowStockItems,
   useSetLowStockThreshold,
@@ -79,63 +81,6 @@ const MOVEMENT_OPTIONS = [
   { value: "DAMAGE",         label: "Rusak/Terbuang", sign: -1 },
   { value: "RETURN",         label: "Retur Masuk",    sign: +1 },
 ] as const;
-
-// ── Quick Adjust Inline ───────────────────────────────────────────────────────
-function QuickAdjust({ product, onDone }: { product: StockProduct; onDone: () => void }) {
-  const [value, setValue] = useState(product.stockQty.toString());
-  const adjust = useAdjustStock();
-  const { addToast } = useToast();
-
-  const handleSave = async () => {
-    const qty = parseInt(value, 10);
-    if (isNaN(qty)) return;
-    try {
-      await adjust.mutateAsync({ productId: product.id, qty, mode: "set" });
-      addToast("Stok diperbarui", "success");
-      onDone();
-    } catch {
-      addToast("Gagal memperbarui stok", "error");
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-      <button
-        onClick={() => setValue((v) => String(Math.max(0, parseInt(v || "0") - 1)))}
-        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
-      >
-        <Minus size={12} />
-      </button>
-      <input
-        type="number"
-        className="w-14 text-center border border-slate-300 rounded-lg px-1 py-1 text-sm font-bold focus:outline-none focus:border-blue-400"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onDone(); }}
-        autoFocus
-      />
-      <button
-        onClick={() => setValue((v) => String(parseInt(v || "0") + 1))}
-        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
-      >
-        <Plus size={12} />
-      </button>
-      <button
-        onClick={handleSave}
-        disabled={adjust.isPending}
-        className="w-7 h-7 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center"
-      >
-        <Check size={12} />
-      </button>
-      <button
-        onClick={onDone}
-        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center"
-      >
-        <X size={12} />
-      </button>
-    </div>
-  );
-}
 
 // ── Advanced Movement Dialog ──────────────────────────────────────────────────
 function AdvancedAdjustDialog({
@@ -1453,11 +1398,13 @@ export default function StockPage() {
   const summary = data?.data.summary ?? { total: 0, lowStock: 0, outOfStock: 0 };
 
   const isMultiLocation = can("multi_location");
+  const { activeOutlet, activeOutletId } = useOutlet();
+  const canSetStock = !!activeOutletId;
 
   const [filter, setFilter] = useState<"all" | "low" | "out">("all");
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"stock" | "history" | "report" | "opname" | "transfer" | "lowstock">("stock");
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [setStockProduct, setSetStockProduct] = useState<StockProduct | null>(null);
   const [advancedDialogProduct, setAdvancedDialogProduct] = useState<StockProduct | null>(null);
   const [historyProduct, setHistoryProduct] = useState<StockProduct | null>(null);
 
@@ -1474,6 +1421,13 @@ export default function StockPage() {
   return (
     <div className="flex flex-col h-full bg-slate-50 animate-in fade-in">
       {/* Dialogs */}
+      {setStockProduct && (
+        <SetStockSheet
+          product={setStockProduct}
+          outletName={activeOutlet?.name ?? null}
+          onClose={() => setSetStockProduct(null)}
+        />
+      )}
       {advancedDialogProduct && (
         <AdvancedAdjustDialog
           product={advancedDialogProduct}
@@ -1664,6 +1618,17 @@ export default function StockPage() {
             </div>
           </div>
 
+          {/* Outlet context notice */}
+          {!canSetStock && (
+            <div className="mx-4 mt-3 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 flex items-center gap-2">
+              <Lock size={13} className="text-blue-500 flex-shrink-0" />
+              <p className="text-xs text-blue-700 flex-1">
+                Pilih outlet aktif untuk mengatur stok per lokasi. Tombol{' '}
+                <span className="font-bold">Set/Ubah Stok</span> aktif setelah outlet dipilih.
+              </p>
+            </div>
+          )}
+
           {/* Tier notice */}
           {!isAdvanced && (
             <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-center gap-2">
@@ -1722,53 +1687,62 @@ export default function StockPage() {
                       </div>
                     </div>
 
-                    {/* Stock badge / quick adjust */}
+                    {/* Stock badge + set/ubah stok */}
                     <div className="flex items-center gap-2">
-                      {editingId === product.id ? (
-                        <QuickAdjust product={product} onDone={() => setEditingId(null)} />
-                      ) : (
-                        <>
-                          {/* Stock badge */}
-                          <button
-                            onClick={() => setEditingId(product.id)}
-                            title="Klik untuk edit stok langsung"
-                            data-testid={`badge-stock-${product.id}`}
-                            className={`px-2.5 py-1 rounded-lg font-black text-sm border transition-all hover:scale-105 ${
-                              product.isOutOfStock
-                                ? "bg-red-50 border-red-200 text-red-600 hover:bg-red-100"
-                                : product.isLowStock
-                                ? "bg-orange-50 border-orange-200 text-orange-600 hover:bg-orange-100"
-                                : "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
-                            }`}
-                          >
-                            {product.stockQty}
-                            <span className="text-[9px] font-bold ml-0.5 opacity-60">unit</span>
-                          </button>
+                      {/* Stock badge — click to set/edit */}
+                      <button
+                        onClick={() => canSetStock && setSetStockProduct(product)}
+                        disabled={!canSetStock}
+                        title={canSetStock ? "Klik untuk set/ubah stok" : "Pilih outlet aktif dulu"}
+                        data-testid={`badge-stock-${product.id}`}
+                        className={`px-2.5 py-1 rounded-lg font-black text-sm border transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ${
+                          product.isOutOfStock
+                            ? "bg-red-50 border-red-200 text-red-600 hover:bg-red-100"
+                            : product.isLowStock
+                            ? "bg-orange-50 border-orange-200 text-orange-600 hover:bg-orange-100"
+                            : "bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
+                        }`}
+                      >
+                        {product.stockQty}
+                        <span className="text-[9px] font-bold ml-0.5 opacity-60">unit</span>
+                      </button>
 
-                          {/* Advanced: movement record */}
-                          {isAdvanced && (
-                            <button
-                              onClick={() => setAdvancedDialogProduct(product)}
-                              title="Catat pergerakan stok"
-                              data-testid={`button-movement-${product.id}`}
-                              className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 flex items-center justify-center transition-colors"
-                            >
-                              <History size={14} />
-                            </button>
-                          )}
+                      {/* Set / Ubah Stok button */}
+                      <button
+                        onClick={() => setSetStockProduct(product)}
+                        disabled={!canSetStock}
+                        title={canSetStock ? (product.stockQty === 0 ? "Set Stok" : "Ubah Stok") : "Pilih outlet aktif dulu"}
+                        data-testid={`button-set-stock-${product.id}`}
+                        className="px-2.5 h-8 rounded-lg bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                      >
+                        <Pencil size={12} />
+                        <span className="hidden sm:inline">
+                          {product.stockQty === 0 ? "Set Stok" : "Ubah Stok"}
+                        </span>
+                      </button>
 
-                          {/* Advanced: see history */}
-                          {isAdvanced && (
-                            <button
-                              onClick={() => setHistoryProduct(product)}
-                              title="Lihat riwayat stok produk ini"
-                              data-testid={`button-history-${product.id}`}
-                              className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 flex items-center justify-center transition-colors"
-                            >
-                              <ClipboardList size={14} />
-                            </button>
-                          )}
-                        </>
+                      {/* Advanced: movement record */}
+                      {isAdvanced && (
+                        <button
+                          onClick={() => setAdvancedDialogProduct(product)}
+                          title="Catat pergerakan stok"
+                          data-testid={`button-movement-${product.id}`}
+                          className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 flex items-center justify-center transition-colors"
+                        >
+                          <History size={14} />
+                        </button>
+                      )}
+
+                      {/* Advanced: see history */}
+                      {isAdvanced && (
+                        <button
+                          onClick={() => setHistoryProduct(product)}
+                          title="Lihat riwayat stok produk ini"
+                          data-testid={`button-history-${product.id}`}
+                          className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 flex items-center justify-center transition-colors"
+                        >
+                          <ClipboardList size={14} />
+                        </button>
                       )}
                     </div>
                   </div>

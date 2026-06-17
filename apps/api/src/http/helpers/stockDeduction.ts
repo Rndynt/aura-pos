@@ -4,8 +4,10 @@
  * API-facing compatibility wrapper around the application inventory stock
  * movement helpers. The implementation is transaction-aware: callers may pass a
  * tx to make stock updates part of a wider unit of work, or omit it to let the
- * helper open its own db.transaction for SELECT ... FOR UPDATE, products.stockQty
- * updates, and inventory_movements inserts.
+ * helper open its own db.transaction for SELECT ... FOR UPDATE on
+ * inventory_balances, balance upsert, and inventory_movements inserts. Stock
+ * source of truth is inventory_balances scoped by tenant_id + outlet_id +
+ * product_id; products.stock_qty is no longer used by the sale/return flow.
  */
 
 export {
