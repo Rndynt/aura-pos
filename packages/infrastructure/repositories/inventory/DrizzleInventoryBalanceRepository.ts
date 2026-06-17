@@ -4,7 +4,7 @@ import type {
   UpsertBalanceInput,
   SetBalanceInput,
 } from '@pos/application/inventory/ports';
-import { and, eq, lte, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { inventoryBalances, products } from '@pos/infrastructure/db/schema';
 import { db, type DbClient } from '../../database';
 import { DrizzleUnitOfWork } from '../../unit-of-work';
@@ -30,6 +30,22 @@ function mapRow(row: typeof inventoryBalances.$inferSelect): InventoryBalanceRec
 
 function getClient(ctx?: TransactionContext): DbClient {
   return DrizzleUnitOfWork.fromContext(ctx) ?? db;
+}
+
+/**
+ * Keep products.stock_qty in sync with inventory_balances.quantity for
+ * backward compatibility with basic stock (which reads products.stock_qty).
+ */
+async function syncProductStockQty(
+  client: DbClient,
+  tenantId: string,
+  productId: string,
+  quantity: number,
+): Promise<void> {
+  await client
+    .update(products)
+    .set({ stockQty: quantity, updatedAt: new Date() })
+    .where(and(eq(products.id, productId), eq(products.tenantId, tenantId)));
 }
 
 export class DrizzleInventoryBalanceRepository implements InventoryBalanceRepositoryPort {
@@ -92,6 +108,8 @@ export class DrizzleInventoryBalanceRepository implements InventoryBalanceReposi
         .for('update')
         .limit(1);
 
+      let result: InventoryBalanceRecord;
+
       if (existing.length === 0) {
         const [inserted] = await client
           .insert(inventoryBalances)
@@ -104,20 +122,23 @@ export class DrizzleInventoryBalanceRepository implements InventoryBalanceReposi
             updatedAt: new Date(),
           })
           .returning();
-        return mapRow(inserted);
+        result = mapRow(inserted);
+      } else {
+        const newQty = existing[0].quantity + quantityDelta;
+        const [updated] = await client
+          .update(inventoryBalances)
+          .set({
+            quantity: newQty,
+            lastMovementId: lastMovementId ?? existing[0].lastMovementId,
+            updatedAt: new Date(),
+          })
+          .where(eq(inventoryBalances.id, existing[0].id))
+          .returning();
+        result = mapRow(updated);
       }
 
-      const newQty = existing[0].quantity + quantityDelta;
-      const [updated] = await client
-        .update(inventoryBalances)
-        .set({
-          quantity: newQty,
-          lastMovementId: lastMovementId ?? existing[0].lastMovementId,
-          updatedAt: new Date(),
-        })
-        .where(eq(inventoryBalances.id, existing[0].id))
-        .returning();
-      return mapRow(updated);
+      await syncProductStockQty(client, tenantId, productId, result.quantity);
+      return result;
     };
 
     const txClient = DrizzleUnitOfWork.fromContext(ctx);
@@ -153,7 +174,10 @@ export class DrizzleInventoryBalanceRepository implements InventoryBalanceReposi
           },
         })
         .returning();
-      return mapRow(upserted);
+
+      const result = mapRow(upserted);
+      await syncProductStockQty(client, tenantId, productId, result.quantity);
+      return result;
     };
 
     const txClient = DrizzleUnitOfWork.fromContext(ctx);

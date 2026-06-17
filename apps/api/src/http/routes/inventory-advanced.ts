@@ -1,6 +1,11 @@
 /**
  * Advanced Inventory Routes — Opname, Transfer, Low Stock, Threshold
  *
+ * Routes are deliberately thin: entitlement check + body parse + use-case call.
+ * All business logic (status guards, variance math, atomic balance writes) lives
+ * in the application use cases at packages/application/inventory/opname.ts and
+ * packages/application/inventory/transfer.ts.
+ *
  * ADVANCED (requires inventory_advanced_stock):
  *   GET  /api/inventory/low-stock                     — list produk stok rendah
  *   PUT  /api/inventory/products/:id/threshold        — set threshold per produk/outlet
@@ -23,32 +28,44 @@
 
 import { Router } from 'express';
 import { db } from '@pos/infrastructure/database';
-import {
-  products,
-  inventoryMovements,
-  inventoryBalances,
-} from '@pos/infrastructure/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { products, inventoryBalances } from '@pos/infrastructure/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { z } from 'zod';
 import { requireManager } from '../middleware/rbac';
 import { requireTenantEntitlement } from '../helpers/inventoryEntitlement';
 import { getEffectiveEntitlementMap } from '../../services/tenantEntitlements';
-import { DrizzleInventoryBalanceRepository } from '@pos/infrastructure/repositories/inventory';
-import { DrizzleStockOpnameRepository } from '@pos/infrastructure/repositories/inventory';
-import { DrizzleStockTransferRepository } from '@pos/infrastructure/repositories/inventory';
+import {
+  DrizzleInventoryBalanceRepository,
+  DrizzleStockOpnameRepository,
+  DrizzleStockTransferRepository,
+  DrizzleInventoryMovementWriter,
+} from '@pos/infrastructure/repositories/inventory';
+import { DrizzleUnitOfWork } from '@pos/infrastructure/unit-of-work';
+import {
+  createOpname,
+  updateOpnameItem,
+  submitOpname,
+  approveOpname,
+  cancelOpname,
+  createTransfer,
+  submitTransfer,
+  receiveTransfer,
+  cancelTransfer,
+} from '@pos/application/inventory';
 
 const router = Router();
 
 const balanceRepo = new DrizzleInventoryBalanceRepository();
 const opnameRepo = new DrizzleStockOpnameRepository();
 const transferRepo = new DrizzleStockTransferRepository();
+const movementWriter = new DrizzleInventoryMovementWriter();
+const unitOfWork = new DrizzleUnitOfWork();
 
 const DEFAULT_THRESHOLD = 10;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-/** Generate sequential number string e.g. OPN-20250617-001 */
 function generateNumber(prefix: string): string {
   const date = new Date();
   const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
@@ -68,7 +85,6 @@ async function requireMultiLocation(tenantId: string) {
 /**
  * GET /api/inventory/low-stock
  * List products at or below their effective low stock threshold.
- * Requires: inventory_advanced_stock
  */
 router.get('/low-stock', asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
@@ -120,7 +136,6 @@ router.get('/low-stock', asyncHandler(async (req, res) => {
 /**
  * PUT /api/inventory/products/:id/threshold
  * Set low stock threshold per product/outlet.
- * Requires: inventory_advanced_stock
  */
 router.put('/products/:id/threshold', requireManager, asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
@@ -158,8 +173,7 @@ router.put('/products/:id/threshold', requireManager, asyncHandler(async (req, r
 
 /**
  * POST /api/inventory/opnames
- * Buat draft opname baru untuk outlet aktif.
- * Automatically populates items with all tracked products and their current system qty.
+ * Create a draft opname and auto-populate items with all tracked products.
  */
 router.post('/opnames', requireManager, asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
@@ -173,40 +187,31 @@ router.post('/opnames', requireManager, asyncHandler(async (req, res) => {
     startedBy: z.string().optional(),
   }).parse(req.body);
 
-  const opnameNumber = generateNumber('OPN');
-
-  const opname = await opnameRepo.create({
-    tenantId,
-    outletId,
-    opnameNumber,
-    notes: body.notes ?? null,
-    startedBy: body.startedBy ?? null,
-  });
+  const opname = await createOpname(
+    { opnameRepo },
+    {
+      tenantId,
+      outletId,
+      opnameNumber: generateNumber('OPN'),
+      notes: body.notes ?? null,
+      startedBy: body.startedBy ?? null,
+    },
+  );
 
   const trackedProducts = await db
-    .select({
-      id: products.id,
-      stockQty: products.stockQty,
-    })
+    .select({ id: products.id, stockQty: products.stockQty })
     .from(products)
-    .where(
-      and(
-        eq(products.tenantId, tenantId),
-        eq(products.stockTrackingEnabled, true),
-      ),
-    );
+    .where(and(eq(products.tenantId, tenantId), eq(products.stockTrackingEnabled, true)));
 
-  if (trackedProducts.length > 0) {
-    for (const p of trackedProducts) {
-      const balance = await balanceRepo.getBalance(tenantId, outletId, p.id);
-      const systemQty = balance?.quantity ?? p.stockQty ?? 0;
-      await opnameRepo.upsertItem({
-        opnameId: opname.id,
-        productId: p.id,
-        systemQuantity: systemQty,
-        countedQuantity: systemQty,
-      });
-    }
+  for (const p of trackedProducts) {
+    const balance = await balanceRepo.getBalance(tenantId, outletId, p.id);
+    const systemQty = balance?.quantity ?? p.stockQty ?? 0;
+    await opnameRepo.upsertItem({
+      opnameId: opname.id,
+      productId: p.id,
+      systemQuantity: systemQty,
+      countedQuantity: systemQty,
+    });
   }
 
   const full = await opnameRepo.findById(opname.id, tenantId);
@@ -253,32 +258,26 @@ router.get('/opnames/:id', asyncHandler(async (req, res) => {
 
 /**
  * PUT /api/inventory/opnames/:id/items/:productId
- * Update counted quantity for one item.
  */
 router.put('/opnames/:id/items/:productId', requireManager, asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
   await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
-
-  const { id: opnameId, productId } = req.params;
-  const opname = await opnameRepo.findById(opnameId, tenantId);
-  if (!opname) throw createError('Opname tidak ditemukan', 404);
-  if (opname.status !== 'draft') throw createError('Hanya opname berstatus draft yang dapat diubah', 400);
 
   const body = z.object({
     countedQuantity: z.number().int().min(0),
     notes: z.string().optional(),
   }).parse(req.body);
 
-  const existingItem = opname.items.find((i) => i.productId === productId);
-  const systemQty = existingItem?.systemQuantity ?? 0;
-
-  const item = await opnameRepo.upsertItem({
-    opnameId,
-    productId,
-    systemQuantity: systemQty,
-    countedQuantity: body.countedQuantity,
-    notes: body.notes ?? null,
-  });
+  const item = await updateOpnameItem(
+    { opnameRepo },
+    {
+      opnameId: req.params.id,
+      tenantId,
+      productId: req.params.productId,
+      countedQuantity: body.countedQuantity,
+      notes: body.notes ?? null,
+    },
+  );
 
   return res.json({ success: true, data: item });
 }));
@@ -290,85 +289,32 @@ router.post('/opnames/:id/submit', requireManager, asyncHandler(async (req, res)
   const tenantId = req.tenantId!;
   await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
 
-  const opname = await opnameRepo.findById(req.params.id, tenantId);
-  if (!opname) throw createError('Opname tidak ditemukan', 404);
-  if (opname.status !== 'draft') throw createError('Hanya opname berstatus draft yang dapat disubmit', 400);
-
   const body = z.object({ submittedBy: z.string().optional() }).parse(req.body);
 
-  const updated = await opnameRepo.updateStatus(opname.id, tenantId, 'submitted', {
-    submittedBy: body.submittedBy,
-    submittedAt: new Date(),
-  });
+  const result = await submitOpname(
+    { opnameRepo },
+    { opnameId: req.params.id, tenantId, submittedBy: body.submittedBy },
+  );
 
-  return res.json({ success: true, data: updated });
+  return res.json({ success: true, data: result });
 }));
 
 /**
  * POST /api/inventory/opnames/:id/approve
- * Approve submitted opname:
- * 1. For each item with variance != 0: write OPNAME_ADJUSTMENT movement
- * 2. Update inventory_balances atomically
- * 3. Update products.stock_qty for basic compat
+ * Atomically writes OPNAME_ADJUSTMENT movements and updates inventory_balances.
  */
 router.post('/opnames/:id/approve', requireManager, asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
   await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
 
-  const opname = await opnameRepo.findById(req.params.id, tenantId);
-  if (!opname) throw createError('Opname tidak ditemukan', 404);
-  if (opname.status !== 'submitted') throw createError('Hanya opname berstatus submitted yang dapat disetujui', 400);
-
   const body = z.object({ approvedBy: z.string().optional() }).parse(req.body);
 
-  const itemsWithVariance = opname.items.filter((i) => i.varianceQuantity !== 0);
-  const outletId = opname.outletId;
+  const result = await approveOpname(
+    { opnameRepo, balanceRepo, movementWriter, unitOfWork },
+    { opnameId: req.params.id, tenantId, approvedBy: body.approvedBy },
+  );
 
-  await db.transaction(async (tx) => {
-    for (const item of itemsWithVariance) {
-      const delta = item.varianceQuantity;
-      const movType = delta > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT';
-
-      const balance = await balanceRepo.getBalance(tenantId, outletId, item.productId);
-      const before = balance?.quantity ?? item.systemQuantity;
-      const after = item.countedQuantity;
-
-      const [movement] = await tx.insert(inventoryMovements).values({
-        tenantId,
-        outletId,
-        productId: item.productId,
-        movementType: 'OPNAME_ADJUSTMENT',
-        quantityDelta: delta,
-        quantityBefore: before,
-        quantityAfter: after,
-        notes: `Opname ${opname.opnameNumber} — selisih ${delta > 0 ? '+' : ''}${delta}`,
-        referenceType: 'opname',
-        referenceId: opname.id,
-        metadata: { opnameId: opname.id, opnameNumber: opname.opnameNumber } as any,
-      }).returning();
-
-      await balanceRepo.setQuantity({
-        tenantId,
-        outletId,
-        productId: item.productId,
-        quantity: after,
-        lastMovementId: movement.id,
-        lastCountedAt: new Date(),
-      });
-
-      await tx.update(products)
-        .set({ stockQty: after, updatedAt: new Date() })
-        .where(and(eq(products.id, item.productId), eq(products.tenantId, tenantId)));
-    }
-
-    await opnameRepo.updateStatus(opname.id, tenantId, 'approved', {
-      approvedBy: body.approvedBy,
-      approvedAt: new Date(),
-    });
-  });
-
-  const approved = await opnameRepo.findById(opname.id, tenantId);
-  return res.json({ success: true, data: approved });
+  return res.json({ success: true, data: result });
 }));
 
 /**
@@ -378,22 +324,18 @@ router.post('/opnames/:id/cancel', requireManager, asyncHandler(async (req, res)
   const tenantId = req.tenantId!;
   await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
 
-  const opname = await opnameRepo.findById(req.params.id, tenantId);
-  if (!opname) throw createError('Opname tidak ditemukan', 404);
-  if (opname.status === 'approved') throw createError('Opname yang sudah disetujui tidak dapat dibatalkan', 400);
+  const result = await cancelOpname(
+    { opnameRepo },
+    { opnameId: req.params.id, tenantId },
+  );
 
-  const updated = await opnameRepo.updateStatus(opname.id, tenantId, 'cancelled', {
-    cancelledAt: new Date(),
-  });
-
-  return res.json({ success: true, data: updated });
+  return res.json({ success: true, data: result });
 }));
 
 // ── TRANSFER ──────────────────────────────────────────────────────────────────
 
 /**
  * POST /api/inventory/transfers
- * Requires: inventory_advanced_stock + multi_location
  */
 router.post('/transfers', requireManager, asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
@@ -412,21 +354,18 @@ router.post('/transfers', requireManager, asyncHandler(async (req, res) => {
     })).min(1),
   }).parse(req.body);
 
-  if (body.fromOutletId === body.toOutletId) {
-    throw createError('Outlet asal dan tujuan tidak boleh sama', 400);
-  }
-
-  const transferNumber = generateNumber('TRF');
-
-  const transfer = await transferRepo.create({
-    tenantId,
-    transferNumber,
-    fromOutletId: body.fromOutletId,
-    toOutletId: body.toOutletId,
-    notes: body.notes ?? null,
-    createdBy: body.createdBy ?? null,
-    items: body.items,
-  });
+  const transfer = await createTransfer(
+    { transferRepo },
+    {
+      tenantId,
+      transferNumber: generateNumber('TRF'),
+      fromOutletId: body.fromOutletId,
+      toOutletId: body.toOutletId,
+      notes: body.notes ?? null,
+      createdBy: body.createdBy ?? null,
+      items: body.items,
+    },
+  );
 
   return res.status(201).json({ success: true, data: transfer });
 }));
@@ -471,172 +410,59 @@ router.get('/transfers/:id', asyncHandler(async (req, res) => {
 
 /**
  * POST /api/inventory/transfers/:id/submit
- * Decreases source outlet balance, creates TRANSFER_OUT movements.
+ * Atomically deducts source outlet balance and writes TRANSFER_OUT movements.
  */
 router.post('/transfers/:id/submit', requireManager, asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
   await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
   await requireMultiLocation(tenantId);
 
-  const transfer = await transferRepo.findById(req.params.id, tenantId);
-  if (!transfer) throw createError('Transfer tidak ditemukan', 404);
-  if (transfer.status !== 'draft') throw createError('Hanya transfer berstatus draft yang dapat disubmit', 400);
-
   const body = z.object({ submittedBy: z.string().optional() }).parse(req.body);
 
-  await db.transaction(async (tx) => {
-    for (const item of transfer.items) {
-      const balance = await balanceRepo.getBalance(tenantId, transfer.fromOutletId, item.productId);
-      const before = balance?.quantity ?? 0;
+  const result = await submitTransfer(
+    { transferRepo, balanceRepo, movementWriter, unitOfWork },
+    { transferId: req.params.id, tenantId, submittedBy: body.submittedBy },
+  );
 
-      if (before < item.quantity) {
-        throw createError(`Stok tidak cukup untuk produk ${item.productId} di outlet asal (ada: ${before}, butuh: ${item.quantity})`, 400);
-      }
-
-      const updatedBalance = await balanceRepo.applyDelta({
-        tenantId,
-        outletId: transfer.fromOutletId,
-        productId: item.productId,
-        quantityDelta: -item.quantity,
-      });
-
-      await tx.insert(inventoryMovements).values({
-        tenantId,
-        outletId: transfer.fromOutletId,
-        productId: item.productId,
-        movementType: 'TRANSFER_OUT',
-        quantityDelta: -item.quantity,
-        quantityBefore: before,
-        quantityAfter: updatedBalance.quantity,
-        notes: `Transfer keluar — ${transfer.transferNumber}`,
-        referenceType: 'transfer',
-        referenceId: transfer.id,
-        metadata: { transferId: transfer.id, transferNumber: transfer.transferNumber, toOutletId: transfer.toOutletId } as any,
-      });
-
-      await tx.update(products)
-        .set({ stockQty: updatedBalance.quantity, updatedAt: new Date() })
-        .where(and(eq(products.id, item.productId), eq(products.tenantId, tenantId)));
-    }
-
-    await transferRepo.updateStatus(transfer.id, tenantId, 'submitted', {
-      submittedBy: body.submittedBy,
-      submittedAt: new Date(),
-    });
-  });
-
-  const updated = await transferRepo.findById(transfer.id, tenantId);
-  return res.json({ success: true, data: updated });
+  return res.json({ success: true, data: result });
 }));
 
 /**
  * POST /api/inventory/transfers/:id/receive
- * Increases destination outlet balance, creates TRANSFER_IN movements.
+ * Atomically adds destination outlet balance and writes TRANSFER_IN movements.
  */
 router.post('/transfers/:id/receive', requireManager, asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
   await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
   await requireMultiLocation(tenantId);
 
-  const transfer = await transferRepo.findById(req.params.id, tenantId);
-  if (!transfer) throw createError('Transfer tidak ditemukan', 404);
-  if (transfer.status !== 'submitted') throw createError('Hanya transfer berstatus submitted yang dapat diterima', 400);
-
   const body = z.object({ receivedBy: z.string().optional() }).parse(req.body);
 
-  await db.transaction(async (tx) => {
-    for (const item of transfer.items) {
-      const balance = await balanceRepo.getBalance(tenantId, transfer.toOutletId, item.productId);
-      const before = balance?.quantity ?? 0;
+  const result = await receiveTransfer(
+    { transferRepo, balanceRepo, movementWriter, unitOfWork },
+    { transferId: req.params.id, tenantId, receivedBy: body.receivedBy },
+  );
 
-      const updatedBalance = await balanceRepo.applyDelta({
-        tenantId,
-        outletId: transfer.toOutletId,
-        productId: item.productId,
-        quantityDelta: item.quantity,
-      });
-
-      await tx.insert(inventoryMovements).values({
-        tenantId,
-        outletId: transfer.toOutletId,
-        productId: item.productId,
-        movementType: 'TRANSFER_IN',
-        quantityDelta: item.quantity,
-        quantityBefore: before,
-        quantityAfter: updatedBalance.quantity,
-        notes: `Transfer masuk — ${transfer.transferNumber}`,
-        referenceType: 'transfer',
-        referenceId: transfer.id,
-        metadata: { transferId: transfer.id, transferNumber: transfer.transferNumber, fromOutletId: transfer.fromOutletId } as any,
-      });
-    }
-
-    await transferRepo.updateStatus(transfer.id, tenantId, 'received', {
-      receivedBy: body.receivedBy,
-      receivedAt: new Date(),
-    });
-  });
-
-  const updated = await transferRepo.findById(transfer.id, tenantId);
-  return res.json({ success: true, data: updated });
+  return res.json({ success: true, data: result });
 }));
 
 /**
  * POST /api/inventory/transfers/:id/cancel
+ * If submitted: reverses TRANSFER_OUT with ADJUSTMENT_IN before cancelling.
  */
 router.post('/transfers/:id/cancel', requireManager, asyncHandler(async (req, res) => {
   const tenantId = req.tenantId!;
   await requireTenantEntitlement(db, tenantId, 'inventory_advanced_stock');
   await requireMultiLocation(tenantId);
 
-  const transfer = await transferRepo.findById(req.params.id, tenantId);
-  if (!transfer) throw createError('Transfer tidak ditemukan', 404);
-  if (transfer.status === 'received') throw createError('Transfer yang sudah diterima tidak dapat dibatalkan', 400);
-
   const body = z.object({ cancelledBy: z.string().optional() }).parse(req.body);
 
-  if (transfer.status === 'submitted') {
-    await db.transaction(async (tx) => {
-      for (const item of transfer.items) {
-        const balance = await balanceRepo.getBalance(tenantId, transfer.fromOutletId, item.productId);
-        const before = balance?.quantity ?? 0;
+  const result = await cancelTransfer(
+    { transferRepo, balanceRepo, movementWriter, unitOfWork },
+    { transferId: req.params.id, tenantId, cancelledBy: body.cancelledBy },
+  );
 
-        const updatedBalance = await balanceRepo.applyDelta({
-          tenantId,
-          outletId: transfer.fromOutletId,
-          productId: item.productId,
-          quantityDelta: item.quantity,
-        });
-
-        await tx.insert(inventoryMovements).values({
-          tenantId,
-          outletId: transfer.fromOutletId,
-          productId: item.productId,
-          movementType: 'ADJUSTMENT_IN',
-          quantityDelta: item.quantity,
-          quantityBefore: before,
-          quantityAfter: updatedBalance.quantity,
-          notes: `Pembatalan transfer — ${transfer.transferNumber}`,
-          referenceType: 'transfer_cancel',
-          referenceId: transfer.id,
-          metadata: { transferId: transfer.id } as any,
-        });
-      }
-
-      await transferRepo.updateStatus(transfer.id, tenantId, 'cancelled', {
-        cancelledBy: body.cancelledBy,
-        cancelledAt: new Date(),
-      });
-    });
-  } else {
-    await transferRepo.updateStatus(transfer.id, tenantId, 'cancelled', {
-      cancelledBy: body.cancelledBy,
-      cancelledAt: new Date(),
-    });
-  }
-
-  const updated = await transferRepo.findById(transfer.id, tenantId);
-  return res.json({ success: true, data: updated });
+  return res.json({ success: true, data: result });
 }));
 
 export default router;

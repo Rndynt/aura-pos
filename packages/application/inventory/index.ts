@@ -33,4 +33,28 @@ export type {
   StockContext as InventoryPortStockContext,
   StockItem as InventoryPortStockItem,
   StockMovementPort,
+  InventoryMovementWriterPort,
+  RecordMovementInput,
+  MovementRecord,
 } from './ports';
+export {
+  createOpname,
+  updateOpnameItem,
+  submitOpname,
+  approveOpname,
+  cancelOpname,
+  OpnameNotFoundError,
+  OpnameStatusError,
+  type OpnameDeps,
+} from './opname';
+export {
+  createTransfer,
+  submitTransfer,
+  receiveTransfer,
+  cancelTransfer,
+  TransferNotFoundError,
+  TransferStatusError,
+  TransferSameOutletError,
+  InsufficientTransferStockError,
+  type TransferDeps,
+} from './transfer';

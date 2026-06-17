@@ -24,3 +24,8 @@ export type {
   CreateTransferInput,
   StockTransferRepositoryPort,
 } from './StockTransferRepositoryPort';
+export type {
+  RecordMovementInput,
+  MovementRecord,
+  InventoryMovementWriterPort,
+} from './InventoryMovementWriterPort';

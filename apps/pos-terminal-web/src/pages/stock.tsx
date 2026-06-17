@@ -1311,7 +1311,7 @@ export default function StockPage() {
               }`}
             >
               <ArrowLeftRight size={14} /> Transfer
-              {!isAdvanced && <Lock size={11} className="text-amber-500" />}
+              {(!isAdvanced || !isMultiLocation) && <Lock size={11} className="text-amber-500" />}
             </button>
           </div>
         }
@@ -1335,7 +1335,21 @@ export default function StockPage() {
         </div>
       ) : activeTab === "transfer" ? (
         <div className="flex-1 overflow-y-auto p-4 pb-20">
-          {isAdvanced ? <TransferTab /> : <UpgradePrompt feature="Transfer Stok Antar Outlet" />}
+          {isAdvanced && isMultiLocation ? (
+            <TransferTab />
+          ) : isAdvanced && !isMultiLocation ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+              <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center">
+                <Lock size={24} className="text-amber-600" />
+              </div>
+              <p className="font-bold text-slate-700">Modul Multi Lokasi Diperlukan</p>
+              <p className="text-sm text-slate-400 max-w-xs">
+                Transfer stok antar outlet membutuhkan modul <span className="font-bold text-amber-600">Multi Lokasi</span>. Aktifkan dari halaman Marketplace.
+              </p>
+            </div>
+          ) : (
+            <UpgradePrompt feature="Transfer Stok Antar Outlet" />
+          )}
         </div>
       ) : (
         <>
