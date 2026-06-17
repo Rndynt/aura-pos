@@ -63,6 +63,7 @@ import {
 } from "@/hooks/api/useInventoryAdvanced";
 import { useTenant } from "@/context/TenantContext";
 import { useToast } from "@/hooks/use-toast";
+import { useOutlets } from "@/hooks/api/useOutlets";
 
 const formatIDR = (v: number | string) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(Number(v));
@@ -1091,18 +1092,210 @@ function TransferDetailDrawer({ transferId, onClose }: { transferId: string; onC
   );
 }
 
+// ── Create Transfer Drawer ────────────────────────────────────────────────────
+type TransferItem = { productId: string; quantity: number };
+
+function CreateTransferDrawer({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { data: outletsData } = useOutlets();
+  const { data: productsData } = useStockProducts();
+  const createTransfer = useCreateTransfer();
+  const { addToast } = useToast();
+
+  const outlets = outletsData?.outlets ?? [];
+  const trackedProducts = (productsData?.data?.items ?? []).filter((p: StockProduct) => p.stockTrackingEnabled);
+
+  const [fromOutletId, setFromOutletId] = useState("");
+  const [toOutletId, setToOutletId] = useState("");
+  const [notes, setNotes] = useState("");
+  const [items, setItems] = useState<TransferItem[]>([{ productId: "", quantity: 1 }]);
+
+  const addItem = () => setItems((prev) => [...prev, { productId: "", quantity: 1 }]);
+  const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx));
+  const updateItem = (idx: number, patch: Partial<TransferItem>) =>
+    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+
+  const canSubmit =
+    fromOutletId &&
+    toOutletId &&
+    fromOutletId !== toOutletId &&
+    items.length > 0 &&
+    items.every((it) => it.productId && it.quantity > 0);
+
+  const handleCreate = async () => {
+    if (!canSubmit) return;
+    try {
+      await createTransfer.mutateAsync({ fromOutletId, toOutletId, notes: notes || undefined, items });
+      addToast("Transfer stok berhasil dibuat (status: Draft)", "success");
+      onCreated();
+      onClose();
+    } catch (e: any) {
+      addToast(e?.message ?? "Gagal membuat transfer", "error");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center" onClick={onClose}>
+      <div
+        className="bg-white rounded-t-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-4 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white rounded-t-2xl">
+          <div>
+            <h3 className="font-bold text-slate-800">Buat Transfer Stok</h3>
+            <p className="text-xs text-slate-500">Pindahkan stok antar outlet</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-slate-500 mb-1 block">Dari Outlet</label>
+              <select
+                value={fromOutletId}
+                onChange={(e) => setFromOutletId(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+                data-testid="select-from-outlet"
+              >
+                <option value="">Pilih outlet asal</option>
+                {outlets.map((o) => (
+                  <option key={o.id} value={o.id} disabled={o.id === toOutletId}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 mb-1 block">Ke Outlet</label>
+              <select
+                value={toOutletId}
+                onChange={(e) => setToOutletId(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+                data-testid="select-to-outlet"
+              >
+                <option value="">Pilih outlet tujuan</option>
+                {outlets.map((o) => (
+                  <option key={o.id} value={o.id} disabled={o.id === fromOutletId}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-slate-500">Item Transfer</label>
+              <button
+                onClick={addItem}
+                className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700"
+                data-testid="button-add-transfer-item"
+              >
+                <Plus size={12} /> Tambah Item
+              </button>
+            </div>
+            <div className="space-y-2">
+              {items.map((item, idx) => (
+                <div key={idx} className="flex items-center gap-2 bg-slate-50 rounded-xl p-2">
+                  <select
+                    value={item.productId}
+                    onChange={(e) => updateItem(idx, { productId: e.target.value })}
+                    className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400 bg-white"
+                    data-testid={`select-product-${idx}`}
+                  >
+                    <option value="">Pilih produk</option>
+                    {trackedProducts.map((p: StockProduct) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (stok: {p.stockQty ?? 0})
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => updateItem(idx, { quantity: Math.max(1, item.quantity - 1) })}
+                      className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-100"
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.quantity}
+                      onChange={(e) => updateItem(idx, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+                      className="w-12 text-center border border-slate-200 rounded-lg px-1 py-1.5 text-sm font-bold focus:outline-none focus:border-blue-400"
+                      data-testid={`input-qty-${idx}`}
+                    />
+                    <button
+                      onClick={() => updateItem(idx, { quantity: item.quantity + 1 })}
+                      className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-100"
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                  {items.length > 1 && (
+                    <button
+                      onClick={() => removeItem(idx)}
+                      className="w-7 h-7 rounded-lg bg-red-50 text-red-400 flex items-center justify-center hover:bg-red-100 flex-shrink-0"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            {trackedProducts.length === 0 && (
+              <p className="text-xs text-amber-600 mt-2">Belum ada produk dengan tracking stok aktif.</p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-slate-500 mb-1 block">Catatan (opsional)</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Catatan transfer stok..."
+              rows={2}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-400 resize-none"
+              data-testid="input-transfer-notes"
+            />
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-slate-100 flex gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50">
+            Batal
+          </button>
+          <button
+            onClick={handleCreate}
+            disabled={!canSubmit || createTransfer.isPending}
+            data-testid="button-submit-transfer"
+            className="flex-1 py-2 rounded-xl bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+          >
+            <ArrowLeftRight size={14} />
+            {createTransfer.isPending ? "Membuat..." : "Buat Transfer (Draft)"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Transfer Tab ──────────────────────────────────────────────────────────────
 function TransferTab() {
   const { data, isLoading, refetch, isFetching, error } = useTransfers();
   const { addToast } = useToast();
   const transfers = data?.data.transfers ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
   const noMultiLocation = (error as any)?.message?.includes("403") || (error as any)?.message?.includes("Multi Lokasi");
 
   return (
     <div className="space-y-3">
       {selectedId && (
         <TransferDetailDrawer transferId={selectedId} onClose={() => { setSelectedId(null); refetch(); }} />
+      )}
+      {showCreate && (
+        <CreateTransferDrawer onClose={() => setShowCreate(false)} onCreated={() => refetch()} />
       )}
 
       {noMultiLocation ? (
@@ -1117,20 +1310,38 @@ function TransferTab() {
         <>
           <div className="flex items-center justify-between">
             <p className="text-xs text-slate-500">Transfer stok antar outlet dalam satu tenant</p>
-            <button onClick={() => refetch()} disabled={isFetching} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors">
-              <RefreshCw size={13} className={isFetching ? "animate-spin" : ""} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowCreate(true)}
+                data-testid="button-buat-transfer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white text-xs font-bold rounded-xl hover:bg-violet-700 transition-colors"
+              >
+                <Plus size={13} /> Buat Transfer
+              </button>
+              <button onClick={() => refetch()} disabled={isFetching} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors">
+                <RefreshCw size={13} className={isFetching ? "animate-spin" : ""} />
+              </button>
+            </div>
           </div>
 
           {isLoading ? (
             <div className="text-center py-12 text-slate-400 text-sm">Memuat data transfer...</div>
           ) : transfers.length === 0 ? (
-            <div className="flex flex-col items-center py-12 gap-3">
+            <div className="flex flex-col items-center py-12 gap-4">
               <div className="w-12 h-12 bg-violet-50 rounded-2xl flex items-center justify-center">
                 <ArrowLeftRight size={22} className="text-violet-500" />
               </div>
-              <p className="font-bold text-slate-700 text-sm">Belum ada transfer stok</p>
-              <p className="text-xs text-slate-400 text-center max-w-xs">Transfer stok dibuat via API dari sistem POS atau dashboard admin</p>
+              <div className="text-center">
+                <p className="font-bold text-slate-700 text-sm">Belum ada transfer stok</p>
+                <p className="text-xs text-slate-400 mt-1">Buat transfer untuk pindahkan stok antar outlet</p>
+              </div>
+              <button
+                onClick={() => setShowCreate(true)}
+                data-testid="button-buat-transfer-empty"
+                className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white text-sm font-bold rounded-xl hover:bg-violet-700 transition-colors"
+              >
+                <Plus size={14} /> Buat Transfer Pertama
+              </button>
             </div>
           ) : (
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
