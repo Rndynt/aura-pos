@@ -4,7 +4,6 @@ import type { InventoryBalanceRecord, InventoryBalanceRepositoryPort } from './p
 export interface TrackedProductStockRecord {
   id: string;
   tenantId: string;
-  stockQty: number | null;
   stockTrackingEnabled: boolean;
 }
 
@@ -38,7 +37,7 @@ export interface EnsureBalanceInput {
 }
 
 export async function getInitialBalanceQuantity(
-  { productReader, outletContext }: Pick<EnsureBalanceDeps, 'productReader' | 'outletContext'>,
+  { productReader }: Pick<EnsureBalanceDeps, 'productReader'>,
   input: EnsureBalanceInput,
   ctx?: TransactionContext,
 ): Promise<number> {
@@ -47,8 +46,7 @@ export async function getInitialBalanceQuantity(
     throw new Error('Produk tidak ditemukan atau tidak menggunakan tracking stok');
   }
 
-  const isDefaultOutlet = await outletContext.isDefaultOutlet(input.tenantId, input.outletId, ctx);
-  return isDefaultOutlet ? product.stockQty ?? 0 : 0;
+  return 0;
 }
 
 export async function ensureProductBalanceForOutlet(

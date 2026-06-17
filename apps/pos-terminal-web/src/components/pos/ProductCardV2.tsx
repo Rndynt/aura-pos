@@ -40,12 +40,6 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
           <ProductAvatar name={product.name} textClassName="text-2xl font-bold" />
         )}
 
-        {/* Stock Badge - Top Left */}
-        {product.stock_tracking_enabled && product.stock_qty !== undefined && (
-          <div className="absolute top-1.5 left-1.5 bg-black/60 backdrop-blur text-white text-[10px] font-medium px-2 py-0.5 rounded">
-            {product.stock_qty} Stok
-          </div>
-        )}
 
         {/* Unavailable Overlay */}
         {isUnavailable && (

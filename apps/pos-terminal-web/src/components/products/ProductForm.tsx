@@ -63,7 +63,6 @@ export default function ProductForm({
     category_id: "",
     price: "",
     stockTracking: false,
-    stockQty: 0,
     sku: "",
     imageUrl: "",
   });
@@ -76,7 +75,6 @@ export default function ProductForm({
         category_id: product.category_id || "",
         price: (product.base_price || product.basePrice || "").toString(),
         stockTracking: product.stock_tracking_enabled || product.stockTrackingEnabled || false,
-        stockQty: product.stock_qty || product.stockQty || 0,
         sku: product.sku || "",
         imageUrl: product.image_url || product.imageUrl || "",
       });
@@ -90,7 +88,6 @@ export default function ProductForm({
       category_id: formData.category_id || undefined,
       base_price: parseFloat(formData.price) || 0,
       stock_tracking_enabled: formData.stockTracking,
-      stock_qty: formData.stockTracking ? parseInt(formData.stockQty.toString()) : undefined,
       sku: formData.sku,
       image_url: formData.imageUrl,
     });
@@ -192,21 +189,9 @@ export default function ProductForm({
           <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
             <div>
               <p className="text-sm font-bold text-slate-700">Lacak Stok?</p>
-              <p className="text-xs text-slate-400 max-w-sm">Stok awal berlaku untuk outlet aktif/default saja. Untuk outlet lain, gunakan opname atau transfer stok.</p>
+              <p className="text-xs text-slate-400 max-w-sm">Stok produk ini dikelola di Stok & Inventaris. Atur stok awal, mutasi, opname, stok rendah, dan transfer dari halaman Stok.</p>
             </div>
             <div className="flex items-center gap-3">
-              {formData.stockTracking && (
-                <input
-                  type="number"
-                  className="w-24 border border-slate-200 rounded-lg p-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                  placeholder="Qty"
-                  value={formData.stockQty}
-                  onChange={(e) =>
-                    setFormData({ ...formData, stockQty: parseInt(e.target.value) || 0 })
-                  }
-                  data-testid="input-stock-qty"
-                />
-              )}
               <button
                 onClick={() =>
                   setFormData({ ...formData, stockTracking: !formData.stockTracking })

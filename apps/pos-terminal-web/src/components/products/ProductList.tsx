@@ -74,7 +74,6 @@ export default function ProductList({
               <div className="divide-y divide-slate-100 animate-in slide-in-from-top-2">
                 {items.map((product: any) => {
                   const price = product.base_price || product.basePrice || 0;
-                  const stock = product.stock_qty ?? product.stockQty ?? 0;
                   const variantsCount = product.option_groups?.length || 0;
                   const imageUrl = product.image_url || product.imageUrl || "";
                   const isAvailable = product.is_active !== false;
@@ -123,15 +122,11 @@ export default function ProductList({
                             </span>
                           </div>
                           <div className="flex items-center gap-3 mt-1">
-                            <span
-                              className={`text-[10px] px-2 py-0.5 rounded font-bold ${
-                                stock < 10
-                                  ? "bg-red-100 text-red-600"
-                                  : "bg-green-100 text-green-600"
-                              }`}
-                            >
-                              Stok: {stock}
-                            </span>
+                            {product.stock_tracking_enabled || product.stockTrackingEnabled ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-blue-50 text-blue-600 border border-blue-100">
+                                Stok dikelola di Inventaris
+                              </span>
+                            ) : null}
                             {variantsCount > 0 && (
                               <span className="flex items-center gap-1 text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                                 <Layers size={10} /> {variantsCount} Varian

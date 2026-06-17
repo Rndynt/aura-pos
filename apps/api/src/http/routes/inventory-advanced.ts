@@ -211,7 +211,7 @@ router.post('/opnames', requireManager, asyncHandler(async (req, res) => {
   );
 
   const trackedProducts = await db
-    .select({ id: products.id, stockQty: products.stockQty })
+    .select({ id: products.id })
     .from(products)
     .where(and(eq(products.tenantId, tenantId), eq(products.stockTrackingEnabled, true)));
 

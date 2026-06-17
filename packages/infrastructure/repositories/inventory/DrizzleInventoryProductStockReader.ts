@@ -13,7 +13,7 @@ export class DrizzleInventoryProductStockReader implements ProductStockReaderPor
   async getTrackedProductStock(tenantId: string, productId: string, ctx?: TransactionContext): Promise<TrackedProductStockRecord | null> {
     const client = getClient(ctx);
     const [row] = await client
-      .select({ id: products.id, tenantId: products.tenantId, stockQty: products.stockQty, stockTrackingEnabled: products.stockTrackingEnabled })
+      .select({ id: products.id, tenantId: products.tenantId, stockTrackingEnabled: products.stockTrackingEnabled })
       .from(products)
       .where(and(eq(products.id, productId), eq(products.tenantId, tenantId), eq(products.stockTrackingEnabled, true)))
       .limit(1);
@@ -23,7 +23,7 @@ export class DrizzleInventoryProductStockReader implements ProductStockReaderPor
   async listTrackedProductStocks(tenantId: string, ctx?: TransactionContext): Promise<TrackedProductStockRecord[]> {
     const client = getClient(ctx);
     return client
-      .select({ id: products.id, tenantId: products.tenantId, stockQty: products.stockQty, stockTrackingEnabled: products.stockTrackingEnabled })
+      .select({ id: products.id, tenantId: products.tenantId, stockTrackingEnabled: products.stockTrackingEnabled })
       .from(products)
       .where(and(eq(products.tenantId, tenantId), eq(products.stockTrackingEnabled, true)))
       .orderBy(asc(products.category), asc(products.name));

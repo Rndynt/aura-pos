@@ -7736,3 +7736,76 @@ Harden advanced stock so active/source-outlet `inventory_balances` drives stock 
 
 ### Continuation Notes
 P2 advanced stock bugfix scope is complete. The prior full-suite entitlement and migration-fixture blockers were resolved in this follow-up, and `pnpm --filter @pos/api test` now passes.
+
+## Plan: P3 Inventory SOT No-Legacy Flow Refactor
+
+### Source
+- Tasklist: roadmap/inventory/replit_codex_P3_inventory_sot_no_legacy_flow_refactor_prompt.md
+- User request: execute inventory SOT no-legacy refactor prompt
+- Date started: 2026-06-17
+- Current status: Partially implemented in this batch; validation attempted; remaining work documented in report.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: inventory stock list, adjustment, opening stock, movement, low-stock, threshold.
+- Files inspected: apps/api/src/http/routes/inventory.ts, apps/api/src/http/routes/inventory-advanced.ts, packages/application/inventory/balance.ts, packages/infrastructure/repositories/inventory/*.
+- Findings: product stock listing already mapped balances over `products.stock_qty`, but lazy initialization and repository sync still used/mirrored `products.stock_qty`.
+- Tasks: remove stock_qty as balance seed/mirror and add opening-stock endpoint.
+- Risks: order sale/return stock movement repository still uses product stock_qty and needs a follow-up transaction-aware balance conversion.
+- Validation: pnpm --filter @pos/api type-check.
+
+#### Frontend/UI Workstream
+- Scope: product catalog stock entry/display and stock page operations.
+- Files inspected: apps/pos-terminal-web/src/pages/stock.tsx, apps/pos-terminal-web/src/components/products/ProductForm.tsx, ProductList.tsx, ProductCardV2.tsx, pages/products.tsx.
+- Findings: product form accepted stock quantity; product lists/cards displayed ambiguous stock values.
+- Tasks: remove catalog stock input and replace catalog stock numbers with guidance.
+- Risks: stock page remains a large file and should be decomposed in a later dedicated UI cleanup.
+- Validation: pnpm --filter @pos/terminal-web type-check.
+
+#### Documentation Workstream
+- Scope: implementation report and source checklist.
+- Files inspected: roadmap/inventory/replit_codex_P3_inventory_sot_no_legacy_flow_refactor_prompt.md.
+- Findings: checklist is broad and cannot be honestly marked fully complete in one safe batch.
+- Tasks: create report and mark completed/partial status honestly.
+- Risks: none.
+- Validation: documentation review.
+
+### Progress
+#### Completed
+- [x] Removed inventory balance lazy seed from `products.stock_qty`.
+  - Files changed: packages/application/inventory/balance.ts, packages/infrastructure/repositories/inventory/DrizzleInventoryBalanceRepository.ts, packages/infrastructure/repositories/inventory/DrizzleInventoryProductStockReader.ts
+  - Validation: pnpm --filter @pos/api type-check attempted
+  - Docs updated: roadmap/inventory/inventory_sot_no_legacy_flow_refactor_report.md
+- [x] Removed product page operational stock input/display.
+  - Files changed: apps/pos-terminal-web/src/components/products/ProductForm.tsx, apps/pos-terminal-web/src/pages/products.tsx, apps/pos-terminal-web/src/components/products/ProductList.tsx, apps/pos-terminal-web/src/components/pos/ProductCardV2.tsx
+  - Validation: pnpm --filter @pos/terminal-web type-check attempted
+  - Docs updated: roadmap/inventory/inventory_sot_no_legacy_flow_refactor_report.md
+
+#### Partially Completed
+- [ ] Full inventory SOT conversion.
+  - Completed: stock list, low-stock lazy balances, threshold missing-row behavior, basic/advanced manual adjustments now avoid product stock source/mirror.
+  - Remaining: convert order sale/return stock movement repository away from products.stock_qty and split stock.tsx into smaller responsive components.
+  - Reason: broad risk area; kept batch bounded and documented remaining references.
+
+### Validation Log
+- Command: pnpm --filter @pos/api type-check
+- Result: pass
+- Notes: TypeScript passed.
+- Command: pnpm --filter @pos/terminal-web type-check
+- Result: pass
+- Notes: TypeScript passed.
+
+### Documentation Updates
+- File: roadmap/inventory/inventory_sot_no_legacy_flow_refactor_report.md
+- Change: Added audit, SOT decision, completed work, validation, and remaining issues.
+
+### Continuation Notes
+Next agent should first convert `DrizzleStockMovementRepository` sale/return operations from `products.stock_qty` to `inventory_balances` using explicit outlet context and transaction-safe balance updates, then decompose `stock.tsx` dialogs into responsive drawer/dialog components.
