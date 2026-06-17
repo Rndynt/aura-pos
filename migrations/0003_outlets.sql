@@ -11,7 +11,9 @@ CREATE TABLE "outlets" (
   "is_default" boolean      NOT NULL DEFAULT false,
   "is_active"  boolean      NOT NULL DEFAULT true,
   "created_at" timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at" timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at" timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "outlets_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action
 );
 
 -- user_id is varchar (not uuid) because Better Auth uses text/nanoid for user IDs.
@@ -22,17 +24,10 @@ CREATE TABLE "user_outlet_assignments" (
   "role"       varchar(50) NOT NULL DEFAULT 'staff',
   "is_active"  boolean     NOT NULL DEFAULT true,
   "created_at" timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at" timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at" timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "user_outlet_assignments_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE cascade ON UPDATE no action
 );
-
--- ── Foreign keys ──────────────────────────────────────────────────────────────
-ALTER TABLE "outlets"
-  ADD CONSTRAINT "outlets_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-
-ALTER TABLE "user_outlet_assignments"
-  ADD CONSTRAINT "user_outlet_assignments_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE cascade ON UPDATE no action;
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 CREATE INDEX "outlets_tenant_idx"

@@ -14,18 +14,17 @@ CREATE TABLE "kitchen_tickets" (
   "printed_at"    timestamp,
   "completed_at"  timestamp,
   "created_at"    timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at"    timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at"    timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "kitchen_tickets_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "kitchen_tickets_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "kitchen_tickets_order_id_orders_id_fk"
+    FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action
 );
 
-ALTER TABLE "kitchen_tickets"
-  ADD CONSTRAINT "kitchen_tickets_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "kitchen_tickets"
-  ADD CONSTRAINT "kitchen_tickets_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "kitchen_tickets"
-  ADD CONSTRAINT "kitchen_tickets_order_id_orders_id_fk"
-  FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;
+
+
 
 CREATE INDEX "kitchen_tickets_tenant_idx"   ON "kitchen_tickets" ("tenant_id");
 CREATE INDEX "kitchen_tickets_outlet_idx"   ON "kitchen_tickets" ("outlet_id");
@@ -49,15 +48,14 @@ CREATE TABLE "kds_devices" (
   "status"                  varchar(50) NOT NULL DEFAULT 'pending',
   "created_at"              timestamptz NOT NULL DEFAULT now(),
   "activated_at"            timestamptz,
-  "last_seen_at"            timestamptz
+  "last_seen_at"            timestamptz,
+  CONSTRAINT "kds_devices_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "kds_devices_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action
 );
 
-ALTER TABLE "kds_devices"
-  ADD CONSTRAINT "kds_devices_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "kds_devices"
-  ADD CONSTRAINT "kds_devices_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action;
+
 
 CREATE INDEX "kds_devices_tenant_idx"
   ON "kds_devices" ("tenant_id");

@@ -12,15 +12,14 @@ CREATE TABLE "terminals" (
   "is_active"          boolean     NOT NULL DEFAULT true,
   "last_seen_at"       timestamp,
   "created_at"         timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at"         timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at"         timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "terminals_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "terminals_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action
 );
 
-ALTER TABLE "terminals"
-  ADD CONSTRAINT "terminals_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "terminals"
-  ADD CONSTRAINT "terminals_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action;
+
 
 CREATE INDEX "terminals_tenant_idx"  ON "terminals" ("tenant_id");
 CREATE INDEX "terminals_outlet_idx"  ON "terminals" ("outlet_id");
@@ -38,15 +37,14 @@ CREATE TABLE "sync_batches" (
   "failed_count"   integer     NOT NULL DEFAULT 0,
   "conflict_count" integer     NOT NULL DEFAULT 0,
   "app_version"    varchar(64),
-  "created_at"     timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "created_at"     timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "sync_batches_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "sync_batches_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action
 );
 
-ALTER TABLE "sync_batches"
-  ADD CONSTRAINT "sync_batches_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "sync_batches"
-  ADD CONSTRAINT "sync_batches_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action;
+
 
 CREATE INDEX "sync_batches_tenant_idx"   ON "sync_batches" ("tenant_id");
 CREATE INDEX "sync_batches_outlet_idx"   ON "sync_batches" ("outlet_id");
@@ -66,18 +64,17 @@ CREATE TABLE "sync_events" (
   "server_order_number" text,
   "status"              varchar(50) NOT NULL,
   "error"               text,
-  "created_at"          timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "created_at"          timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "sync_events_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "sync_events_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action,
+  CONSTRAINT "sync_events_batch_id_sync_batches_id_fk"
+    FOREIGN KEY ("batch_id") REFERENCES "public"."sync_batches"("id") ON DELETE cascade ON UPDATE no action
 );
 
-ALTER TABLE "sync_events"
-  ADD CONSTRAINT "sync_events_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "sync_events"
-  ADD CONSTRAINT "sync_events_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action;
-ALTER TABLE "sync_events"
-  ADD CONSTRAINT "sync_events_batch_id_sync_batches_id_fk"
-  FOREIGN KEY ("batch_id") REFERENCES "public"."sync_batches"("id") ON DELETE cascade ON UPDATE no action;
+
+
 
 CREATE INDEX "sync_events_tenant_idx"       ON "sync_events" ("tenant_id");
 CREATE INDEX "sync_events_outlet_idx"       ON "sync_events" ("outlet_id");
@@ -98,15 +95,14 @@ CREATE TABLE "server_sync_conflicts" (
   "resolution"      varchar(30) NOT NULL DEFAULT 'pending',
   "resolved_at"     timestamp,
   "resolved_by"     varchar(255),
-  "created_at"      timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "created_at"      timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "server_sync_conflicts_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "server_sync_conflicts_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action
 );
 
-ALTER TABLE "server_sync_conflicts"
-  ADD CONSTRAINT "server_sync_conflicts_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "server_sync_conflicts"
-  ADD CONSTRAINT "server_sync_conflicts_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE set null ON UPDATE no action;
+
 
 CREATE INDEX "server_sync_conflicts_tenant_idx"   ON "server_sync_conflicts" ("tenant_id");
 CREATE INDEX "server_sync_conflicts_outlet_idx"   ON "server_sync_conflicts" ("outlet_id");
@@ -123,12 +119,11 @@ CREATE TABLE "cfd_devices" (
   "created_at"  timestamptz NOT NULL DEFAULT now(),
   "activated_at" timestamptz,
   "last_seen_at" timestamptz,
-  "revoked_at"  timestamptz
+  "revoked_at"  timestamptz,
+  CONSTRAINT "cfd_devices_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action
 );
 
-ALTER TABLE "cfd_devices"
-  ADD CONSTRAINT "cfd_devices_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
 
 CREATE INDEX "cfd_devices_tenant_status_idx"
   ON "cfd_devices" ("tenant_id", "status");

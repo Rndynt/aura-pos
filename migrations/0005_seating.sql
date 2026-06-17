@@ -13,16 +13,12 @@ CREATE TABLE "tables" (
   "status"           varchar(20) NOT NULL DEFAULT 'available',
   "current_order_id" uuid,
   "created_at"       timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updated_at"       timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "updated_at"       timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "tables_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action,
+  CONSTRAINT "tables_outlet_id_outlets_id_fk"
+    FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE cascade ON UPDATE no action
 );
-
--- ── Foreign keys ──────────────────────────────────────────────────────────────
-ALTER TABLE "tables"
-  ADD CONSTRAINT "tables_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
-ALTER TABLE "tables"
-  ADD CONSTRAINT "tables_outlet_id_outlets_id_fk"
-  FOREIGN KEY ("outlet_id") REFERENCES "public"."outlets"("id") ON DELETE cascade ON UPDATE no action;
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 CREATE INDEX "tables_tenant_idx"

@@ -1,6 +1,6 @@
 # Clean Baseline Migration Refactor Report
 
-**Date:** 2026-06-17  
+**Date:** 2026-06-17
 **Scope:** Total migration cleanup — development baseline only, no production data.
 
 ---
@@ -214,3 +214,71 @@ DB migrations done — applied: 13, skipped: 0, errors: 0
 1. **Existing databases** — drizzle migration tracking (`drizzle.__drizzle_migrations`) must be cleared before applying the clean baseline on a previously-migrated database. For development: drop and recreate the database.
 2. **`users` table (legacy)** — `packages/infrastructure/db/schema/auth.schema.ts` still exports a `users` table that is no longer used for auth (Better Auth's `user` table is used instead). Included in 0002 for Drizzle schema compatibility. Can be removed in a future cleanup once auth.schema.ts is updated.
 3. **`tables.current_order_id`** — soft reference (no FK) to avoid circular dependency with orders. Application-layer consistency responsibility.
+
+## P2 No-ALTER Patch Result
+
+**Date:** 2026-06-17
+**Status:** Implemented and validated by static migration scans plus TypeScript checks. Clean DB smoke was not run in this batch because the only configured `DATABASE_URL` points at a non-disposable remote Neon database, and this patch must not drop or reset an unknown/non-clean database.
+
+### Migration files patched
+
+- `migrations/0002_tenants.sql`
+- `migrations/0003_outlets.sql`
+- `migrations/0004_catalog.sql`
+- `migrations/0005_seating.sql`
+- `migrations/0006_order_types.sql`
+- `migrations/0007_orders.sql`
+- `migrations/0008_inventory.sql`
+- `migrations/0009_kitchen_kds.sql`
+- `migrations/0010_cfd_sync.sql`
+
+### What changed
+
+- Active root SQL migrations now contain zero `ALTER TABLE` statements.
+- Active root SQL migrations now contain zero `ADD CONSTRAINT` statements.
+- Foreign keys previously added after table creation are now declared as named table-level constraints inside each owning table's `CREATE TABLE` statement.
+- No new migration file was created.
+- No `ensure_*`, `repair_*`, `drift_*`, or `hotfix_*` active migration file was created.
+
+### Soft-reference notes
+
+- `tables.current_order_id` remains a nullable soft reference with no FK constraint. This avoids a circular dependency because `tables` is created before `orders`, while orders can refer back to seating/table state at the application layer.
+- Better Auth `user.tenant_id` remains a soft text reference to tenants, matching the existing baseline/report rationale and avoiding a type mismatch with `tenants.id` (`uuid`).
+
+### Validation command output
+
+```bash
+$ rg -n "ALTER TABLE" migrations --glob "*.sql" --glob "!migrations/backup/**"
+# no matches
+
+$ rg -n "ADD CONSTRAINT" migrations --glob "*.sql" --glob "!migrations/backup/**"
+# no matches
+
+$ rg -n "ensure_|repair_|drift_|hotfix_" migrations --glob "*.sql" --glob "!migrations/backup/**"
+# no matches
+
+$ pnpm type-check
+Tasks:    10 successful, 10 total
+Cached:    0 cached, 10 total
+Time:    37.486s
+
+$ pnpm --filter @pos/api type-check
+# pass; tsc --noEmit completed with exit code 0
+
+$ pnpm --filter @pos/terminal-web type-check
+# pass; tsc --noEmit completed with exit code 0
+```
+
+### Clean DB smoke result
+
+Not run in this batch.
+
+Exact reason: this environment has a `DATABASE_URL` configured, but it points at a remote Neon database rather than an explicitly disposable clean development database/schema. Running a clean-baseline smoke safely would require dropping/recreating schema state or using a fresh database. To protect data integrity, no destructive clean-db reset was attempted.
+
+Required next step for smoke validation:
+
+1. Provision a fresh disposable PostgreSQL database or schema.
+2. Set `DATABASE_URL` to that disposable target.
+3. Start the API or call the migration runner so the active baseline applies from an empty migration table.
+4. Confirm the expected result: `DB migrations done — applied: 13, skipped: 0, errors: 0`.
+5. Smoke the endpoints listed in this report against a seeded/registered tenant context.

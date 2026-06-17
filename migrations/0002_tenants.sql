@@ -41,7 +41,9 @@ CREATE TABLE "session" (
   "user_agent"       text,
   "user_id"          text      NOT NULL,
   "impersonated_by"  text,
-  CONSTRAINT "session_token_unique" UNIQUE ("token")
+  CONSTRAINT "session_token_unique" UNIQUE ("token"),
+  CONSTRAINT "session_user_id_user_id_fk"
+    FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action
 );
 
 -- ── Better Auth: account ──────────────────────────────────────────────────────
@@ -58,7 +60,9 @@ CREATE TABLE "account" (
   "scope"                    text,
   "password"                 text,
   "created_at"               timestamp NOT NULL,
-  "updated_at"               timestamp NOT NULL
+  "updated_at"               timestamp NOT NULL,
+  CONSTRAINT "account_user_id_user_id_fk"
+    FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action
 );
 
 -- ── Better Auth: verification ─────────────────────────────────────────────────
@@ -91,7 +95,9 @@ CREATE TABLE "tenants" (
   "is_active"           boolean      NOT NULL DEFAULT true,
   "created_at"          timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updated_at"          timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT "tenants_slug_unique" UNIQUE ("slug")
+  CONSTRAINT "tenants_slug_unique" UNIQUE ("slug"),
+  CONSTRAINT "tenants_business_type_business_types_code_fk"
+    FOREIGN KEY ("business_type") REFERENCES "public"."business_types"("code") ON DELETE no action ON UPDATE no action
 );
 
 -- ── Tenant entitlements (replaces tenant_features + tenant_module_configs) ────
@@ -107,25 +113,10 @@ CREATE TABLE "tenant_entitlements" (
   "created_at"       timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updated_at"       timestamp    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "tenant_entitlements_source_check" CHECK ("source" IN ('purchase', 'manual_grant', 'trial')),
-  CONSTRAINT "tenant_entitlements_status_check" CHECK ("status" IN ('active', 'expired', 'cancelled'))
+  CONSTRAINT "tenant_entitlements_status_check" CHECK ("status" IN ('active', 'expired', 'cancelled')),
+  CONSTRAINT "tenant_entitlements_tenant_id_tenants_id_fk"
+    FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action
 );
-
--- ── Foreign keys ──────────────────────────────────────────────────────────────
-ALTER TABLE "session"
-  ADD CONSTRAINT "session_user_id_user_id_fk"
-  FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
-
-ALTER TABLE "account"
-  ADD CONSTRAINT "account_user_id_user_id_fk"
-  FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
-
-ALTER TABLE "tenants"
-  ADD CONSTRAINT "tenants_business_type_business_types_code_fk"
-  FOREIGN KEY ("business_type") REFERENCES "public"."business_types"("code") ON DELETE no action ON UPDATE no action;
-
-ALTER TABLE "tenant_entitlements"
-  ADD CONSTRAINT "tenant_entitlements_tenant_id_tenants_id_fk"
-  FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 CREATE INDEX "tenant_entitlements_tenant_idx"
