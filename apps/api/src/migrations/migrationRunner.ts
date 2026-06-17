@@ -18,7 +18,8 @@ const ALREADY_APPLIED_CODES = new Set([
   '42701', // duplicate column
   '23505', // unique violation on DDL/tracking insert
   '42704', // undefined object on already-removed schema items
-  '42830', // invalid FK caused by schema drift superseded by later migration
+  // NOTE: 42830 (invalid FK) intentionally omitted — FK errors must fail fast.
+  // In the clean baseline all FK targets exist when the referencing table is created.
 ]);
 
 export function isAlreadyAppliedMigrationError(error: unknown): boolean {
