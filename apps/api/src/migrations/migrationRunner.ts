@@ -102,41 +102,78 @@ function splitSqlStatements(sql: string): string[] {
   const statements: string[] = [];
   let current = '';
   let quote: 'single' | 'double' | null = null;
+  let dollarTag: string | null = null;
   let inLineComment = false;
+  let i = 0;
 
-  for (let i = 0; i < sql.length; i += 1) {
+  while (i < sql.length) {
     const char = sql[i];
-    const next = sql[i + 1];
 
-    // End line comment on newline
+    // Inside a -- line comment: copy until newline
     if (inLineComment) {
       current += char;
       if (char === '\n') inLineComment = false;
+      i += 1;
       continue;
     }
 
-    // Detect start of -- line comment (only outside quotes)
-    if (char === '-' && next === '-' && quote === null) {
+    // Inside a dollar-quoted block: scan for the closing tag
+    if (dollarTag !== null) {
+      if (sql.startsWith(dollarTag, i)) {
+        current += dollarTag;
+        i += dollarTag.length;
+        dollarTag = null;
+      } else {
+        current += char;
+        i += 1;
+      }
+      continue;
+    }
+
+    // Inside a regular string quote: copy until closing quote
+    if (quote !== null) {
+      current += char;
+      const prev = sql[i - 1];
+      if (char === "'" && quote === 'single' && prev !== '\\') quote = null;
+      else if (char === '"' && quote === 'double' && prev !== '\\') quote = null;
+      i += 1;
+      continue;
+    }
+
+    // Detect -- line comment
+    if (char === '-' && sql[i + 1] === '-') {
       inLineComment = true;
       current += char;
+      i += 1;
       continue;
     }
 
-    const prev = sql[i - 1];
-    if (char === "'" && quote !== 'double' && prev !== '\\') {
-      quote = quote === 'single' ? null : 'single';
-    } else if (char === '"' && quote !== 'single' && prev !== '\\') {
-      quote = quote === 'double' ? null : 'double';
+    // Detect dollar-quoting: $tag$ or $$ (PostgreSQL extension)
+    if (char === '$') {
+      const match = sql.slice(i).match(/^\$([A-Za-z_\d]*)\$/);
+      if (match) {
+        dollarTag = match[0];
+        current += dollarTag;
+        i += dollarTag.length;
+        continue;
+      }
     }
 
-    if (char === ';' && quote === null) {
+    // Detect opening string quote
+    if (char === "'") { quote = 'single'; current += char; i += 1; continue; }
+    if (char === '"') { quote = 'double'; current += char; i += 1; continue; }
+
+    // Statement terminator (only outside any quoting context)
+    if (char === ';') {
       const statement = current.trim();
       if (statement) statements.push(statement);
       current = '';
+      i += 1;
       continue;
     }
 
     current += char;
+    i += 1;
   }
 
   const tail = current.trim();

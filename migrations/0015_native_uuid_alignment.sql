@@ -94,10 +94,10 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION aurapos_add_fk(
-  p_table regclass,
+  p_table text,
   p_constraint text,
   p_column text,
-  p_ref_table regclass,
+  p_ref_table text,
   p_ref_column text,
   p_on_delete text DEFAULT 'NO ACTION'
 )
@@ -105,13 +105,23 @@ RETURNS void
 LANGUAGE plpgsql
 AS $$
 DECLARE
+  tbl      regclass;
+  ref_tbl  regclass;
   sql_on_delete text := '';
 BEGIN
-  IF NOT aurapos_column_exists(p_table, p_column) OR NOT aurapos_column_exists(p_ref_table, p_ref_column) THEN
+  tbl     := to_regclass(p_table);
+  ref_tbl := to_regclass(p_ref_table);
+
+  -- Skip silently if either table does not exist
+  IF tbl IS NULL OR ref_tbl IS NULL THEN
     RETURN;
   END IF;
 
-  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = p_table AND conname = p_constraint) THEN
+  IF NOT aurapos_column_exists(tbl, p_column) OR NOT aurapos_column_exists(ref_tbl, p_ref_column) THEN
+    RETURN;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = tbl AND conname = p_constraint) THEN
     RETURN;
   END IF;
 
@@ -121,10 +131,10 @@ BEGIN
 
   EXECUTE format(
     'ALTER TABLE %s ADD CONSTRAINT %I FOREIGN KEY (%I) REFERENCES %s(%I)%s ON UPDATE NO ACTION',
-    p_table,
+    tbl,
     p_constraint,
     p_column,
-    p_ref_table,
+    ref_tbl,
     p_ref_column,
     sql_on_delete
   );
@@ -236,6 +246,40 @@ BEGIN
       WHERE t.id::text = r.old_id;
     END IF;
   END IF;
+END;
+$$;
+
+-- Repair non-UUID id values in standalone tables (not referenced as FK target
+-- by other tables) before the UUID cast step. FKs are already dropped above.
+DO $$
+DECLARE
+  tbl text;
+BEGIN
+  FOREACH tbl IN ARRAY ARRAY[
+    'cfd_devices',
+    'inventory_movements',
+    'inventory_sync_errors',
+    'kitchen_tickets',
+    'order_item_modifiers',
+    'order_payments',
+    'outlet_product_configs',
+    'product_options',
+    'server_sync_conflicts',
+    'sync_events',
+    'tenant_features',
+    'tenant_order_types',
+    'terminals',
+    'user_outlet_assignments'
+  ] LOOP
+    IF to_regclass(tbl) IS NOT NULL
+       AND aurapos_column_exists(to_regclass(tbl), 'id') THEN
+      EXECUTE format(
+        'UPDATE %s SET id = gen_random_uuid() WHERE id IS NOT NULL AND id::text !~* %L',
+        tbl,
+        '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+      );
+    END IF;
+  END LOOP;
 END;
 $$;
 
