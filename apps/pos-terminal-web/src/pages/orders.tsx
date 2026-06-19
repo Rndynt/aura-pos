@@ -298,64 +298,72 @@ function DetailPanel({
 
   return (
     <>
-      {/* Header */}
-      <div className="relative px-5 pt-6 pb-4 md:pt-4 border-b border-slate-100 bg-white">
+      {/* ── Header ── */}
+      <div className="bg-white border-b border-slate-100 shrink-0">
+
         {/* Drag handle — mobile only */}
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-slate-200 rounded-full md:hidden" />
+        <div className="pt-2.5 flex justify-center md:hidden">
+          <div className="w-10 h-1 bg-slate-200 rounded-full" />
+        </div>
 
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            {/* Order number — most prominent */}
-            <p className="font-mono text-sm font-black text-slate-800 tracking-tight leading-none">
-              #{order.order_number}
-            </p>
-
-            {/* Order type + table + customer */}
-            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-              {orderTypeName && (
-                <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
-                  {orderTypeName}
-                </span>
-              )}
-              {order.table_number && (
-                <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
-                  Meja {order.table_number}
-                </span>
-              )}
-              {order.customer_name && (
-                <span className="text-[11px] text-slate-500 font-medium truncate max-w-[140px]">
-                  {order.customer_name}
-                </span>
-              )}
-            </div>
-
-            {/* Status badges */}
-            <div className="flex items-center gap-1.5 mt-2">
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${statusCfg.badge}`}>
-                {statusCfg.label}
-              </span>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${paymentCfg.badge}`}>
-                {paymentCfg.label}
-              </span>
-            </div>
-
-            {/* Timestamp */}
-            {order.created_at && (
-              <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
-                <Clock size={10} />
-                {formatDateTime(order.created_at)}
-              </p>
-            )}
-          </div>
-
-          {/* Close */}
+        {/* Top bar: order type (left) + close (right) */}
+        <div className="px-4 pt-3 pb-1 flex items-center justify-between gap-2">
+          {orderTypeName
+            ? <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg">{orderTypeName}</span>
+            : <span />}
           <button
             onClick={onClose}
-            className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-500 flex-shrink-0 transition-colors"
+            className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-500 transition-colors"
             data-testid="button-close-details"
           >
             <X size={14} />
           </button>
+        </div>
+
+        {/* Order number — large & prominent */}
+        <div className="px-4 pb-3">
+          <h2 className="font-mono text-lg font-black text-slate-900 leading-tight">
+            #{order.order_number}
+          </h2>
+          {order.created_at && (
+            <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
+              <Clock size={10} />
+              {formatDateTime(order.created_at)}
+            </p>
+          )}
+        </div>
+
+        {/* Info grid: 2-column */}
+        <div className="mx-4 mb-4 rounded-2xl bg-slate-50 border border-slate-100 overflow-hidden">
+          <div className="grid grid-cols-2 divide-x divide-slate-100">
+            {/* Status order */}
+            <div className="px-3.5 py-2.5">
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Status</p>
+              <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-lg ${statusCfg.badge}`}>
+                {statusCfg.label}
+              </span>
+            </div>
+            {/* Pembayaran */}
+            <div className="px-3.5 py-2.5">
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pembayaran</p>
+              <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-lg ${paymentCfg.badge}`}>
+                {paymentCfg.label}
+              </span>
+            </div>
+          </div>
+          {/* Second row — only if there's table or customer */}
+          {(order.table_number || order.customer_name) && (
+            <div className="grid grid-cols-2 divide-x divide-slate-100 border-t border-slate-100">
+              <div className="px-3.5 py-2.5">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Meja</p>
+                <p className="text-sm font-bold text-slate-700">{order.table_number ?? "—"}</p>
+              </div>
+              <div className="px-3.5 py-2.5">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pelanggan</p>
+                <p className="text-sm font-medium text-slate-700 truncate">{order.customer_name || "—"}</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
