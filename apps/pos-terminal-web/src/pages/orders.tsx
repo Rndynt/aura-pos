@@ -89,8 +89,8 @@ const normNum = (v: unknown) => {
 };
 
 const normalizeSelectedOption = (opt: any): SelectedOption => ({
-  group_id: opt.group_id ?? opt.groupId ?? "",
-  group_name: opt.group_name ?? opt.groupName ?? "",
+  group_id: opt.group_id ?? opt.groupId ?? opt.optionGroupId ?? "",
+  group_name: opt.group_name ?? opt.groupName ?? opt.optionGroupName ?? "",
   option_id: opt.option_id ?? opt.optionId ?? "",
   option_name: opt.option_name ?? opt.optionName ?? "",
   price_delta: normNum(opt.price_delta ?? opt.priceDelta),
@@ -372,7 +372,10 @@ function DetailPanel({
                             <div className="mt-0.5 space-y-0.5">
                               {item.selected_options.map((opt, oi) => (
                                 <p key={oi} className="text-[11px] text-slate-400">
-                                  {opt.group_name}: <span className="text-slate-600 font-medium">{opt.option_name}</span>
+                                  {opt.group_name
+                                    ? <><span className="text-slate-500">{opt.group_name}:</span>{" "}</>
+                                    : null}
+                                  <span className="text-slate-600 font-medium">{opt.option_name}</span>
                                   {opt.price_delta > 0 && (
                                     <span className="text-emerald-500"> +{formatPrice(opt.price_delta)}</span>
                                   )}
@@ -386,7 +389,10 @@ function DetailPanel({
                               {item.selected_option_groups.map((grp, gi) =>
                                 grp.selected_options.map((opt, oi) => (
                                   <p key={`${gi}-${oi}`} className="text-[11px] text-slate-400">
-                                    {grp.group_name}: <span className="text-slate-600 font-medium">{opt.option_name}</span>
+                                    {grp.group_name
+                                      ? <><span className="text-slate-500">{grp.group_name}:</span>{" "}</>
+                                      : null}
+                                    <span className="text-slate-600 font-medium">{opt.option_name}</span>
                                     {opt.price_delta > 0 && (
                                       <span className="text-emerald-500"> +{formatPrice(opt.price_delta)}</span>
                                     )}

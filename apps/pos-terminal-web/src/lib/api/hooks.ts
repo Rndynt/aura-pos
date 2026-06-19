@@ -56,7 +56,7 @@ function mapApiOrder(raw: Record<string, any>): Order {
           item_subtotal: Number(item.itemSubtotal ?? 0),
           notes: item.notes ?? undefined,
           status: item.status,
-          selected_options: item.selectedOptions ?? [],
+          selected_options: item.selectedOptions ?? item.selected_options ?? [],
         }))
       : [],
   } as Order;
