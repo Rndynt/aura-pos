@@ -2,9 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import {
   Bluetooth, CheckCircle2, Link2Off,
-  Printer, Globe, Wifi, WifiOff, RefreshCw,
+  Printer, Globe, Wifi, WifiOff, RefreshCw, ChevronLeft,
 } from "lucide-react";
-import { PageHeader } from "@/components/design";
 import { bluetoothReceiptPrinter } from "@/lib/receiptPrinter";
 import {
   ALL_PRINTER_PROVIDERS,
@@ -163,21 +162,29 @@ export default function PrintersPage() {
 
   return (
     <div className="flex-1 h-full bg-slate-50 overflow-y-auto pb-20">
-      <PageHeader
-        title="Printer Hub"
-        subtitle="Manajemen printer & antrian cetak struk"
-        onBack={() => setLocation("/hub")}
-        actions={
+      <div className="bg-white border-b border-slate-200 px-4 py-3 sticky top-0 z-10 flex items-center justify-between">
+        <div className="flex items-center gap-2">
           <button
-            onClick={refreshBtState}
-            className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
-            title="Refresh status"
-            data-testid="button-refresh-printer-status"
+            onClick={() => setLocation("/hub")}
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+            data-testid="button-back"
           >
-            <RefreshCw size={15} />
+            <ChevronLeft size={20} className="text-slate-600" />
           </button>
-        }
-      />
+          <div>
+            <h1 className="text-base font-bold text-slate-800 leading-tight">Printer Hub</h1>
+            <p className="text-[11px] text-slate-400 leading-none">Manajemen printer &amp; antrian cetak struk</p>
+          </div>
+        </div>
+        <button
+          onClick={refreshBtState}
+          className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
+          title="Refresh status"
+          data-testid="button-refresh-printer-status"
+        >
+          <RefreshCw size={18} />
+        </button>
+      </div>
 
       <div className="p-4 space-y-4">
 
