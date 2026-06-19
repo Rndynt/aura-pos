@@ -151,9 +151,10 @@ export function PaymentMethodDialog({
   // ── Derived: split ───────────────────────────────────────────────────────
   const getBillForItem = (itemId: string): string | undefined => itemBillMap[itemId];
   const unassignedCount = cartItems.filter(item => !getBillForItem(item.id)).length;
-  const allAssigned = unassignedCount === 0 && cartItems.length > 0;
   const getBillTotal = (bill: string) =>
     cartItems.reduce((sum, item) => getBillForItem(item.id) === bill ? sum + getItemEffectiveTotal(item) : sum, 0);
+  const activeBillTotal = getBillTotal(activeBill);
+  const canPayActiveBill = activeBillTotal > 0;
 
   const handleItemTap = (itemId: string) => {
     const current = getBillForItem(itemId);
@@ -174,8 +175,12 @@ export function PaymentMethodDialog({
   };
 
   const getItemLabel = (item: CartItem): string => {
-    const variantName = item.variant?.name || item.variant_name;
-    return variantName ? `${item.product.name} · ${variantName}` : item.product.name;
+    const parts: string[] = [];
+    if (item.variant?.name) parts.push(item.variant.name);
+    if (item.selectedOptions?.length) {
+      parts.push(...item.selectedOptions.map(o => o.option_name).filter(Boolean));
+    }
+    return parts.length ? `${item.product.name} · ${parts.join(", ")}` : item.product.name;
   };
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -207,9 +212,17 @@ export function PaymentMethodDialog({
       return;
     }
     if (flow === "split") {
-      if (!allAssigned) return;
+      if (!canPayActiveBill) return;
       setIsProcessing(true);
-      setTimeout(() => { setIsProcessing(false); onConfirm(method); }, 400);
+      const isLastBill = activeBillTotal >= cartTotal - 1; // within 1 IDR rounding
+      setTimeout(() => {
+        setIsProcessing(false);
+        if (isLastBill) {
+          onConfirm(method);
+        } else {
+          onConfirm(method, undefined, activeBillTotal);
+        }
+      }, 400);
       return;
     }
     // full
@@ -620,42 +633,56 @@ export function PaymentMethodDialog({
             )}
           </div>
 
-          {/* Warning: unassigned */}
-          {unassignedCount > 0 && cartItems.length > 0 && (
-            <div className="mx-4 my-2 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-              <AlertCircle size={13} className="text-amber-500 flex-shrink-0" />
-              <p className="text-[11px] font-bold text-amber-700">
-                {unassignedCount} item belum di-assign ke bill
-              </p>
-            </div>
-          )}
-
           {/* Bill totals + confirm */}
-          <div className="px-4 pb-4 pt-1 border-t border-slate-100 mt-auto">
-            <div className="space-y-1 mb-3">
+          <div className="px-4 pb-4 pt-2 border-t border-slate-100 mt-auto">
+            {/* Per-bill totals (compact row) */}
+            <div className="flex gap-2 mb-3">
               {splitBills.map((bill, idx) => {
                 const colors = BILL_COLORS[idx % BILL_COLORS.length];
                 const total = getBillTotal(bill);
+                const isActive = bill === activeBill;
                 return (
-                  <div key={bill} className={`flex items-center justify-between px-3 py-1.5 rounded-lg ${colors.total}`}>
-                    <span className="text-xs font-bold">Bill {bill}</span>
-                    <span className="text-sm font-black tabular-nums">{fmt(total)}</span>
+                  <div
+                    key={bill}
+                    className={`flex-1 flex flex-col items-center py-1.5 rounded-lg border transition-all ${
+                      isActive
+                        ? `${colors.total} border-current font-black`
+                        : "bg-slate-50 border-slate-100 text-slate-500"
+                    }`}
+                  >
+                    <span className={`text-[10px] font-bold ${isActive ? colors.total.replace("bg-", "text-").split(" ")[1] : "text-slate-400"}`}>
+                      Bill {bill}
+                    </span>
+                    <span className={`text-xs font-black tabular-nums ${isActive ? colors.total.split(" ")[1] : "text-slate-500"}`}>
+                      {fmt(total)}
+                    </span>
                   </div>
                 );
               })}
             </div>
 
+            {/* Unassigned note (info only, not a blocker) */}
+            {unassignedCount > 0 && (
+              <div className="flex items-center gap-1.5 bg-slate-50 rounded-lg px-2.5 py-1.5 mb-2">
+                <AlertCircle size={11} className="text-slate-400 flex-shrink-0" />
+                <p className="text-[10px] text-slate-400">
+                  {unassignedCount} item belum di-assign — akan tersisa untuk bill lain
+                </p>
+              </div>
+            )}
+
+            {/* Pay active bill button */}
             <button
               onClick={handleProcess}
-              disabled={loading || !allAssigned}
-              className="w-full py-3 bg-indigo-500 hover:bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all active:scale-[0.98]"
+              disabled={loading || !canPayActiveBill}
+              className="w-full py-3 font-bold rounded-xl shadow-lg shadow-indigo-200 bg-indigo-500 hover:bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white transition-all active:scale-[0.98]"
               data-testid="button-confirm-payment"
             >
               {loading
                 ? "Memproses…"
-                : !allAssigned
-                ? `Assign ${unassignedCount} item dulu`
-                : `Bayar Semua · ${fmt(cartTotal)}`}
+                : !canPayActiveBill
+                ? `Pilih item untuk Bill ${activeBill} dulu`
+                : `Bayar Bill ${activeBill} · ${fmt(activeBillTotal)}`}
             </button>
           </div>
         </div>
