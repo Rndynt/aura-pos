@@ -71,7 +71,7 @@ export default function POSPage() {
   // Prevent cart-change effect from overriding payment/completed CFD state
   const inPaymentFlowRef = useRef(false);
 
-  const { sendToCFD } = usePOSCustomerDisplayFlow({ cart, tenantName, inPaymentFlowRef });
+  const { sendToCFD } = usePOSCustomerDisplayFlow({ cart, tenantName, inPaymentFlowRef, enabled: can("customer_display") });
 
   // Auto-close mobile cart drawer when switching to tablet/desktop
   useCloseMobileCartOnDesktop(isMobile, setMobileCartOpen);

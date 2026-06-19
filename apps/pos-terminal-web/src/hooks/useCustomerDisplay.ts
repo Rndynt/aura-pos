@@ -132,28 +132,34 @@ function resolveCfdTenantId(overrideTenantId?: string): string {
 }
 
 // ─── Sender hook (dipakai di POS) ────────────────────────────────────────────
-export function useCustomerDisplaySender() {
+export function useCustomerDisplaySender(enabled = false) {
   const channelRef = useRef<BroadcastChannel | null>(null);
   const cfdTokenRef = useRef('');
 
+  // Only fetch a CFD session token when the feature is actually enabled
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     ensureCfdToken()
       .then((token) => { if (!cancelled) cfdTokenRef.current = token; })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (typeof BroadcastChannel === 'undefined') return;
     channelRef.current = new BroadcastChannel(CFD_CHANNEL);
     return () => {
       channelRef.current?.close();
       channelRef.current = null;
     };
-  }, []);
+  }, [enabled]);
 
   const send = useCallback((msg: CFDMessage) => {
+    // No-op when CFD feature is not enabled — avoids unnecessary API calls
+    if (!enabled) return;
+
     const tenantId = getActiveTenantId();
 
     // 1. BroadcastChannel — same-device, instant (no network round-trip)
@@ -178,7 +184,7 @@ export function useCustomerDisplaySender() {
         // silent — CFD cross-device tidak wajib; BroadcastChannel tetap jalan
       });
     }
-  }, []);
+  }, [enabled]);
 
   return { send };
 }

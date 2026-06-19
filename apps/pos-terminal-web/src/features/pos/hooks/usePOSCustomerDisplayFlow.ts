@@ -6,8 +6,9 @@ export function usePOSCustomerDisplayFlow(input: {
   cart: any;
   tenantName: string;
   inPaymentFlowRef: MutableRefObject<boolean>;
+  enabled?: boolean;
 }) {
-  const { send } = useCustomerDisplaySender();
+  const { send } = useCustomerDisplaySender(input.enabled ?? false);
 
   useEffect(() => {
     if (input.inPaymentFlowRef.current) return;
