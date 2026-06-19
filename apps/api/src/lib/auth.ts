@@ -14,6 +14,13 @@ const BASE_DOMAIN = (process.env.BASE_DOMAIN || 'aurapos.my.id').trim();
 const REPLIT_DEV_DOMAIN = process.env.REPLIT_DEV_DOMAIN?.trim();
 const IS_REPLIT = !!REPLIT_DEV_DOMAIN;
 
+// Local-dev mode: HTTP-only LAN access. When BASE_DOMAIN=localhost (the
+// Termux/dev setup) the cookie cannot pin a `.localhost` domain or require
+// `secure` — those reject the IPv4 host the cashier types on another phone.
+const IS_LOCAL_DEV =
+  process.env.NODE_ENV !== 'production' &&
+  (BASE_DOMAIN === 'localhost' || BASE_DOMAIN === '127.0.0.1');
+
 // Canonical base URL: prefer explicit env var, then Replit domain, then production domain
 const BASE_URL = (
   process.env.BETTER_AUTH_URL?.trim() ||
@@ -44,11 +51,33 @@ const buildTrustedOrigins = (): string[] => {
     origins.push(process.env.BETTER_AUTH_URL);
   }
 
+  // Additional LAN origins (e.g. http://192.168.x.y:5000) injected by the
+  // run-aurapos.sh launcher. Comma-separated.
+  if (process.env.EXTRA_TRUSTED_ORIGINS) {
+    process.env.EXTRA_TRUSTED_ORIGINS.split(',').forEach((o) => {
+      const trimmed = o.trim();
+      if (trimmed) origins.push(trimmed);
+    });
+  }
+
   return origins;
 };
 
-// Cookie config: on Replit, don't set a custom domain so the browser accepts the cookie
-const cookieAdvanced = IS_REPLIT
+// Cookie config: three modes
+//   1. local dev (LAN, HTTP)   → no domain, secure=false
+//   2. Replit                  → no domain, secure=true
+//   3. production multi-tenant → cross-subdomain on BASE_DOMAIN, secure=true
+const cookieAdvanced = IS_LOCAL_DEV
+  ? {
+      cookiePrefix: 'aurapos',
+      defaultCookieAttributes: {
+        sameSite: 'lax' as const,
+        secure: false,
+        httpOnly: true,
+        path: '/',
+      },
+    }
+  : IS_REPLIT
   ? {
       cookiePrefix: 'aurapos',
       defaultCookieAttributes: {

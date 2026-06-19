@@ -42,6 +42,40 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
+// ── CORS — allow *.aurapos.my.id + localhost + replit + LAN-in-dev ───────────
+// MUST be installed before any /api/auth/* handler so OPTIONS preflight from
+// LAN devices gets the Access-Control-* headers before Better Auth claims it.
+const BASE_DOMAIN_CORS = process.env.BASE_DOMAIN || 'aurapos.my.id';
+const IS_LOCAL_DEV_CORS =
+  process.env.NODE_ENV !== 'production' &&
+  (BASE_DOMAIN_CORS === 'localhost' || BASE_DOMAIN_CORS === '127.0.0.1');
+const EXTRA_TRUSTED_ORIGINS_CORS = (process.env.EXTRA_TRUSTED_ORIGINS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const LAN_ORIGIN_RE = /^http:\/\/(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?$/;
+app.use((req, res, next) => {
+  const origin = req.headers.origin || '';
+  const allowed =
+    origin.endsWith(`.${BASE_DOMAIN_CORS}`) ||
+    origin === `https://${BASE_DOMAIN_CORS}` ||
+    origin === 'http://localhost:5000' ||
+    origin === 'http://localhost:5173' ||
+    origin === 'http://localhost:3000' ||
+    origin.endsWith('.replit.dev') ||
+    origin.endsWith('.repl.co') ||
+    EXTRA_TRUSTED_ORIGINS_CORS.includes(origin) ||
+    (IS_LOCAL_DEV_CORS && LAN_ORIGIN_RE.test(origin));
+  if (allowed) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-tenant-id,x-tenant-service-token,x-tenant-context-token,x-terminal-token,x-outlet-id,x-kds-key,x-cfd-key,x-idempotency-key');
+  }
+  if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
+  next();
+});
+
 // /api/auth/me HARUS didaftarkan SEBELUM toNodeHandler(auth) agar tidak
 // diambil alih oleh better-auth wildcard handler.
 app.get("/api/auth/me", async (req, res) => {
@@ -90,28 +124,6 @@ app.use(express.json({
     req.rawBody = buf;
   }
 }));
-
-// ── CORS — allow *.aurapos.my.id + localhost + replit ────────────────────────
-const BASE_DOMAIN = process.env.BASE_DOMAIN || 'aurapos.my.id';
-app.use((req, res, next) => {
-  const origin = req.headers.origin || '';
-  const allowed =
-    origin.endsWith(`.${BASE_DOMAIN}`) ||
-    origin === `https://${BASE_DOMAIN}` ||
-    origin === 'http://localhost:5000' ||
-    origin === 'http://localhost:5173' ||
-    origin === 'http://localhost:3000' ||
-    origin.endsWith('.replit.dev') ||
-    origin.endsWith('.repl.co');
-  if (allowed) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-tenant-id,x-tenant-service-token,x-tenant-context-token,x-terminal-token,x-outlet-id,x-kds-key,x-cfd-key');
-  }
-  if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
-  next();
-});
 
 // Optimized request logger — log method, path, status, duration (no response body)
 app.use((req, res, next) => {
