@@ -153,7 +153,7 @@ export function ProductArea({
       </div>
 
       {/* Product Grid */}
-      <div className="flex-1 overflow-y-auto no-scrollbar px-4 md:px-8 pb-32 md:pb-8">
+      <div className="flex-1 overflow-y-auto no-scrollbar px-4 md:px-8 pt-3 pb-32 md:pb-8">
         {error ? (
           <div className="flex flex-col items-center justify-center py-20 px-6 text-center" data-testid="text-error">
             <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4">
