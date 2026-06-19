@@ -2,8 +2,11 @@ import { useEffect } from "react";
 import { queryClient } from "@/lib/queryClient";
 import { getActiveTenantId } from "@/lib/tenant";
 
-export function usePOSOrderQueueInvalidation() {
+export function usePOSOrderQueueInvalidation(enabled = false) {
   useEffect(() => {
+    // Only open the SSE connection when the orders_queue entitlement is active
+    if (!enabled) return;
+
     const tenantId = getActiveTenantId();
     const eventSource = new EventSource(`/api/orders/queue/stream?tenant_id=${encodeURIComponent(tenantId)}`, { withCredentials: true });
     const onUpdate = () => {
@@ -18,5 +21,5 @@ export function usePOSOrderQueueInvalidation() {
       eventSource.removeEventListener("order_queue_updated", onUpdate as EventListener);
       eventSource.close();
     };
-  }, []);
+  }, [enabled]);
 }

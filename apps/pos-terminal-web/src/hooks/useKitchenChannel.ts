@@ -23,19 +23,24 @@ export type KDSMessage =
 
 // ─── Sender hook (used in POS) ────────────────────────────────────────────────
 
-export function useKitchenChannelSender() {
+export function useKitchenChannelSender(enabled = false) {
   const channelRef = useRef<BroadcastChannel | null>(null);
 
+  // Only open the BroadcastChannel when kitchen_ops entitlement is active
   useEffect(() => {
+    if (!enabled) return;
     if (typeof BroadcastChannel === "undefined") return;
     channelRef.current = new BroadcastChannel(KDS_CHANNEL);
     return () => {
       channelRef.current?.close();
       channelRef.current = null;
     };
-  }, []);
+  }, [enabled]);
 
   const sendToKDS = useCallback((msg: KDSMessage) => {
+    // No-op when kitchen feature is not enabled
+    if (!enabled) return;
+
     channelRef.current?.postMessage(msg);
 
     // localStorage snapshot so KDS cold-starts with latest tickets
@@ -48,7 +53,7 @@ export function useKitchenChannelSender() {
         localStorage.setItem(`${KDS_CHANNEL}:tickets`, JSON.stringify(updated));
       } catch {}
     }
-  }, []);
+  }, [enabled]);
 
   return { sendToKDS };
 }

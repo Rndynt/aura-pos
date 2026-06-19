@@ -62,7 +62,7 @@ export default function POSPage() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { isOnline } = useNetworkStatus();
-  const { sendToKDS } = useKitchenChannelSender();
+  const { sendToKDS } = useKitchenChannelSender(can("restaurant_kitchen_ops"));
   const { tenantId } = useTenant();
   const { data: tenantProfile } = useTenantProfile(tenantId);
   // `can` is destructured above from useTenant().
@@ -163,7 +163,7 @@ export default function POSPage() {
   const orders: Order[] = ordersData?.orders || [];
 
   // SSE selalu aktif tanpa peduli feature flag — supaya draft/meja selalu real-time
-  usePOSOrderQueueInvalidation();
+  usePOSOrderQueueInvalidation(can("orders_queue"));
 
   // Fetch order types for tenant
   const { data: orderTypes, isLoading: orderTypesLoading } = useOrderTypes();
