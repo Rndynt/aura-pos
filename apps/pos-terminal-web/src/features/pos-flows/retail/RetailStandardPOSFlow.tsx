@@ -7,8 +7,9 @@ import { POSOrderLifecycleSheet, POSPaymentDialog } from "@/features/pos-core";
 import { useToast } from "@/hooks/use-toast";
 import { useRetailStandardPOSFlow } from "./useRetailStandardPOSFlow";
 
-export function RetailStandardPOSFlow() {
-  const flow = useRetailStandardPOSFlow();
+type RetailStandardPOSFlowState = ReturnType<typeof useRetailStandardPOSFlow>;
+
+export function RetailStandardPOSFlowView({ flow }: { flow: RetailStandardPOSFlowState }) {
   const { toast } = useToast();
 
   return (
@@ -86,4 +87,9 @@ export function RetailStandardPOSFlow() {
       )}
     </POSLayout>
   );
+}
+
+export function RetailStandardPOSFlow() {
+  const flow = useRetailStandardPOSFlow();
+  return <RetailStandardPOSFlowView flow={flow} />;
 }

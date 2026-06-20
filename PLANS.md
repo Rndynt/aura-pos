@@ -8936,3 +8936,117 @@ Correct business type routing so all valid tenants get core POS checkout while p
 
 ### Continuation Notes
 Next safest task: create explicit `FoodBeveragePOSFlow` and `ServiceCorePOSFlow` wrappers using existing POS core components, then gate optional table/kitchen/KDS panels with `resolveBusinessCapabilities()` and add component tests.
+
+## Plan: P6 Food Beverage + Service Core Flow Adapters
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P6_food_beverage_service_core_flows_prompt.md`
+- User request: Analisa mendalam dan eksekusi P6 roadmap/business-flows prompt.
+- Date started: 2026-06-20
+- Current status: In progress
+
+### Goal
+Add explicit baseline POS frontend adapters for `food_beverage` and `service` business families, preserve P5.1 business type vs entitlement model, add capability-gated optional panels, tests, cleanup audit, and report.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs (`roadmap/business-flows/main.md`, `P5_1_business_type_entitlement_model_correction_report.md`)
+- [x] Relevant source files (`business-flows`, POS root/core/retail hooks)
+
+### Workstreams
+#### Frontend/UI Workstream
+- Scope: new F&B/service adapter folders and root routing.
+- Files inspected: POS flow root/core/retail files.
+- Findings: resolver already returns flow keys, but root still renders core for F&B/service.
+- Tasks: create adapter hooks/components and route them explicitly.
+- Risks: component tests unavailable; use pure policy/helper tests plus type-check.
+- Validation: terminal-web tests/type-check.
+
+#### Documentation Workstream
+- Scope: roadmap main, P6 report, PLANS.
+- Files inspected: roadmap main and P5.1 report.
+- Tasks: report routing matrix/proofs/risks and update progress.
+
+#### Security/Tenant Isolation Workstream
+- Scope: ensure baseline flows do not alter API/data access.
+- Findings: P6 can remain frontend composition-only; no schema/API tenant filtering change needed.
+- Risks: optional actions must remain disabled/not implemented unless safe.
+
+### Execution Order
+1. Create capability adapter and flow policies.
+2. Add F&B/service UI wrappers and optional panels.
+3. Update POS root routing and tests.
+4. Update terminal-web test script if needed.
+5. Run validation and cleanup grep.
+6. Write P6 report and update roadmap/PLANS/checklist.
+
+### Progress
+#### Completed
+- [ ] Task: pending implementation.
+
+### Validation Log
+- Command: pending
+- Result: pending
+- Notes: pending
+
+### Continuation Notes
+Continue with P6 implementation from adapter creation.
+
+### P6 Batch Completion Update — 2026-06-20
+
+#### Completed
+- [x] Created explicit `food_beverage` and `service` POS flow adapter folders.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-flows/food-beverage/*`, `apps/pos-terminal-web/src/features/pos-flows/service/*`
+  - Validation: `pnpm --filter @pos/terminal-web type-check`, `pnpm --filter @pos/terminal-web test`, `pnpm type-check`
+  - Docs updated: P6 report and roadmap main.
+- [x] Routed `food_beverage` and `service` to explicit adapters while keeping `core_standard`/null/unknown on core fallback.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-flows/root/POSFlowRoot.tsx`
+  - Validation: root resolver tests and terminal-web tests passed.
+- [x] Added capability helper and policy tests proving baseline checkout does not require paid capabilities.
+  - Files changed: shared helper and F&B/service policy tests.
+  - Validation: terminal-web tests passed.
+- [x] Ran cleanup grep and documented remaining historical references.
+  - Files changed: `roadmap/business-flows/P6_food_beverage_service_core_flows_report.md`
+
+#### Partially Completed
+- [ ] Component harness tests for rendered React flows.
+  - Completed: pure helper/policy/root tests were added.
+  - Remaining: React component render tests once a harness is standardized.
+  - Reason: Existing terminal-web test script is pure `tsx`/`node:test` without React DOM harness.
+
+#### Blocked
+- [ ] Manual browser smoke.
+  - Blocker: Non-interactive terminal environment.
+  - Required next step: Run real browser smoke against CAFE_RESTAURANT, SERVICE_APPOINTMENT/LAUNDRY, DIGITAL_PPOB/unknown, and retail tenants.
+
+### Validation Log
+- Command: `pnpm --filter @pos/domain type-check`
+- Result: pass
+- Notes: no changes required.
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: no changes required.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: no changes required.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: F&B/service adapter typing fixed by passing a compatible checkout flow state into `RetailStandardPOSFlow`.
+- Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Notes: resolver tests passed.
+- Command: `pnpm --filter @pos/api test`
+- Result: pass
+- Notes: API suite passed.
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: pass
+- Notes: added P6 policy/helper tests passed.
+- Command: `pnpm type-check`
+- Result: pass
+- Notes: all 10 Turbo type-check tasks passed.
+
+### Continuation Notes
+Next safest batch: add React component harness tests and, after manual smoke, progressively mount real F&B optional table/kitchen panels only behind entitlement and runtime safety checks.

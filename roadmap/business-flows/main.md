@@ -665,3 +665,7 @@ Date: 2026-06-20
 - Unknown or missing business type now falls back to `core_standard` instead of `UnsupportedPOSFlow`.
 - Table service, kitchen/KDS, order queue, split bill, partial payment, and multi-payment remain entitlement-controlled capabilities, not routing profiles or business-type upgrades.
 - See `roadmap/business-flows/P5_1_business_type_entitlement_model_correction_report.md` for the audit table, mapping proof, validation output, and remaining risks.
+
+## P6 Update — Food Beverage + Service Core Flow Adapters (2026-06-20)
+
+P6 is implemented. `food_beverage` now routes to an explicit `FoodBeveragePOSFlow`, `service` routes to `ServiceCorePOSFlow`, and `core_standard`/null/unknown remain on `CoreStandardPOSFlow`. The new adapters reuse the POS checkout core while rendering capability-gated optional panels from the existing entitlement capability semantics. Full payment/cash checkout remains available without `orders_queue`, table service, kitchen ops, split bill, partial payment, or multi-payment entitlements. See `P6_food_beverage_service_core_flows_report.md` for validation and deferred paid capability work.

@@ -413,25 +413,25 @@ Run cleanup grep command above and document exact result.
 
 ## Completion checklist
 
-- [ ] FoodBeveragePOSFlow created.
-- [ ] useFoodBeveragePOSFlow created.
-- [ ] foodBeverageFlowPolicy created.
-- [ ] FoodBeverage optional panel component created.
-- [ ] ServiceCorePOSFlow created.
-- [ ] useServiceCorePOSFlow created.
-- [ ] serviceCoreFlowPolicy created.
-- [ ] Service optional panel component created.
-- [ ] POS root routes food_beverage to FoodBeveragePOSFlow.
-- [ ] POS root routes service to ServiceCorePOSFlow.
-- [ ] POS root routes core_standard/null/unknown to CoreStandardPOSFlow.
-- [ ] UnsupportedPOSFlow is not default for valid baseline business types.
-- [ ] Food/beverage baseline checkout works without paid entitlements.
-- [ ] Service baseline checkout works without paid entitlements.
-- [ ] Optional table/kitchen/KDS/split/partial/multi controls are capability-gated.
-- [ ] Full payment/cash remains available without orders_queue.
-- [ ] No GenericPOSPage or old compatibility shims reintroduced.
-- [ ] Tests/validation documented.
-- [ ] P6 report created.
+- [x] FoodBeveragePOSFlow created.
+- [x] useFoodBeveragePOSFlow created.
+- [x] foodBeverageFlowPolicy created.
+- [x] FoodBeverage optional panel component created.
+- [x] ServiceCorePOSFlow created.
+- [x] useServiceCorePOSFlow created.
+- [x] serviceCoreFlowPolicy created.
+- [x] Service optional panel component created.
+- [x] POS root routes food_beverage to FoodBeveragePOSFlow.
+- [x] POS root routes service to ServiceCorePOSFlow.
+- [x] POS root routes core_standard/null/unknown to CoreStandardPOSFlow.
+- [x] UnsupportedPOSFlow is not default for valid baseline business types.
+- [x] Food/beverage baseline checkout works without paid entitlements.
+- [x] Service baseline checkout works without paid entitlements.
+- [x] Optional table/kitchen/KDS/split/partial/multi controls are capability-gated.
+- [x] Full payment/cash remains available without orders_queue.
+- [x] No GenericPOSPage or old compatibility shims reintroduced.
+- [x] Tests/validation documented.
+- [x] P6 report created.
 
 ## Commit
 
