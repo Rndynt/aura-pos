@@ -602,21 +602,21 @@ Also run the cleanup grep commands listed above and document exact findings.
 
 ## Completion checklist
 
-- [ ] All existing business type codes audited from registration/SOT/codebase.
-- [ ] Business type no longer maps to paid operational mode by default.
-- [ ] Cafe/restaurant no longer maps directly to mandatory `restaurant_table_service`.
-- [ ] Quick/service/laundry are not Unsupported by default.
-- [ ] Core POS baseline exists for every valid business type.
-- [ ] POS root routes by base business category/family, not entitlement mode.
-- [ ] Table service is entitlement/capability, not profile upgrade.
-- [ ] Kitchen/KDS is entitlement/capability, not profile upgrade.
-- [ ] Split/partial/multi payment are entitlements, not profile upgrades.
-- [ ] Full payment/cash remains available without paid addons.
-- [ ] No orders_queue payment requirement introduced.
-- [ ] No plan name hardcoding introduced.
-- [ ] No GenericPOSPage or legacy mixed runtime reintroduced.
-- [ ] Tests/validation documented.
-- [ ] P5.1 report created.
+- [x] All existing business type codes audited from registration/SOT/codebase.
+- [x] Business type no longer maps to paid operational mode by default.
+- [x] Cafe/restaurant no longer maps directly to mandatory `restaurant_table_service`.
+- [x] Quick/service/laundry are not Unsupported by default.
+- [x] Core POS baseline exists for every valid business type.
+- [x] POS root routes by base business category/family, not entitlement mode.
+- [x] Table service is entitlement/capability, not profile upgrade.
+- [x] Kitchen/KDS is entitlement/capability, not profile upgrade.
+- [x] Split/partial/multi payment are entitlements, not profile upgrades.
+- [x] Full payment/cash remains available without paid addons.
+- [x] No orders_queue payment requirement introduced.
+- [x] No plan name hardcoding introduced.
+- [x] No GenericPOSPage or legacy mixed runtime reintroduced.
+- [x] Tests/validation documented.
+- [x] P5.1 report created.
 
 ## Commit
 

@@ -4,7 +4,7 @@ import { RESTAURANT_TABLE_SERVICE_FLOW_POLICY, canResumeRestaurantOrderIntoCart,
 
 describe("restaurantTableServiceFlowPolicy", () => {
   it("defines canonical restaurant table-service actions", () => {
-    assert.equal(RESTAURANT_TABLE_SERVICE_FLOW_POLICY.businessProfile, "restaurant_table_service");
+    assert.equal(RESTAURANT_TABLE_SERVICE_FLOW_POLICY.businessProfile, "food_beverage");
     assert.equal(RESTAURANT_TABLE_SERVICE_FLOW_POLICY.showKitchenActions, true);
     assert.equal(RESTAURANT_TABLE_SERVICE_FLOW_POLICY.showTableServiceActions, true);
     assert.equal(RESTAURANT_TABLE_SERVICE_FLOW_POLICY.allowFreshCreateAndPay, false);

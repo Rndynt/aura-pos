@@ -1,7 +1,7 @@
 import { BUSINESS_FLOW_PROFILE_IDS } from "@pos/domain/business-flows";
 
 export const RESTAURANT_TABLE_SERVICE_FLOW_POLICY = {
-  businessProfile: BUSINESS_FLOW_PROFILE_IDS.restaurantTableService,
+  businessProfile: BUSINESS_FLOW_PROFILE_IDS.foodBeverage,
   showTableServiceActions: true,
   showKitchenActions: true,
   showActiveOrderQueueByDefault: true,
