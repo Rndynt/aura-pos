@@ -45,6 +45,7 @@ import {
   updatePOSOrderStatus,
 } from "../services/posOrderService";
 import {
+  getOrderRemainingAmount,
   isTrueServerDraft,
   type POSLifecycleOrder,
 } from "../services/orderLifecycle";
@@ -1229,15 +1230,21 @@ export default function POSPage() {
         }}
         onResumeLocalDraft={handleResumeLocalDraft}
         onPayActiveOrder={(order) => {
-          const total = Number(
-            (order as any).total_amount ?? (order as any).total ?? 0,
-          );
-          const paid = Number(
-            (order as any).paid_amount ?? (order as any).paidAmount ?? 0,
-          );
+          const remainingAmount = getOrderRemainingAmount(order);
+          if (remainingAmount === null || remainingAmount <= 0) {
+            toast({
+              title: "Pembayaran diblokir",
+              description:
+                remainingAmount === 0
+                  ? "Tagihan aktif ini sudah lunas."
+                  : "Sisa pembayaran tidak dapat dihitung dari data order.",
+              variant: "destructive",
+            });
+            return;
+          }
           setPendingOrderForPayment({
             orderId: order.id,
-            totalAmount: Math.max(0, total - paid),
+            totalAmount: remainingAmount,
             orderNumber: String(
               (order as any).order_number ??
                 (order as any).orderNumber ??

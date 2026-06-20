@@ -30,7 +30,13 @@ import {
   type LocalDraftOrder,
 } from "@pos/offline";
 import {
+  canCancelServerDraft,
+  canContinueServerDraft,
+  canPayActiveOrder,
   getActiveOrderStatusLabel,
+  getOrderPaidAmount,
+  getOrderRemainingAmount,
+  getOrderTotalAmount,
   isActivePOSOrder,
   isTrueServerDraft,
   type POSLifecycleOrder,
@@ -59,6 +65,7 @@ export function CombinedDraftSheet({
   const [activeTab, setActiveTab] = useState<Tab>("server");
   const [deletingServerId, setDeletingServerId] = useState<string | null>(null);
   const [deletingLocalId, setDeletingLocalId] = useState<string | null>(null);
+  const [detailOrder, setDetailOrder] = useState<POSLifecycleOrder | null>(null);
 
   const { data: openOrdersData, isLoading: serverLoading } = useOpenOrders();
   const cancelOrder = useCancelOrder();
@@ -72,9 +79,9 @@ export function CombinedDraftSheet({
   const { serverDrafts, activeOrders } = useMemo(() => {
     const orders = (openOrdersData?.orders ?? []) as POSLifecycleOrder[];
     return {
-      serverDrafts: orders.filter(isTrueServerDraft),
+      serverDrafts: orders.filter(canContinueServerDraft),
       activeOrders: orders.filter(
-        (order) => !isTrueServerDraft(order) && isActivePOSOrder(order),
+        (order) => !canContinueServerDraft(order) && isActivePOSOrder(order),
       ),
     };
   }, [openOrdersData]);
@@ -220,7 +227,8 @@ export function CombinedDraftSheet({
                   </button>
                   <button
                     onClick={(e) => handleDeleteServer(e, order.id)}
-                    disabled={deletingServerId === order.id}
+                    hidden={!canCancelServerDraft(order)}
+                    disabled={deletingServerId === order.id || !canCancelServerDraft(order)}
                     className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
                     data-testid={`btn-delete-draft-${order.id}`}
                   >
@@ -286,17 +294,17 @@ export function CombinedDraftSheet({
                       onPayActiveOrder?.(order);
                       onOpenChange(false);
                     }}
-                    className="flex-shrink-0 flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                    disabled={!canPayActiveOrder(order) || (getOrderRemainingAmount(order) ?? 0) <= 0}
+                    className="flex-shrink-0 flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     data-testid={`btn-pay-active-order-${order.id}`}
                   >
                     Bayar
                     <CreditCard className="w-3.5 h-3.5" />
                   </button>
                   <button
-                    disabled
-                    className="flex-shrink-0 flex items-center gap-1 bg-slate-100 text-slate-500 text-xs font-semibold px-3 py-1.5 rounded-lg"
+                    onClick={() => setDetailOrder(order)}
+                    className="flex-shrink-0 flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold px-3 py-1.5 rounded-lg"
                     data-testid={`btn-view-active-order-${order.id}`}
-                    title="Detail aktif akan dibuka dari halaman Pesanan"
                   >
                     Detail
                     <Eye className="w-3.5 h-3.5" />
@@ -389,6 +397,14 @@ export function CombinedDraftSheet({
     </div>
   );
 
+  const detailDialog = (
+    <ActiveOrderDetailDialog
+      order={detailOrder}
+      onOpenChange={(nextOpen) => { if (!nextOpen) setDetailOrder(null); }}
+      onPay={(order) => { onPayActiveOrder?.(order); setDetailOrder(null); onOpenChange(false); }}
+    />
+  );
+
   if (isMobile) {
     return (
       <Drawer.Root open={open} onOpenChange={onOpenChange}>
@@ -418,6 +434,7 @@ export function CombinedDraftSheet({
           <DialogTitle>Draft Pesanan</DialogTitle>
         </DialogHeader>
         {content}
+        {detailDialog}
       </DialogContent>
     </Dialog>
   );
@@ -434,5 +451,65 @@ function EmptyState({ label, sublabel }: { label: string; sublabel?: string }) {
         <p className="text-xs text-slate-400 mt-1 max-w-[220px]">{sublabel}</p>
       )}
     </div>
+  );
+}
+
+function formatRp(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "Tidak tersedia";
+  return `Rp ${value.toLocaleString("id-ID")}`;
+}
+
+function ActiveOrderDetailDialog({
+  order,
+  onOpenChange,
+  onPay,
+}: {
+  order: POSLifecycleOrder | null;
+  onOpenChange: (open: boolean) => void;
+  onPay: (order: POSLifecycleOrder) => void;
+}) {
+  if (!order) return null;
+  const items = ((order as any).items ?? (order as any).orderItems ?? []) as Array<any>;
+  const total = getOrderTotalAmount(order);
+  const paid = getOrderPaidAmount(order);
+  const remaining = getOrderRemainingAmount(order);
+  const canPay = canPayActiveOrder(order) && remaining !== null && remaining > 0;
+
+  return (
+    <Dialog open={!!order} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md rounded-2xl">
+        <DialogHeader>
+          <DialogTitle>Detail Pesanan Aktif</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 space-y-1">
+            <div className="font-bold text-slate-800">{(order as any).orderNumber ?? (order as any).order_number ?? order.id}</div>
+            {((order as any).tableNumber ?? (order as any).table_number) && <div>Meja {(order as any).tableNumber ?? (order as any).table_number}</div>}
+            {((order as any).customerName ?? (order as any).customer_name) && <div>{(order as any).customerName ?? (order as any).customer_name}</div>}
+            <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200">{(order as any).lifecycleLabel ?? getActiveOrderStatusLabel(order)}</Badge>
+          </div>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {items.length === 0 ? <div className="text-slate-500">Item tidak tersedia dari API.</div> : items.map((item, index) => (
+              <div key={item.id ?? index} className="flex justify-between gap-3 border-b border-slate-100 pb-2">
+                <div><div className="font-medium">{item.productName ?? item.product_name ?? item.name ?? 'Item'}</div><div className="text-xs text-slate-500">Qty {item.quantity ?? 1}</div></div>
+                <div className="font-semibold">{formatRp(Number(item.itemSubtotal ?? item.item_subtotal ?? 0))}</div>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl border border-slate-100 p-3 space-y-1">
+            <div className="flex justify-between"><span>Total</span><b>{formatRp(total)}</b></div>
+            <div className="flex justify-between"><span>Terbayar</span><b>{formatRp(paid)}</b></div>
+            <div className="flex justify-between"><span>Sisa</span><b>{formatRp(remaining)}</b></div>
+            <div className="flex justify-between"><span>Status pembayaran</span><b>{(order as any).paymentStatus ?? (order as any).payment_status ?? 'unpaid'}</b></div>
+          </div>
+          {remaining === null && <p className="text-xs text-red-600">Sisa pembayaran tidak dapat dihitung. Pembayaran diblokir agar tidak mencatat nominal tidak valid.</p>}
+          {remaining === 0 && <p className="text-xs text-slate-500">Tagihan sudah lunas/settled.</p>}
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={() => onOpenChange(false)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold">Tutup</button>
+            <button disabled={!canPay} onClick={() => onPay(order)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed">Bayar</button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

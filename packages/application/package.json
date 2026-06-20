@@ -33,7 +33,8 @@
     "./business-flows/*": "./business-flows/*.ts"
   },
   "scripts": {
-    "type-check": "tsc -p tsconfig.json --noEmit"
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --tsconfig tsconfig.json orders/__tests__/orderLifecycleDtoMapper.test.ts && tsx --tsconfig tsconfig.json orders/__tests__/UpdateOrder.lifecycleLocks.test.ts"
   },
   "keywords": [
     "application",

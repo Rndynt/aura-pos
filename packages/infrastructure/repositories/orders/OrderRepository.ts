@@ -63,6 +63,7 @@ export interface IOrderRepository {
   ): Promise<number>;
   findById(id: string, tenantId: string, context?: TransactionContext): Promise<any | null>;
   getEditLockState(id: string, tenantId: string): Promise<{ hasKitchenTicket: boolean; hasFiredKitchenItems: boolean }>;
+  getEditLockStates(ids: string[], tenantId: string): Promise<Record<string, { hasKitchenTicket: boolean; hasFiredKitchenItems: boolean }>>;
   findByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<any | null>;
   create(order: InsertOrder, orderItems: OrderItemInput[], tenantId: string): Promise<Order>;
   update(id: string, order: Partial<InsertOrder>, tenantId: string, context?: TransactionContext): Promise<Order>;
@@ -295,23 +296,36 @@ export class OrderRepository
   }
 
   async getEditLockState(id: string, tenantId: string): Promise<{ hasKitchenTicket: boolean; hasFiredKitchenItems: boolean }> {
+    const states = await this.getEditLockStates([id], tenantId);
+    return states[id] ?? { hasKitchenTicket: false, hasFiredKitchenItems: false };
+  }
+
+  async getEditLockStates(ids: string[], tenantId: string): Promise<Record<string, { hasKitchenTicket: boolean; hasFiredKitchenItems: boolean }>> {
     try {
-      const [ticketCount] = await this.db
-        .select({ value: sql<number>`count(*)::int` })
+      const uniqueIds = [...new Set(ids)].filter(Boolean);
+      const result: Record<string, { hasKitchenTicket: boolean; hasFiredKitchenItems: boolean }> = {};
+      uniqueIds.forEach((id) => { result[id] = { hasKitchenTicket: false, hasFiredKitchenItems: false }; });
+      if (uniqueIds.length === 0) return result;
+
+      const ticketRows = await this.db
+        .select({ orderId: kitchenTickets.orderId, value: sql<number>`count(*)::int` })
         .from(kitchenTickets)
-        .where(and(eq(kitchenTickets.orderId, id), eq(kitchenTickets.tenantId, tenantId)));
+        .where(and(inArray(kitchenTickets.orderId, uniqueIds), eq(kitchenTickets.tenantId, tenantId)))
+        .groupBy(kitchenTickets.orderId);
 
-      const [firedItemCount] = await this.db
-        .select({ value: sql<number>`count(*)::int` })
+      ticketRows.forEach((row) => { if (row.orderId && result[row.orderId]) result[row.orderId].hasKitchenTicket = (row.value ?? 0) > 0; });
+
+      const firedRows = await this.db
+        .select({ orderId: orderItems.orderId, value: sql<number>`count(*)::int` })
         .from(orderItems)
-        .where(and(eq(orderItems.orderId, id), inArray(orderItems.status, ['preparing', 'ready', 'delivered'] as any[])));
+        .innerJoin(orders, and(eq(orderItems.orderId, orders.id), eq(orders.tenantId, tenantId)))
+        .where(and(inArray(orderItems.orderId, uniqueIds), inArray(orderItems.status, ['preparing', 'ready', 'delivered'] as any[])))
+        .groupBy(orderItems.orderId);
 
-      return {
-        hasKitchenTicket: (ticketCount?.value ?? 0) > 0,
-        hasFiredKitchenItems: (firedItemCount?.value ?? 0) > 0,
-      };
+      firedRows.forEach((row) => { if (row.orderId && result[row.orderId]) result[row.orderId].hasFiredKitchenItems = (row.value ?? 0) > 0; });
+      return result;
     } catch (error) {
-      this.handleError('get order edit lock state', error);
+      this.handleError('get order edit lock states', error);
     }
   }
 

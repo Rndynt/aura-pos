@@ -279,3 +279,20 @@ A: Not yet implemented. Current system: void order (don't mark complete) and cre
 ## See Also
 - [AuraPoS Architecture](./comprehensive-architecture-analysis.md)
 - [P0-P3 Critical Fixes Documentation](../IMPLEMENTATION_STATUS.md)
+
+## POS Open-Order Lifecycle DTO (P2.1)
+
+POS-facing order reads now include computed lifecycle fields so the terminal does not rely only on ad-hoc frontend status checks:
+
+- `isEditableDraft`
+- `isActiveOrder`
+- `isKitchenLocked`
+- `hasKitchenTicket`
+- `hasFiredKitchenItems`
+- `allowedActions`
+- `lifecycleKind`
+- `lifecycleLabel`
+
+`GET /api/orders/open` is scoped to rows that are actionable in the POS draft/active sheet: editable server drafts and unpaid/partial active orders. Full-paid create-and-pay rows map to `paid_completed` and are excluded from Draft Server/Pesanan Aktif even when their operational status remains `confirmed` for fulfillment tracking.
+
+Active-order payment from the POS sheet pays only the remaining amount (`remaining_amount` when supplied, otherwise `max(total - paidAmount, 0)`) and blocks payment if the remaining amount cannot be computed safely.

@@ -8142,6 +8142,10 @@ Make the existing POS runtime safer before the larger business-flow adapter spli
 - Result: pass after fixing new lifecycle order type fields
 - Notes: initial failure was caused by missing `orderNumber/tableNumber/customerName/total` fields in the new helper type
 - Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Command: `pnpm --filter @pos/api test`
+- Result: pass
+- Command: `pnpm type-check`
 - Result: pass/no visible output
 - Notes: command exited 0
 
@@ -8157,3 +8161,132 @@ Make the existing POS runtime safer before the larger business-flow adapter spli
 
 ### Continuation Notes
 Next safest batch: add server-side lifecycle/action DTO (`isEditableDraft`, `isActiveOrder`, `isKitchenLocked`, `allowedActions`) to `/api/orders/open`, wire `CanPerformOrderAction` directly into backend mappers, and add component/API tests plus browser smoke for retail and restaurant scenarios.
+
+## Plan: P2.1 Lifecycle Hardening Patch
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P2_1_lifecycle_hardening_patch_prompt.md`
+- User request: Analisa mendalam dan eksekusi roadmap P2.1 lifecycle hardening.
+- Date started: 2026-06-20
+- Current status: Implemented and validated with type-check/application tests; browser smoke not run in terminal-only environment.
+
+### Goal
+Close remaining P2 lifecycle gaps with server lifecycle DTO fields, frontend server-flag consumption, active order detail/payment UI, remaining-amount settlement, paid open-order filtering, lock hardening, tests, and report.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: lifecycle DTO mapper and order endpoints.
+- Files inspected: `OrdersController.ts`, `ListOpenOrders.ts`, `OrderRepository.ts`, P2 report.
+- Findings: lifecycle flags were absent from API responses; open orders could include paid confirmed rows without POS lifecycle filtering.
+- Tasks: attach lifecycle DTO fields to `/api/orders`, `/api/orders/open`, `/api/orders/:id`; filter POS open rows to draft/active lifecycle kinds.
+- Risks: no browser/API integration harness run.
+- Validation: type-check pass.
+
+#### Database/Schema Workstream
+- Scope: edit lock state queries only.
+- Files inspected: `OrderRepository.ts`, schema imports.
+- Findings: kitchen ticket lock was tenant-scoped; fired item check needed stronger tenant join for batch/list usage.
+- Tasks: add `getEditLockStates` batch method and tenant-scope fired-item query through `orders` join.
+- Risks: no schema change; no migration needed.
+- Validation: type-check pass.
+
+#### Frontend/UI Workstream
+- Scope: POS draft/active sheet and active payment.
+- Files inspected: `orderLifecycle.ts`, `CombinedDraftSheet.tsx`, `POSPage.tsx`.
+- Findings: frontend fallback existed; detail button was disabled; remaining payment was computed inline.
+- Tasks: action-aware helper use, detail dialog, remaining amount helper and guard.
+- Risks: browser smoke not run.
+- Validation: terminal web type-check pass.
+
+#### Tests/Validation Workstream
+- Scope: mapper and UpdateOrder lock tests.
+- Files inspected: package scripts and existing test availability.
+- Findings: application package had no test script.
+- Tasks: add simple tsx-based application tests and `test` script.
+- Risks: API/component integration tests still deferred.
+- Validation: `pnpm --filter @pos/application test` pass.
+
+#### Documentation Workstream
+- Scope: lifecycle docs and report.
+- Files inspected: `docs/ORDER_LIFECYCLE.md`, P2 prompt/report.
+- Findings: docs needed P2.1 DTO/open-order behavior.
+- Tasks: create P2.1 report and update lifecycle docs.
+- Risks: manual smoke remains not run.
+- Validation: docs reviewed in diff.
+
+#### Security/Tenant Isolation Workstream
+- Scope: tenant safety of lock state and mutation bypass behavior.
+- Files inspected: `UpdateOrder.ts`, `OrderRepository.ts`, `OrdersController.ts`.
+- Findings: update locks existed; batch fired-item lookup must stay tenant-scoped.
+- Tasks: tenant-scoped fired-item join and stable 409 codes preserved.
+- Risks: no live DB integration test.
+- Validation: application tests and type-check pass.
+
+### Progress
+
+#### Completed
+- [x] Add lifecycle DTO mapper and attach fields to order endpoints.
+  - Files changed: `packages/application/orders/mappers/orderLifecycleDtoMapper.ts`, `apps/api/src/http/controllers/OrdersController.ts`
+  - Validation: type-check pass
+  - Docs updated: P2.1 report, order lifecycle docs
+- [x] Add batch tenant-safe edit lock states.
+  - Files changed: `packages/infrastructure/repositories/orders/OrderRepository.ts`
+  - Validation: type-check pass
+  - Docs updated: P2.1 report
+- [x] Update POS sheet to use server flags/actions and active detail dialog.
+  - Files changed: `apps/pos-terminal-web/src/features/pos/services/orderLifecycle.ts`, `apps/pos-terminal-web/src/components/pos/CombinedDraftSheet.tsx`, `apps/pos-terminal-web/src/features/pos/pages/POSPage.tsx`
+  - Validation: terminal web type-check pass
+  - Docs updated: P2.1 report
+- [x] Add lifecycle/lock tests.
+  - Files changed: `packages/application/orders/__tests__/*`, `packages/application/package.json`
+  - Validation: application test pass
+  - Docs updated: P2.1 report
+
+#### Partially Completed
+- [ ] Browser manual smoke.
+  - Completed: exact checklist documented.
+  - Remaining: run browser smoke against a live app/session.
+  - Reason: terminal-only non-interactive environment.
+
+#### Blocked
+- [ ] API/component integration tests.
+  - Blocker: no existing lightweight harness was identified in this batch.
+  - Required next step: add route/component test harness in a follow-up.
+
+### Validation Log
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/domain type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Command: `pnpm --filter @pos/api test`
+- Result: pass
+- Command: `pnpm type-check`
+- Result: pass
+
+### Documentation Updates
+- File: `roadmap/business-flows/P2_1_lifecycle_hardening_patch_report.md`
+- Change: Added required P2.1 implementation report and smoke checklist.
+- File: `docs/ORDER_LIFECYCLE.md`
+- Change: Documented POS lifecycle DTO fields and open-order filtering.
+
+### Checklist Updates
+- File: `roadmap/business-flows/P2_1_lifecycle_hardening_patch_report.md`
+- Change: Completion checklist marked implemented/validated; manual browser smoke explicitly not run.
+
+### Continuation Notes
+Next agent should run browser smoke against a seeded tenant and add API/component integration tests for `/api/orders/open`, `/api/orders/:id`, and `CombinedDraftSheet` when a harness is available.

@@ -76,3 +76,40 @@ export function getActiveOrderStatusLabel(order: POSLifecycleOrder): string {
       return "Tagihan aktif";
   }
 }
+
+export function orderAllowsAction(order: POSLifecycleOrder, action: string): boolean {
+  return Array.isArray(order.allowedActions) && order.allowedActions.includes(action);
+}
+
+export function canContinueServerDraft(order: POSLifecycleOrder): boolean {
+  return orderAllowsAction(order, "CONTINUE_DRAFT") || isTrueServerDraft(order);
+}
+
+export function canCancelServerDraft(order: POSLifecycleOrder): boolean {
+  return orderAllowsAction(order, "CANCEL_DRAFT") || isTrueServerDraft(order);
+}
+
+export function canPayActiveOrder(order: POSLifecycleOrder): boolean {
+  return orderAllowsAction(order, "PAY_ACTIVE_ORDER") || isActivePOSOrder(order);
+}
+
+export function readOrderAmount(value: unknown): number | null {
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+export function getOrderTotalAmount(order: POSLifecycleOrder): number | null {
+  return readOrderAmount(order.total ?? order.total_amount);
+}
+
+export function getOrderPaidAmount(order: POSLifecycleOrder): number {
+  return readOrderAmount(order.paidAmount ?? order.paid_amount) ?? 0;
+}
+
+export function getOrderRemainingAmount(order: POSLifecycleOrder): number | null {
+  const explicit = readOrderAmount((order as any).remainingAmount ?? (order as any).remaining_amount);
+  if (explicit !== null) return Math.max(0, explicit);
+  const total = getOrderTotalAmount(order);
+  if (total === null) return null;
+  return Math.max(0, total - getOrderPaidAmount(order));
+}

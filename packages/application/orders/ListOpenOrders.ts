@@ -10,8 +10,10 @@ export interface IOrderRepository {
     tenantId: string,
     filters?: {
       status?: string[];
+      paymentStatus?: string;
       limit?: number;
       offset?: number;
+      outletId?: string;
     }
   ): Promise<PersistedOrderRecord[]>;
 }

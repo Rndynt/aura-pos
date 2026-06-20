@@ -103,3 +103,6 @@ export { ConfirmOrderWorkflow } from './services/ConfirmOrderWorkflow';
 export type { ConfirmOrderWorkflowInput, ConfirmOrderWorkflowOutput } from './services/ConfirmOrderWorkflow';
 export { CancelOrderWorkflow } from './services/CancelOrderWorkflow';
 export type { CancelOrderWorkflowInput, CancelOrderWorkflowOutput } from './services/CancelOrderWorkflow';
+
+export { getOrderLifecycleDtoFields, withOrderLifecycleDtoFields } from './mappers/orderLifecycleDtoMapper';
+export type { OrderLifecycleDtoFields, OrderLifecycleKind, OrderLifecycleLockState } from './mappers/orderLifecycleDtoMapper';

@@ -10,6 +10,7 @@ import { asyncHandler, createError } from '../middleware/errorHandler';
 import { emitOrderQueueChanged, subscribeOrderQueue } from '../services/orderQueueEvents';
 import { getEffectiveEntitlementMap } from '../../services/tenantEntitlements';
 import { DEFAULT_SERVICE_CHARGE_RATE, DEFAULT_TAX_RATE } from '@pos/core/pricing';
+import { withOrderLifecycleDtoFields } from '@pos/application/orders/mappers/orderLifecycleDtoMapper';
 
 
 function getIdempotencyKey(req: Request, bodyValue?: string): string | undefined {
@@ -43,6 +44,18 @@ async function requirePaymentEntitlement(tenantId: string, entitlementCode: stri
     403,
     'ENTITLEMENT_REQUIRED',
   );
+}
+
+
+async function attachLifecycleFields(orders: any[], tenantId: string): Promise<any[]> {
+  if (orders.length === 0) return orders;
+  const lockStates = await container.orderRepository.getEditLockStates?.(orders.map((order) => order.id), tenantId);
+  return orders.map((order) => withOrderLifecycleDtoFields(order, lockStates?.[order.id]));
+}
+
+async function attachLifecycleField(order: any, tenantId: string): Promise<any> {
+  const lockState = await container.orderRepository.getEditLockState?.(order.id, tenantId);
+  return withOrderLifecycleDtoFields(order, lockState);
 }
 
 function estimateCreateAndPayTotal(input: {
@@ -350,7 +363,7 @@ export const listOrders = asyncHandler(async (req: Request, res: Response) => {
   res.status(200).json({
     success: true,
     data: {
-      orders,
+      orders: await attachLifecycleFields(orders, tenantId),
       pagination: {
         page: page!,
         limit: limit!,
@@ -381,7 +394,7 @@ export const getOrderById = asyncHandler(async (req: Request, res: Response) => 
 
   res.status(200).json({
     success: true,
-    data: order,
+    data: await attachLifecycleField(order, tenantId),
   });
 });
 
@@ -697,7 +710,7 @@ export const listOpenOrders = asyncHandler(async (req: Request, res: Response) =
   res.status(200).json({
     success: true,
     data: {
-      orders: result.orders,
+      orders: (await attachLifecycleFields(result.orders, tenantId)).filter((order) => order.lifecycleKind === 'server_draft' || order.lifecycleKind === 'active_order' || order.lifecycleKind === 'active_kitchen_order'),
     },
   });
 });
@@ -749,7 +762,7 @@ export const listOrderHistory = asyncHandler(async (req: Request, res: Response)
   res.status(200).json({
     success: true,
     data: {
-      orders: result.orders,
+      orders: await attachLifecycleFields(result.orders, tenantId),
       pagination: result.pagination,
     },
   });
