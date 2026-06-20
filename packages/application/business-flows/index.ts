@@ -3,3 +3,4 @@ export * from "./policies/CanPerformOrderAction";
 export * from "./policies/ResolveAllowedOrderActions";
 
 export * from "./resolveBusinessProfile";
+export * from "./resolveBusinessCapabilities";

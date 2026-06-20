@@ -35,8 +35,8 @@ export type EntitlementTenant = {
   business_type: string;
   businessProfile?: BusinessFlowProfileId | null;
   business_profile?: BusinessFlowProfileId | null;
-  businessProfileSource?: "business_type_mapping" | "explicit_field" | "unknown";
-  business_profile_source?: "business_type_mapping" | "explicit_field" | "unknown";
+  businessProfileSource?: "business_type_mapping" | "core_fallback";
+  business_profile_source?: "business_type_mapping" | "core_fallback";
   planTier: string;
   plan_tier: string;
   subscription_status?: string;
@@ -88,8 +88,8 @@ async function fetchEntitlements(tenantId: string): Promise<EntitlementProfile> 
           business_type: "",
           businessProfile: null,
           business_profile: null,
-          businessProfileSource: "unknown",
-          business_profile_source: "unknown",
+          businessProfileSource: "core_fallback",
+          business_profile_source: "core_fallback",
           planTier: "",
           plan_tier: "",
         },

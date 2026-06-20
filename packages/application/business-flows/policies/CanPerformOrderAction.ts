@@ -76,8 +76,7 @@ export function CanPerformOrderAction(input: CanPerformOrderActionInput): OrderA
 
   switch (input.action) {
     case "CREATE_AND_PAY":
-      if (["retail_standard", "cafe_counter", "quick_service"].includes(input.businessProfile)) return allowed();
-      if (input.businessProfile === "restaurant_table_service" && profile.supportsPayFirstVariant) return allowed();
+      if (["retail_standard", "food_beverage", "service", "core_standard"].includes(input.businessProfile)) return allowed();
       return denied("ACTION_NOT_SUPPORTED_BY_PROFILE", "Create-and-pay is not a default action for this profile.");
     case "SAVE_DRAFT":
       return allowed();
@@ -94,7 +93,7 @@ export function CanPerformOrderAction(input: CanPerformOrderActionInput): OrderA
       if (input.paymentStatus === "unpaid" || input.paymentStatus === "partial") return allowed();
       return denied("ORDER_ALREADY_PAID", "Active order payment is allowed only for unpaid or partially paid orders.");
     case "ADD_ITEM_TO_ACTIVE_ORDER":
-      if (input.businessProfile === "restaurant_table_service") return allowed();
+      if (input.businessProfile === "food_beverage") return allowed();
       return denied("ACTION_NOT_SUPPORTED_BY_PROFILE", "Adding items to active orders is not supported by this profile.");
     case "CANCEL_DRAFT":
       if (input.isLocalDraft || input.orderOperationalStatus === "draft") return allowed();

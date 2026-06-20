@@ -8809,3 +8809,130 @@ Implement explicit `restaurant_table_service` POS adapter, remove the old mixed 
 
 ### Continuation Notes
 Next safest work: implement backend/application `AppendRestaurantOrderItems` / additional kitchen ticket flow, then expose an explicit restaurant add-on cart. Do not use generic `PATCH /orders/:id` to overwrite fired kitchen items.
+
+## Plan: P5.1 Business Type vs Entitlement Model Correction
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P5_1_business_type_entitlement_model_correction_prompt.md`
+- User request: Analisa mendalam, pahami/pelajari, tambahkan report jika ada ketidaksesuaian, lalu eksekusi roadmap P5.1.
+- Date started: 2026-06-20
+- Current status: Implemented baseline correction; dedicated food/service wrappers deferred.
+
+### Goal
+Correct business type routing so all valid tenants get core POS checkout while paid operational modes remain entitlement/capability gated.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs (`roadmap/business-flows/main.md`, P4/P5 reports, entitlement docs by search)
+- [x] Relevant source files
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: Tenant profile `businessProfile` contract.
+- Files inspected: `apps/api/src/http/controllers/TenantsController.ts`, `packages/application/business-flows/resolveBusinessProfile.ts`.
+- Findings: API could keep `businessProfile` compatibility while changing values to baseline profiles.
+- Tasks: Correct resolver and profile source values.
+- Risks: Older clients expecting old workflow IDs need migration.
+- Validation: application/api type-check planned/attempted.
+
+#### Database/Schema Workstream
+- Scope: Business type SOT.
+- Files inspected: `packages/application/entitlements/entitlementCatalog.ts`, migration/docs search findings.
+- Findings: Active SOT business types are `CAFE_RESTAURANT`, `RETAIL_MINIMARKET`, `LAUNDRY`, `SERVICE_APPOINTMENT`, `DIGITAL_PPOB`.
+- Tasks: No schema change required.
+- Risks: Live DB with non-SOT aliases will use defensive resolver aliases/core fallback.
+- Validation: Not applicable beyond type checks.
+
+#### Frontend/UI Workstream
+- Scope: POS root routing.
+- Files inspected: POS flow root, retail, restaurant, unsupported flow files.
+- Findings: Root previously routed non-retail/restaurant profiles to unsupported.
+- Tasks: Route baseline profile/null fallback to `CoreStandardPOSFlow` instead of unsupported.
+- Risks: Dedicated food/service UX wrappers still deferred.
+- Validation: terminal-web type-check and root resolver tests.
+
+#### Tests/Validation Workstream
+- Scope: Resolver/capability/routing tests.
+- Findings: Existing application test script only runs resolver test among business-flow tests.
+- Tasks: Add resolver coverage for all SOT codes and capability resolver tests; update root routing tests.
+- Risks: Full test suite may include unrelated pre-existing failures; run relevant validations first.
+- Validation: `pnpm --filter @pos/application test`, type-checks.
+
+#### Documentation Workstream
+- Scope: P5.1 report and roadmap status.
+- Files changed: `roadmap/business-flows/P5_1_business_type_entitlement_model_correction_report.md`, `roadmap/business-flows/main.md`, `PLANS.md`.
+- Findings: Historical docs still mention old profile model; report calls out deferred cleanup.
+- Validation: Documentation updated honestly.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Ensure no plan/entitlement absence blocks core checkout and no tenant hardcoding.
+- Findings: No DB mutation or tenant data access changes beyond existing tenant profile query.
+- Tasks: Keep resolver pure; no tenant IDs hardcoded.
+- Risks: None introduced.
+- Validation: Type-check.
+
+### Execution Order
+1. Audited business type SOT and current profile/routing implementation.
+2. Replaced workflow-mode profile IDs with baseline family profile IDs.
+3. Added entitlement capability resolver.
+4. Updated POS root routing to core baseline fallback.
+5. Updated tests and documentation/report.
+6. Ran validation.
+
+### Progress
+#### Completed
+- [x] All SOT business types audited and mapped.
+  - Files changed: `roadmap/business-flows/P5_1_business_type_entitlement_model_correction_report.md`
+  - Validation: search + report table.
+  - Docs updated: P5.1 report.
+- [x] Business type no longer maps to paid operational mode by default.
+  - Files changed: `packages/application/business-flows/resolveBusinessProfile.ts`, `packages/domain/business-flows/*`.
+  - Validation: `pnpm --filter @pos/application test`; type-checks.
+  - Docs updated: P5.1 report, main roadmap.
+- [x] POS root routes known/unknown profiles to a core-compatible baseline instead of unsupported.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-flows/root/*`.
+  - Validation: terminal-web type-check.
+  - Docs updated: P5.1 report.
+- [x] Optional capabilities separated from profile mapping.
+  - Files changed: `packages/application/business-flows/resolveBusinessCapabilities.ts`.
+  - Validation: application type-check.
+  - Docs updated: P5.1 report.
+
+#### Partially Completed
+- [ ] Dedicated `FoodBeveragePOSFlow` / `ServiceCorePOSFlow` folders.
+  - Completed: POS root guarantees checkout through `CoreStandardPOSFlow` for all non-retail baselines.
+  - Remaining: Create dedicated food/service wrappers, optional panels, and UI tests.
+  - Reason: Safe baseline correction prioritized; larger UI split deferred.
+
+#### Blocked
+- [ ] Manual browser smoke.
+  - Blocker: Non-interactive batch did not launch/browser-test a tenant registration/payment flow.
+  - Required next step: Run browser smoke for cafe/retail/quick/service tenants.
+
+#### Not Attempted
+- [ ] Historical roadmap/docs full rewrite.
+  - Reason: Avoided large unrelated doc churn; report notes old historical references.
+
+### Validation Log
+- Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Notes: Application test script includes resolver coverage.
+- Command: `pnpm --filter @pos/domain type-check && pnpm --filter @pos/application type-check && pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: Initial application type-check caught a resolver typing issue; fixed and reran successfully.
+
+### Documentation Updates
+- File: `roadmap/business-flows/P5_1_business_type_entitlement_model_correction_report.md`
+- Change: Added required P5.1 report with mapping, proof, validation, risks, next phase.
+- File: `roadmap/business-flows/main.md`
+- Change: Added P5.1 status section.
+
+### Checklist Updates
+- File: `roadmap/business-flows/replit_codex_P5_1_business_type_entitlement_model_correction_prompt.md`
+- Change: Source prompt left unchanged as immutable execution source; completion status recorded in report/PLANS.
+
+### Continuation Notes
+Next safest task: create explicit `FoodBeveragePOSFlow` and `ServiceCorePOSFlow` wrappers using existing POS core components, then gate optional table/kitchen/KDS panels with `resolveBusinessCapabilities()` and add component tests.

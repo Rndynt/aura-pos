@@ -655,3 +655,13 @@ Date: 2026-06-20
 - Cafe/quick/service/unknown profiles now route to `UnsupportedPOSFlow` instead of the old mixed generic fallback.
 - Deleted `GenericPOSPage` and old frontend POS service/mapper compatibility re-export shims.
 - See `roadmap/business-flows/P5_restaurant_table_service_full_refactor_report.md` for proof, validation, risks, and next phase.
+
+## P5.1 Status — Business Type vs Entitlement Model Correction
+
+Date: 2026-06-20
+
+- Corrected the P4.1/P5 model: `businessProfile` now represents a baseline POS business family (`retail_standard`, `food_beverage`, `service`, `core_standard`), not a paid operational workflow mode.
+- Registered business types from the entitlement SOT map to a core checkout-capable baseline: `CAFE_RESTAURANT -> food_beverage`, `RETAIL_MINIMARKET -> retail_standard`, `LAUNDRY -> service`, `SERVICE_APPOINTMENT -> service`, and `DIGITAL_PPOB -> core_standard`.
+- Unknown or missing business type now falls back to `core_standard` instead of `UnsupportedPOSFlow`.
+- Table service, kitchen/KDS, order queue, split bill, partial payment, and multi-payment remain entitlement-controlled capabilities, not routing profiles or business-type upgrades.
+- See `roadmap/business-flows/P5_1_business_type_entitlement_model_correction_report.md` for the audit table, mapping proof, validation output, and remaining risks.
