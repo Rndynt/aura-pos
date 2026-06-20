@@ -473,18 +473,18 @@ If frontend-specific tests exist, run them too. If scripts differ, run nearest a
 
 ## Completion checklist
 
-- [ ] `pos-core` folder created.
-- [ ] Pure POS lifecycle/payment amount/mappers moved or centralized.
-- [ ] POSPage imports reusable core modules instead of owning all logic inline.
-- [ ] Stock guard extracted.
-- [ ] Receipt/printer orchestration extracted or wrapped.
-- [ ] CFD/customer display orchestration extracted or wrapped.
-- [ ] Draft/active lifecycle sheet wrapper created or current sheet safely re-exported.
-- [ ] P2.1 behavior preserved.
-- [ ] No schema/migration change.
-- [ ] No business-flow adapter split yet.
-- [ ] Tests/validation documented.
-- [ ] P3 report created.
+- [x] `pos-core` folder created.
+- [x] Pure POS lifecycle/payment amount/mappers moved or centralized.
+- [x] POSPage imports reusable core modules instead of owning all logic inline.
+- [x] Stock guard extracted.
+- [x] Receipt/printer orchestration extracted or wrapped.
+- [x] CFD/customer display orchestration extracted or wrapped.
+- [x] Draft/active lifecycle sheet wrapper created or current sheet safely re-exported.
+- [x] P2.1 behavior preserved.
+- [x] No schema/migration change.
+- [x] No business-flow adapter split yet.
+- [x] Tests/validation documented.
+- [x] P3 report created.
 
 ## Commit
 

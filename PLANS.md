@@ -8290,3 +8290,180 @@ Close remaining P2 lifecycle gaps with server lifecycle DTO fields, frontend ser
 
 ### Continuation Notes
 Next agent should run browser smoke against a seeded tenant and add API/component integration tests for `/api/orders/open`, `/api/orders/:id`, and `CombinedDraftSheet` when a harness is available.
+
+## Plan: P3 POS Core Extraction
+
+### Source
+
+- Tasklist: `roadmap/business-flows/replit_codex_P3_pos_core_extraction_prompt.md`
+- User request: Analisa mendalam, pahami dan pelajari, tambahkan report bila ada yang tidak sesuai, eksekusi roadmap P3 POS core extraction.
+- Date started: 2026-06-20
+- Current status: Implemented and validated; manual browser smoke not run in terminal-only environment.
+
+### Goal
+
+Extract reusable POS core modules from the current POS runtime without changing P2/P2.1 behavior, backend order/payment semantics, schema/migrations, public routes, entitlement semantics, or introducing business-flow adapters.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs (`roadmap/business-flows/P2_1_lifecycle_hardening_patch_report.md`)
+- [x] Relevant source files listed in the P3 prompt
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: Confirm no backend/API behavior changes were needed.
+- Files inspected: `apps/pos-terminal-web/src/lib/api/hooks.ts`, `apps/pos-terminal-web/src/lib/api/tableHooks.ts`, P2.1 report references.
+- Findings: P3 is frontend POS core extraction only; backend lifecycle/payment behavior remains unchanged.
+- Tasks: None changed.
+- Risks: Browser smoke still required to confirm integration behavior end-to-end.
+- Validation: `pnpm --filter @pos/api type-check`, `pnpm --filter @pos/api test`, `pnpm type-check` passed.
+
+#### Database/Schema Workstream
+
+- Scope: Ensure no schema/migration change.
+- Files inspected: P3 prompt and existing frontend-only extraction targets.
+- Findings: No database changes required or made.
+- Tasks: None changed.
+- Risks: None for schema.
+- Validation: No migration generated; type-check/test suite passed.
+
+#### Frontend/UI Workstream
+
+- Scope: Extract POS core modules and slim `POSPage.tsx` while preserving current UI components.
+- Files inspected: `POSPage.tsx`, POS components, dialogs, hooks, services, mappers.
+- Findings: Existing page had inline stock guards and active-order payment amount setup suitable for extraction.
+- Tasks: Created `features/pos-core` components/hooks/services/mappers and updated POSPage to consume core facades.
+- Risks: Manual browser smoke still not run.
+- Validation: `pnpm --filter @pos/terminal-web type-check` and `pnpm --filter @pos/terminal-web test` passed.
+
+#### Tests/Validation Workstream
+
+- Scope: Add pure tests and run requested validation commands.
+- Files inspected: package scripts and existing test patterns.
+- Findings: Terminal web had no test script, so a lightweight `tsx` script was added for pure POS core service tests.
+- Tasks: Added `posPaymentAmountService` and `posLifecycleService` tests.
+- Risks: No component test harness exists for lifecycle sheet smoke.
+- Validation: All requested commands passed.
+
+#### Documentation Workstream
+
+- Scope: Create P3 report, update roadmap checklist, record plan.
+- Files inspected: P3 prompt, P2.1 report, PLANS.
+- Findings: Needed report plus honest manual smoke not-run statement.
+- Tasks: Created `P3_pos_core_extraction_report.md`, updated prompt completion checklist, appended this plan.
+- Risks: None.
+- Validation: Documentation updated after code validation.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Ensure no cross-tenant or server-only import violations.
+- Files inspected: POS core imports and shims.
+- Findings: POS core imports are frontend-safe and do not import API/infrastructure/schema/Drizzle/Express server files.
+- Tasks: No tenant resolution behavior changed.
+- Risks: Existing frontend `getActiveTenantId` usage in printer/offline paths remains as before.
+- Validation: Type-checks and tests passed.
+
+### Execution Order
+
+1. Read required context and tasklist.
+2. Extract pure mappers/services into POS core with compatibility shims.
+3. Add payment amount service and tests.
+4. Extract stock guard and active-order payment controller.
+5. Add receipt/printer/CFD/offline/component facades.
+6. Update POSPage imports and callbacks.
+7. Validate, fix amount-reader edge case, revalidate.
+8. Update report, checklist, and PLANS.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Create `pos-core` folder and index facade.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-core/**`
+  - Validation: `pnpm --filter @pos/terminal-web type-check`, `pnpm --filter @pos/terminal-web test`
+  - Docs updated: `roadmap/business-flows/P3_pos_core_extraction_report.md`
+- [x] Task: Move/centralize lifecycle, payment amount, mappers, order/printer services with compatibility shims.
+  - Files changed: `features/pos-core/services/*`, `features/pos-core/mappers/*`, `features/pos/services/*`, `features/pos/mappers/*`
+  - Validation: Pure service tests and type-check passed.
+  - Docs updated: P3 report compatibility section.
+- [x] Task: Extract stock guard and active-order payment controller.
+  - Files changed: `usePOSStockGuard.ts`, `usePOSActiveOrderPayment.ts`, `POSPage.tsx`
+  - Validation: Terminal web type-check passed.
+  - Docs updated: P3 behavior matrix.
+- [x] Task: Wrap receipt/printer, CFD, offline submit, payment dialog, lifecycle sheet, product/cart facades.
+  - Files changed: `features/pos-core/hooks/*`, `features/pos-core/components/*`
+  - Validation: Terminal web type-check passed.
+  - Docs updated: P3 extracted modules table.
+- [x] Task: Add tests and run validation.
+  - Files changed: terminal web test files and package script.
+  - Validation: All requested commands passed.
+  - Docs updated: P3 report validation section.
+
+#### Partially Completed
+
+- [ ] Task: Browser smoke checklist.
+  - Completed: Manual checklist documented.
+  - Remaining: Execute in an actual browser with seeded tenant/device/printer/CFD setup.
+  - Reason: Terminal-only non-interactive environment.
+
+#### Blocked
+
+- [ ] Task: Component tests for `POSOrderLifecycleSheet`.
+  - Blocker: No frontend component test harness configured.
+  - Required next step: Add/standardize a React component testing harness before implementing UI assertions.
+
+#### Not Attempted
+
+- [ ] Task: P4/P5/P6 business-flow adapter split.
+  - Reason: Explicitly forbidden in P3.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: pass
+- Notes: Added pure POS core service tests.
+- Command: `pnpm --filter @pos/domain type-check`
+- Result: pass
+- Notes: Domain unchanged.
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: Application unchanged.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: API unchanged.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: POS core extraction type-safe.
+- Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Notes: Existing lifecycle tests passed.
+- Command: `pnpm --filter @pos/api test`
+- Result: pass
+- Notes: Existing API suite passed.
+- Command: `pnpm type-check`
+- Result: pass
+- Notes: Turbo type-check passed for 10 packages.
+
+### Documentation Updates
+
+- File: `roadmap/business-flows/P3_pos_core_extraction_report.md`
+- Change: Added P3 implementation report, behavior matrix, validation output, smoke checklist, risks, and recommended next phase.
+- File: `roadmap/business-flows/replit_codex_P3_pos_core_extraction_prompt.md`
+- Change: Marked completion checklist implemented/validated.
+- File: `PLANS.md`
+- Change: Added this active plan record.
+
+### Checklist Updates
+
+- File: `roadmap/business-flows/replit_codex_P3_pos_core_extraction_prompt.md`
+- Change: All P3 completion checklist entries marked `[x]` based on implementation and validation; manual smoke caveat documented in the P3 report.
+
+### Continuation Notes
+
+Next agent should run browser smoke against a seeded tenant, paired printer (or print queue-only fallback), and CFD-enabled session. After smoke passes, start P4 retail adapter work by consuming `@/features/pos-core` rather than copying POSPage logic.
