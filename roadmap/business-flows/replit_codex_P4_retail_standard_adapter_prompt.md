@@ -485,21 +485,21 @@ Report must include:
 
 ## Completion checklist
 
-- [ ] RetailStandardPOSFlow created.
-- [ ] useRetailStandardPOSFlow created.
-- [ ] retailStandardFlowPolicy created.
-- [ ] Retail flow consumes pos-core modules, not duplicated core logic.
-- [ ] Retail flow hides kitchen/table/pay-later default controls.
-- [ ] Fresh retail payment stays create-and-pay/offline submit.
-- [ ] Retail paid orders do not appear in Draft Server/Pesanan Aktif.
-- [ ] Retail server draft remains explicit and safe.
-- [ ] Retail active/kitchen legacy rows cannot edit/delete through cart.
-- [ ] Payment does not require orders_queue.
-- [ ] Unknown/non-retail profiles remain on current generic POS fallback.
-- [ ] No schema/migration change.
-- [ ] No backend payment behavior change.
-- [ ] Tests/validation documented.
-- [ ] P4 report created.
+- [x] RetailStandardPOSFlow created.
+- [x] useRetailStandardPOSFlow created.
+- [x] retailStandardFlowPolicy created.
+- [x] Retail flow consumes pos-core modules, not duplicated core logic.
+- [x] Retail flow hides kitchen/table/pay-later default controls.
+- [x] Fresh retail payment stays create-and-pay/offline submit.
+- [x] Retail paid orders do not appear in Draft Server/Pesanan Aktif.
+- [x] Retail server draft remains explicit and safe.
+- [x] Retail active/kitchen legacy rows cannot edit/delete through cart.
+- [x] Payment does not require orders_queue.
+- [ ] Unknown/non-retail profiles remain on current generic POS fallback. Partial: retail adapter is exported but not routed because explicit reliable `businessProfile` source is not yet available; existing generic POS remains current production route.
+- [x] No schema/migration change.
+- [x] No backend payment behavior change.
+- [x] Tests/validation documented.
+- [x] P4 report created.
 
 ## Commit
 

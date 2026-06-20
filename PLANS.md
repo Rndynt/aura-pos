@@ -8467,3 +8467,82 @@ Extract reusable POS core modules from the current POS runtime without changing 
 ### Continuation Notes
 
 Next agent should run browser smoke against a seeded tenant, paired printer (or print queue-only fallback), and CFD-enabled session. After smoke passes, start P4 retail adapter work by consuming `@/features/pos-core` rather than copying POSPage logic.
+
+## Plan: P4 Retail Standard POS Flow Adapter
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P4_retail_standard_adapter_prompt.md`
+- User request: Analisa mendalam, pahami dan pelajari, tambahkan report jika tidak sesuai, eksekusi roadmap P4 retail standard adapter.
+- Date started: 2026-06-20
+- Current status: Implemented adapter and policy, not routed to production by default because reliable explicit `businessProfile` resolution is not yet available on the POS page.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active P4 tasklist/checklist
+- [x] Relevant roadmap docs P0/P1/P2/P2.1/P3/main
+- [x] Relevant POS source and pos-core files
+
+### Workstreams
+#### Frontend/UI Workstream
+- Scope: Retail adapter files under `apps/pos-terminal-web/src/features/pos-flows/retail`.
+- Files inspected: POSPage, POSLayout, ProductSection, CartSection, ProductArea, CartPanel, pos-core exports.
+- Findings: Current generic POS runtime remains mixed and can show kitchen/order queue controls depending on entitlements; retail adapter must set kitchen/table/split/pay-later controls off and avoid passing active orders into ProductSection.
+- Tasks: Created retail flow adapter, hook, policy, exports.
+- Risks: Component smoke not run in browser.
+- Validation: `pnpm --filter @pos/terminal-web test`, `pnpm --filter @pos/terminal-web type-check`, domain/application/api type-checks, application/api tests, and root `pnpm type-check` pass.
+
+#### Documentation Workstream
+- Scope: P4 report, tasklist completion status, plan tracking.
+- Files inspected: P4 prompt and prior reports.
+- Findings: Existing tenant `businessType` exists, but explicit business-flow profile (`retail_standard`) is not reliably exposed to POS, so production routing is deferred.
+- Tasks: Created P4 report and updated completion checklist honestly.
+- Risks: Next phase needs explicit profile resolver/API contract before routing.
+- Validation: Markdown update only.
+
+### Progress
+#### Completed
+- [x] Retail adapter files created.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-flows/retail/*`
+  - Validation: terminal-web test and type-check
+  - Docs updated: P4 report
+- [x] Retail policy tests added.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-flows/retail/__tests__/retailStandardFlowPolicy.test.ts`, package test script
+  - Validation: terminal-web test
+  - Docs updated: P4 report
+- [x] Existing POSPage duplicate declarations fixed.
+  - Files changed: `apps/pos-terminal-web/src/features/pos/pages/POSPage.tsx`
+  - Validation: terminal-web type-check
+  - Docs updated: P4 report
+
+#### Partially Completed
+- [ ] Production route gating for `retail_standard`.
+  - Completed: Adapter exported and ready.
+  - Remaining: Add explicit reliable businessProfile source/resolver and route only `retail_standard` tenants.
+  - Reason: Existing POS context exposes tenant business type/profile data inconsistently; P4 forbids guessing from plan/entitlement.
+
+#### Blocked
+- [ ] Browser/manual smoke.
+  - Blocker: Terminal-only environment, no browser session executed.
+  - Required next step: Run listed manual smoke in a browser.
+
+### Validation Log
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: pass
+- Notes: Includes POS core service tests plus retail policy test.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: Confirms new adapter files and repaired POSPage compile.
+- Command: `pnpm --filter @pos/domain type-check && pnpm --filter @pos/application type-check && pnpm --filter @pos/api type-check && pnpm --filter @pos/application test && pnpm --filter @pos/api test && pnpm type-check`
+- Result: pass
+- Notes: Prompt-required domain/application/api and root validation passed.
+
+### Documentation Updates
+- File: `roadmap/business-flows/P4_retail_standard_adapter_report.md`
+- Change: Added implementation report, proof matrix, routing decision, validation output, manual-smoke not-run statement.
+- File: `roadmap/business-flows/replit_codex_P4_retail_standard_adapter_prompt.md`
+- Change: Marked completed checklist items honestly and left route gating/manual smoke incomplete.
+
+### Continuation Notes
+Next safe patch: expose or resolve an explicit POS `businessProfile` from tenant profile/API (for example `retail_standard` derived by a documented backend mapping, not frontend plan/entitlement inference), then introduce a minimal route/root gate so only `retail_standard` tenants render `RetailStandardPOSFlow` while unknown/non-retail tenants stay on generic `POSPage`.
