@@ -9050,3 +9050,147 @@ Continue with P6 implementation from adapter creation.
 
 ### Continuation Notes
 Next safest batch: add React component harness tests and, after manual smoke, progressively mount real F&B optional table/kitchen panels only behind entitlement and runtime safety checks.
+
+## Plan: P6.1 Cashier UI Cleanup
+
+### Source
+- Tasklist: roadmap/business-flows/replit_codex_P6_1_cashier_ui_cleanup_prompt.md
+- User request: Analisa mendalam, pahami dan pelajari, tambahkan temuan di report, eksekusi roadmap P6.1 cashier UI cleanup
+- Date started: 2026-06-20
+- Current status: Completed for automated cleanup; manual browser smoke remains not run in this non-interactive environment
+
+### Goal
+Remove internal/debug entitlement capability panel copy from cashier-facing POS runtime, keep baseline checkout available for food_beverage/service/core/retail, add a regression guard, and document validation honestly.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs/reports (P5.1 and P6 business-flow reports)
+- [x] Relevant source files under apps/pos-terminal-web/src/features/pos-flows and packages/application/business-flows
+
+### Workstreams
+#### Frontend/UI Workstream
+- Scope: Cashier runtime F&B/service POS flow components and exports.
+- Files inspected: FoodBeveragePOSFlow.tsx, ServiceCorePOSFlow.tsx, optional panel files, retail flow view.
+- Findings: Runtime wrapper components are already clean and delegate directly to RetailStandardPOSFlowView; optional panel files remain exported from barrel files and contain forbidden cashier/debug copy.
+- Tasks: Delete unused panel files and remove barrel exports.
+- Risks: Future optional controls still need clean cashier UX when implemented.
+- Validation: terminal-web type-check/test and grep guard.
+
+#### Tests/Validation Workstream
+- Scope: Regression guard for forbidden cashier copy in runtime component files.
+- Files inspected: package test script and existing tsx tests.
+- Findings: Tests are plain tsx scripts; add a source-scanning test scoped to runtime component files.
+- Tasks: Add cashierCopyGuard.test.ts and include it in @pos/terminal-web test script.
+- Risks: Guard scope must exclude docs/reports/tests to avoid false positives.
+- Validation: pnpm --filter @pos/terminal-web test.
+
+#### Documentation Workstream
+- Scope: P6.1 report, roadmap checklist, PLANS.md.
+- Files inspected: active prompt, P5.1 report, P6 report.
+- Findings: P6 report correctly explains why panels existed; P6.1 must supersede runtime panel copy for cashier UX.
+- Tasks: Create P6.1 report and update checklist/progress.
+- Risks: Browser smoke cannot be performed in this non-interactive environment.
+- Validation: documented commands and grep output.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Payment/entitlement model invariants.
+- Files inspected: capability resolver references and flow policies.
+- Findings: No backend/schema/payment changes required; capability resolver must remain for future gated controls.
+- Tasks: Preserve capability resolver logic and avoid changing payment/order engine.
+- Risks: None from this cleanup if runtime checkout remains delegated to existing flow view.
+- Validation: type-check/test and grep for forbidden shims/copy.
+
+### Execution Order
+1. Remove unused panel exports/files.
+2. Add regression guard test and wire it into test script.
+3. Run required validation and cleanup grep checks.
+4. Create report and update roadmap checklist/PLANS.
+5. Commit with required message and create PR record.
+
+### Progress
+#### Completed
+- [x] Task: Removed internal optional panel files/exports, added cashier copy guard, created P6.1 report, and updated checklist.
+  - Files changed: see P6.1 Batch Completion Update below.
+  - Validation: required and additional commands passed.
+  - Docs updated: P6.1 report, active roadmap checklist, PLANS.md.
+
+#### Partially Completed
+- [ ] Task: Manual browser smoke.
+  - Completed: Not started yet.
+  - Remaining: Real browser/tenant smoke.
+  - Reason: Non-interactive environment may not support browser smoke.
+
+#### Blocked
+- [ ] Task: None currently.
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+- [ ] Task: Manual browser smoke.
+  - Reason: Non-interactive environment; use real browser tenant smoke before release.
+
+### Validation Log
+- Command: See P6.1 Batch Completion Update below.
+- Result: pass for automated checks; manual browser smoke not run.
+- Notes:
+
+### Documentation Updates
+- File: `roadmap/business-flows/P6_1_cashier_ui_cleanup_report.md`
+- Change: Created required cleanup report.
+
+### Checklist Updates
+- File: roadmap/business-flows/replit_codex_P6_1_cashier_ui_cleanup_prompt.md
+- Change: Marked completion checklist items complete after validation.
+
+### Continuation Notes
+Automated cleanup is complete; continue with manual browser smoke using real tenant profiles before release.
+
+### P6.1 Batch Completion Update — 2026-06-20
+
+#### Completed
+- [x] Removed unused F&B/service optional panel barrel exports and deleted the unused panel files.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-flows/food-beverage/index.ts`, `apps/pos-terminal-web/src/features/pos-flows/service/index.ts`
+  - Files deleted: `apps/pos-terminal-web/src/features/pos-flows/food-beverage/FoodBeverageOptionalPanels.tsx`, `apps/pos-terminal-web/src/features/pos-flows/service/ServiceOptionalPanels.tsx`
+  - Validation: `pnpm --filter @pos/terminal-web type-check`, `pnpm --filter @pos/terminal-web test`, cleanup grep checks
+  - Docs updated: `roadmap/business-flows/P6_1_cashier_ui_cleanup_report.md`, active prompt checklist
+- [x] Added cashier runtime copy regression guard.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-flows/__tests__/cashierCopyGuard.test.ts`, `apps/pos-terminal-web/package.json`
+  - Validation: `pnpm --filter @pos/terminal-web test`
+  - Docs updated: P6.1 report
+- [x] Confirmed no GenericPOSPage or old compatibility shims were introduced.
+  - Validation: cleanup grep checks
+
+#### Partially Completed
+- [ ] Manual browser smoke.
+  - Completed: Automated type/test/grep validation.
+  - Remaining: Real browser smoke with cafe, retail, service/laundry, and fallback tenants.
+  - Reason: Non-interactive environment.
+
+#### Validation Log
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: terminal-web TypeScript compilation completed successfully.
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: pass
+- Notes: includes new cashier copy guard.
+- Command: `pnpm type-check`
+- Result: pass
+- Notes: Turbo type-check passed for 10 packages.
+- Command: `pnpm --filter @pos/domain type-check && pnpm --filter @pos/application type-check && pnpm --filter @pos/api type-check && pnpm --filter @pos/application test && pnpm --filter @pos/api test`
+- Result: pass
+- Notes: Additional validation passed.
+- Command: cleanup `rg` checks from P6.1 prompt
+- Result: pass
+- Notes: No panel references, no forbidden debug copy in pos-flows, and no forbidden old shim names in terminal-web source.
+
+#### Documentation Updates
+- File: `roadmap/business-flows/P6_1_cashier_ui_cleanup_report.md`
+- Change: Added required P6.1 cleanup report.
+- File: `roadmap/business-flows/replit_codex_P6_1_cashier_ui_cleanup_prompt.md`
+- Change: Marked completion checklist items complete after validation.
+
+#### Continuation Notes
+Next safest batch is browser/manual smoke with real tenant profiles and entitlement combinations, then implement any future paid F&B/service controls as cashier-native controls rather than internal capability panels.

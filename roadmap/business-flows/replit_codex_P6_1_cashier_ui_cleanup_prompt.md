@@ -214,15 +214,15 @@ If browser smoke cannot be run, say so clearly and rely on tests/grep proof.
 
 ## Completion checklist
 
-- [ ] FoodBeverageOptionalPanels removed from runtime.
-- [ ] ServiceOptionalPanels removed from runtime.
-- [ ] Unused internal panel files deleted if safe.
-- [ ] Regression guard/test added.
-- [ ] Core checkout remains available for food_beverage/service/core/retail.
-- [ ] Full payment/cash remains available without orders_queue.
-- [ ] No GenericPOSPage or old compatibility shims reintroduced.
-- [ ] P6.1 report created.
-- [ ] Validation documented.
+- [x] FoodBeverageOptionalPanels removed from runtime.
+- [x] ServiceOptionalPanels removed from runtime.
+- [x] Unused internal panel files deleted if safe.
+- [x] Regression guard/test added.
+- [x] Core checkout remains available for food_beverage/service/core/retail.
+- [x] Full payment/cash remains available without orders_queue.
+- [x] No GenericPOSPage or old compatibility shims reintroduced.
+- [x] P6.1 report created.
+- [x] Validation documented.
 
 ## Commit
 
