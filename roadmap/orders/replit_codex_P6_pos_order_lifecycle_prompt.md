@@ -15,62 +15,108 @@ Current problem: the UI treats every unpaid server order as “Draft”, includi
 - In `POSPage`, if `continueOrderId` exists and payment is not partial, `handleCharge()` calls `handleUpdateContinueOrder()` and returns. That updates the order, clears cart, and sends it back to open orders instead of opening/finishing payment.
 - `Send to Kitchen` creates/updates an order then creates kitchen ticket, but the same order can still show in the current draft sheet as if it were editable.
 
-## Correct lifecycle model
+## Final lifecycle definitions
 
-Use separate concepts:
+Use separate concepts. Do not merge them under one “Draft” label.
 
-- Local Draft: local/offline draft on this device only.
-- Server Draft: server order with `status === 'draft'`, unpaid, not sent to kitchen. Editable.
-- Active Order: unpaid order with `confirmed|preparing|ready|served`. Not a draft.
-- Kitchen Order: active order with kitchen ticket / fulfillment already started. Not editable through normal cart.
-- Paid/Completed Order: closed.
+```txt
+Cart = temporary cashier basket, not a server order yet.
+Local Draft = offline/local draft on this device only.
+Server Draft = server order with status draft, unpaid, not sent to kitchen, editable.
+Active Order = confirmed/preparing/ready/served and unpaid/partial; not a draft.
+Kitchen Order = active order with kitchen ticket or fulfillment started; not editable through normal cart.
+Paid/Completed Order = financially closed order.
+```
 
 Do not call all unpaid server orders “Draft”.
 
-## Required standard POS flow
+## Correct standard POS flow
 
 Without kitchen entitlement and without order queue entitlement:
 
-1. Add items to cart.
-2. Click Bayar.
-3. Create and pay atomically.
-4. Order becomes paid/completed.
-5. It must not return to Draft/Open Orders.
+```txt
+Cart -> Bayar -> create order + record payment atomically -> paid/completed -> clear cart
+```
 
-Optional draft:
+Rules:
 
-- Save Draft creates server draft.
-- Server draft can be continued/edited while still `status === 'draft'`.
-- When a continued server draft is paid, the system must update the draft if needed, then record payment/settle it. It must not only save it back to draft.
+- Must not enter Draft automatically.
+- Must not reappear in open orders after successful payment.
+- Draft is created only when cashier explicitly clicks `Simpan Draft` / `Simpan Order`.
 
-## Required kitchen flow
+Server draft flow:
+
+```txt
+Cart -> Simpan Draft -> Server Draft
+Server Draft -> Lanjut/Edit -> cart
+Server Draft -> Bayar -> update draft if needed -> record payment/settle existing order -> paid/completed
+Server Draft -> Batalkan/Hapus -> cancelled/deleted according to policy
+```
+
+The critical bug to fix: loading a server draft and clicking Bayar must pay it. It must not only update and return it to open orders.
+
+## Correct active order flow without kitchen
+
+For a business that needs running bills but no kitchen:
+
+```txt
+Cart -> Simpan Pesanan / Buka Tagihan -> Active Order unpaid
+Active Order -> Bayar -> paid/completed
+Active Order -> Tambah Item if explicitly supported
+Active Order -> Cancel/Void with reason and permission
+```
+
+This is not a draft. Do not expose normal trash/delete or arbitrary edit unless the order is still draft.
+
+## Correct kitchen flow
 
 With kitchen entitlement:
 
-1. Add items to cart.
-2. Send to Kitchen.
-3. Order becomes active kitchen order.
-4. It must appear under active orders, not editable drafts.
-5. No normal `Lanjut/Edit` for active kitchen orders.
-6. No trash action for active kitchen orders.
-7. Payment must be available through `Bayar` action without loading the order into editable cart.
-8. Adding items to an active kitchen order must be a separate explicit flow, not normal cart edit.
-9. Cancel/void of active kitchen order must use existing order operation permission/policy and require clear reason.
+```txt
+Cart -> Send to Kitchen -> create/update order -> confirmed -> create kitchen ticket -> Active Kitchen Order
+```
+
+Rules:
+
+- Active kitchen order must appear under active orders, not editable drafts.
+- No normal `Lanjut/Edit` for active kitchen orders.
+- No trash action for active kitchen orders.
+- Payment must be available through `Bayar` action/detail without loading into editable cart.
+- If adding items to active kitchen order is needed, it must be a separate explicit `Tambah Item` flow that creates an additional kitchen ticket. Do not silently edit fired kitchen items.
+- Cancellation/void of active kitchen order must use explicit cancel/void policy with reason and permission.
 
 ## Required UI changes
 
-Refactor `CombinedDraftSheet` or replace it with clearer sections:
+Replace `CombinedDraftSheet` semantics with clear sections/tabs:
 
-- `Draft Server`: only `status === 'draft'` and unpaid.
-  - Actions: Lanjut/Edit, Bayar, Batalkan where allowed.
-- `Pesanan Aktif`: unpaid `confirmed|preparing|ready|served`.
-  - Actions: Bayar, Lihat Detail.
-  - No Lanjut/Edit.
-  - No trash action.
-- `Draft Lokal`: local offline drafts only.
-  - Actions: Lanjut, Hapus Lokal.
+```txt
+Draft Server
+Pesanan Aktif
+Draft Lokal
+```
 
-Rename the POS button if needed. If it opens more than drafts, do not label it only `Draft`.
+Action matrix:
+
+```txt
+Draft Server:
+- Lanjut/Edit
+- Bayar
+- Batalkan/Hapus if allowed
+
+Pesanan Aktif:
+- Bayar
+- Lihat Detail
+- Tambah Item only if explicit flow exists
+- Cancel/Void only through permission + reason flow
+- No Lanjut/Edit normal cart load
+- No trash delete
+
+Draft Lokal:
+- Lanjut
+- Hapus Lokal
+```
+
+Rename the POS button if needed. If it opens more than drafts, do not label it only `Draft`. Use `Pesanan`, `Order Aktif`, or `Draft & Pesanan`.
 
 ## Required backend protections
 
@@ -78,34 +124,39 @@ Do not rely on UI only.
 
 - Reject item update for orders that are not `draft`.
 - Reject normal cart edit if kitchen ticket exists or fulfillment started.
-- Active kitchen order cancellation must go through explicit cancel/void policy, not silent trash action.
+- Reject silent delete/trash for active kitchen orders.
+- Active kitchen order cancellation must go through explicit cancel/void policy, reason, and permission.
 - Payment of active unpaid order must not require editable cart load.
 - Errors must be readable to cashier.
 
-## Required POSPage fix
+## Required POSPage fixes
 
 Patch `apps/pos-terminal-web/src/features/pos/pages/POSPage.tsx`:
 
 - `continueOrderId` charge path must not call only `handleUpdateContinueOrder()` and return.
-- For editable server draft: clicking Bayar opens payment flow, updates order if needed, then records payment/settles the existing order.
+- For editable server draft: clicking Bayar opens payment flow, updates draft if needed, then records payment/settles the existing order.
 - For active kitchen order: do not load to cart through normal continue flow. Pay from active-order action/detail.
+- Standard create-and-pay must work even when `restaurant_kitchen_ops` and `orders_queue` are disabled.
 
 ## Entitlement rules
 
 - Standard payment flow must work without `restaurant_kitchen_ops` and without `orders_queue`.
 - `restaurant_kitchen_ops` controls Send to Kitchen/KDS flow.
 - `orders_queue` controls queue display only, not core payment lifecycle.
+- Cancel/void/refund/order operation permissions must use existing SOT/policy, not hardcoded plan names.
 - Do not hardcode plan names.
 
 ## Tests required
 
 - Standard POS without kitchen/order_queue: cart -> bayar -> paid, no draft loop.
 - Server draft: save -> continue/edit -> bayar -> paid, removed from draft list.
+- Active order without kitchen: can be paid without cart edit loop.
 - Kitchen order: send to kitchen -> appears active, not draft.
 - Kitchen order has no Lanjut/Edit and no trash action.
 - Backend rejects item update for confirmed/preparing/ready/served.
 - Backend rejects normal edit when kitchen ticket exists.
 - Active unpaid kitchen order can be paid through Pay action.
+- orders_queue disabled does not break standard payment.
 
 ## Validation
 
@@ -115,6 +166,17 @@ Run:
 - `pnpm --filter @pos/api type-check`
 - `pnpm --filter @pos/terminal-web type-check`
 - `pnpm --filter @pos/api test`
+
+Manual smoke:
+
+```txt
+1. Kitchen disabled, order_queue disabled: cart -> Bayar -> paid, no draft loop.
+2. Save server draft -> Lanjut/Edit -> Bayar -> paid, disappears from Draft Server.
+3. Kitchen enabled: Send to Kitchen -> appears in Pesanan Aktif, not Draft Server.
+4. Active kitchen order has no normal delete/trash.
+5. Active kitchen order cannot be loaded to editable cart through Lanjut.
+6. Active unpaid kitchen order can be paid through Bayar action.
+```
 
 ## Report
 
