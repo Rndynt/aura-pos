@@ -7897,3 +7897,134 @@ Freeze current POS flow via static audit only, without runtime behavior changes,
 
 ### Continuation Notes
 Next batch should implement P1 Business Flow SOT. Do not change runtime lifecycle code until P1 SOT is accepted.
+
+## Plan: P1 Business Flow SOT & Order Action Policy Contract
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P1_business_flow_sot_prompt.md`
+- User request: Analisa mendalam, pahami dan pelajari, tambahkan report jika ada yang tidak sesuai, lalu eksekusi roadmap P1 business flow SOT prompt.
+- Date started: 2026-06-20
+- Current status: Implemented and validated
+
+### Goal
+Create a behavior-neutral Source of Truth for business profiles, business-flow actions, lifecycle vocabulary, registry lookup helpers, and pure order action policy evaluation without changing POS runtime behavior, API controllers, payments, entitlement enforcement, UI routes/components, or database schema.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: No runtime API/controller changes allowed in P1.
+- Files inspected: package manifests and application/domain exports.
+- Findings: New SOT can live in pure packages without API imports.
+- Tasks: None for API runtime.
+- Risks: P2 must map current API order states carefully before enforcement.
+- Validation: `pnpm --filter @pos/application type-check`.
+
+#### Database/Schema Workstream
+- Scope: No schema/migration changes allowed.
+- Files inspected: package structure only; no schema changes needed.
+- Findings: P1 is pure metadata/policy.
+- Tasks: None.
+- Risks: P2 lifecycle mapping may later require schema audit, but P1 does not.
+- Validation: Verified no migration/schema files changed.
+
+#### Frontend/UI Workstream
+- Scope: No POSPage/CombinedDraftSheet/UI runtime changes allowed.
+- Files inspected: Package structure and roadmap constraints.
+- Findings: P1 can export contracts for future UI use without wiring them.
+- Tasks: None for runtime UI.
+- Risks: P2 must avoid changing UI semantics before policy mapping is complete.
+- Validation: Verified no app UI files changed.
+
+#### Tests/Validation Workstream
+- Scope: Pure unit-style tests for registry and policy evaluator.
+- Files inspected: Existing package scripts show only type-check; no package test runner script exists.
+- Findings: Tests added as pure TS files runnable with `pnpm exec tsx`.
+- Tasks: Added registry and policy coverage required by the roadmap.
+- Risks: A future formal test runner can include these tests directly.
+- Validation: Domain/application type-check and both TS test files passed.
+
+#### Documentation Workstream
+- Scope: P1 report and source checklist sync.
+- Files inspected: README, PLANS, roadmap prompt.
+- Findings: Entitlement catalog uses `payments_split_bill`, not `payments_split_payment`.
+- Tasks: Created P1 report and updated completion checklist.
+- Risks: P2 needs runtime mapping documentation when behavior changes.
+- Validation: Report documents validation output and unknowns.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Ensure P1 remains pure and behavior-neutral.
+- Files inspected: Application/domain package imports.
+- Findings: No DB/API/request/session/browser imports added; no tenant data access introduced.
+- Tasks: Kept actions as metadata/pure policy only.
+- Risks: P2 enforcement must validate tenant ownership in runtime mutations.
+- Validation: Type-check passed; changed files are pure packages/docs only.
+
+### Execution Order
+1. Safety/security/data-integrity/tenant-isolation blockers — completed by keeping P1 pure and runtime-neutral.
+2. Build/type/test blockers — completed with package type-checks.
+3. Dependency prerequisites — no new dependencies needed.
+4. Highest priority actionable tasks — implemented domain SOT, registry, policy evaluator, tests.
+5. Lower priority actionable tasks — documented report/unknowns.
+6. Documentation sync — report, checklist, and PLANS updated.
+7. Validation — completed.
+8. Final checklist update — completed.
+
+### Progress
+
+#### Completed
+- [x] Business profile ids, action ids, lifecycle vocabulary, registry, policy evaluator, entitlement metadata, tests, and report.
+  - Files changed: `packages/domain/business-flows/*`, `packages/application/business-flows/*`, package exports, `roadmap/business-flows/P1_business_flow_sot_report.md`, roadmap checklist, `PLANS.md`.
+  - Validation: `pnpm --filter @pos/domain type-check`; `pnpm --filter @pos/application type-check`; two `pnpm exec tsx` pure test files.
+  - Docs updated: P1 report, source checklist, PLANS.
+
+#### Partially Completed
+- [ ] Runtime lifecycle fixes.
+  - Completed: Policy contract/SOT only.
+  - Remaining: P2 runtime mapping and behavior changes.
+  - Reason: Explicitly forbidden in P1.
+
+#### Blocked
+- [ ] None.
+  - Blocker: N/A
+  - Required next step: N/A
+
+#### Not Attempted
+- [ ] POSPage, CombinedDraftSheet, API controller, schema, entitlement runtime, payment/create-and-pay changes.
+  - Reason: Explicitly forbidden by P1 scope boundary.
+
+### Validation Log
+- Command: `pnpm --filter @pos/domain type-check`
+- Result: pass
+- Notes: Domain SOT types compile.
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: Application registry/policies/tests compile.
+- Command: `pnpm exec tsx packages/application/business-flows/__tests__/businessFlowRegistry.test.ts`
+- Result: pass
+- Notes: Profile registration and entitlement metadata assertions passed.
+- Command: `pnpm exec tsx packages/application/business-flows/__tests__/orderActionPolicy.test.ts`
+- Result: pass
+- Notes: Required policy matrix assertions passed.
+
+### Documentation Updates
+- File: `roadmap/business-flows/P1_business_flow_sot_report.md`
+- Change: Added P1 SOT implementation report with tables, policy matrix, validation, and unknowns.
+- File: `roadmap/business-flows/replit_codex_P1_business_flow_sot_prompt.md`
+- Change: Marked completion checklist items as validated.
+- File: `PLANS.md`
+- Change: Added this active plan.
+
+### Checklist Updates
+- File: `roadmap/business-flows/replit_codex_P1_business_flow_sot_prompt.md`
+- Change: Marked all P1 completion checklist items `[x]` after implementation and validation.
+
+### Continuation Notes
+Continue with P2 only after mapping existing runtime order/payment/fulfillment fields to the P1 vocabulary. Do not wire policies into runtime until tenant ownership, auth/RBAC, and payment/order integrity checks are included.
