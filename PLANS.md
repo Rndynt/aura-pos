@@ -7809,3 +7809,91 @@ P2 advanced stock bugfix scope is complete. The prior full-suite entitlement and
 
 ### Continuation Notes
 Next agent should first convert `DrizzleStockMovementRepository` sale/return operations from `products.stock_qty` to `inventory_balances` using explicit outlet context and transaction-safe balance updates, then decompose `stock.tsx` dialogs into responsive drawer/dialog components.
+
+## Plan: P0 Current POS Flow Audit & Freeze
+
+### Source
+- Tasklist: roadmap/business-flows/replit_codex_P0_current_pos_flow_audit_prompt.md
+- User request: Analisa mendalam, pahami dan pelajari, tambahkan report jika ada hal tidak sesuai, eksekusi audit P0.
+- Date started: 2026-06-20
+- Current status: Completed audit-only; implementation intentionally not changed
+
+### Goal
+Freeze current POS flow via static audit only, without runtime behavior changes, and produce `roadmap/business-flows/P0_current_pos_flow_audit.md`.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs: docs/ORDER_LIFECYCLE.md, docs/pos-architecture-analysis.md
+- [x] Relevant source files
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: Orders endpoints/controllers/use cases/repositories.
+- Files inspected: apps/api/src/http/routes/orders.ts; apps/api/src/http/controllers/OrdersController.ts; packages/application/orders/UpdateOrder.ts; packages/application/orders/CreateKitchenTicket.ts; packages/infrastructure/repositories/orders/DrizzleCreateAndPayOrderRepository.ts.
+- Findings: Tenant/outlet guards exist on key mutations, but generic update/cancel endpoints do not distinguish true draft vs active kitchen/open-bill editability at the use-case boundary.
+- Tasks: Mapped endpoint/use-case ownership in report.
+- Risks: Active unpaid/kitchen orders can be treated as editable/cancellable from POS draft UI.
+- Validation: Static inspection only.
+
+#### Frontend/UI Workstream
+- Scope: POS page, draft sheets, product components, offline submit, API hooks.
+- Files inspected: apps/pos-terminal-web/src/features/pos/pages/POSPage.tsx; apps/pos-terminal-web/src/components/pos/CombinedDraftSheet.tsx; apps/pos-terminal-web/src/components/pos/DraftOrdersSheet.tsx; apps/pos-terminal-web/src/components/pos/ProductArea.tsx; apps/pos-terminal-web/src/hooks/useCart.ts; apps/pos-terminal-web/src/hooks/useOfflineOrderSubmit.ts; apps/pos-terminal-web/src/lib/api/hooks.ts; apps/pos-terminal-web/src/lib/api/tableHooks.ts.
+- Findings: `continueOrderId` is a generic cart-edit mode; draft sheets classify unpaid open orders as drafts; Bayar on continued unpaid non-partial order updates rather than pays.
+- Tasks: Mapped user actions, lifecycle, entitlement and UI ownership in report.
+- Risks: Mixed retail/cafe/restaurant/offline flows in one POS orchestration.
+- Validation: Static inspection only.
+
+#### Documentation Workstream
+- Scope: Audit report + checklist + plan sync.
+- Files inspected: roadmap prompt and docs.
+- Findings: P0 report required and created.
+- Tasks: Created P0 report and updated completion checklist honestly.
+- Risks: Audit-only restriction forbids runtime fixes.
+- Validation: No runtime code changed.
+
+### Execution Order
+1. Run required searches.
+2. Inspect relevant source files.
+3. Produce audit report.
+4. Update checklist and PLANS.md.
+5. Commit documentation-only changes.
+
+### Progress
+#### Completed
+- [x] Task: P0 audit report
+  - Files changed: roadmap/business-flows/P0_current_pos_flow_audit.md; roadmap/business-flows/replit_codex_P0_current_pos_flow_audit_prompt.md; PLANS.md
+  - Validation: Static inspection and git diff verification.
+  - Docs updated: P0 report, checklist, plan.
+- [x] Task: Required searches and source inspection
+  - Files changed: roadmap/business-flows/P0_current_pos_flow_audit.md
+  - Validation: Required `rg` searches run.
+  - Docs updated: Search log recorded in report.
+
+#### Partially Completed
+- [ ] Task: Runtime POS lifecycle fixes
+  - Completed: Not attempted by design.
+  - Remaining: P1/P2 implementation after SOT.
+  - Reason: P0 prompt forbids runtime code changes.
+
+### Validation Log
+- Command: `git diff --stat && git diff --check`
+- Result: pass
+- Notes: Audit-only; no full runtime test required.
+
+### Documentation Updates
+- File: roadmap/business-flows/P0_current_pos_flow_audit.md
+- Change: Added full P0 POS flow audit, classifications, risk register, and P1/P2 requirements.
+- File: roadmap/business-flows/replit_codex_P0_current_pos_flow_audit_prompt.md
+- Change: Marked P0 completion checklist complete.
+- File: PLANS.md
+- Change: Recorded completed P0 plan and validation notes.
+
+### Checklist Updates
+- File: roadmap/business-flows/replit_codex_P0_current_pos_flow_audit_prompt.md
+- Change: Marked all P0 audit checklist items `[x]` after report creation and static validation.
+
+### Continuation Notes
+Next batch should implement P1 Business Flow SOT. Do not change runtime lifecycle code until P1 SOT is accepted.

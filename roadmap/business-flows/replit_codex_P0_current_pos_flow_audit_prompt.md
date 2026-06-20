@@ -249,17 +249,17 @@ No behavior changed.
 
 ## Completion checklist
 
-- [ ] POS action map completed.
-- [ ] Order lifecycle map completed.
-- [ ] Entitlement map completed.
-- [ ] UI ownership map completed.
-- [ ] Backend ownership map completed.
-- [ ] Draft/open/kitchen problem documented.
-- [ ] Standard retail flow problem documented.
-- [ ] Restaurant/kitchen safety risks documented.
-- [ ] P1 SOT requirements listed.
-- [ ] P2 lifecycle fix requirements listed.
-- [ ] No runtime code changed.
+- [x] POS action map completed.
+- [x] Order lifecycle map completed.
+- [x] Entitlement map completed.
+- [x] UI ownership map completed.
+- [x] Backend ownership map completed.
+- [x] Draft/open/kitchen problem documented.
+- [x] Standard retail flow problem documented.
+- [x] Restaurant/kitchen safety risks documented.
+- [x] P1 SOT requirements listed.
+- [x] P2 lifecycle fix requirements listed.
+- [x] No runtime code changed.
 
 ## Commit
 
