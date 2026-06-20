@@ -8687,3 +8687,125 @@ Add explicit business-profile resolution from tenant business type, expose it th
 
 ### Continuation Notes
 Next safe patch: build P5 restaurant table-service adapter using the now-explicit `restaurant_table_service` profile, but keep generic fallback until the adapter has lifecycle/kitchen/payment tests and browser smoke proof.
+
+## Plan: P5 Restaurant Table Service Full Refactor
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P5_restaurant_table_service_full_refactor_prompt.md`
+- User request: Analisa mendalam, pahami/pelajari, tambahkan report jika ada yang tidak sesuai, dan eksekusi roadmap P5.
+- Date started: 2026-06-20
+- Current status: Implemented with terminal validation; browser smoke not run.
+
+### Goal
+Implement explicit `restaurant_table_service` POS adapter, remove the old mixed `GenericPOSPage` runtime fallback, route unsupported profiles to an explicit unsupported flow, migrate imports away from old POS compatibility shims, and document validation/risks honestly.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs/roadmap reports P0-P4.1
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: Reuse existing create-order, kitchen-ticket, record-payment, table/open-orders APIs.
+- Files inspected: `apps/api/src/http/routes/orders.ts`, `apps/api/src/http/controllers/OrdersController.ts`, `apps/api/src/http/routes/tables.ts`, `packages/application/orders/*`.
+- Findings: Existing APIs are sufficient for P5 create unpaid active order + kitchen ticket + record payment on existing order. Dedicated append-items endpoint is absent.
+- Tasks: No backend code changes in P5.
+- Risks: Add-on items to active kitchen orders should remain hidden until `AppendRestaurantOrderItems` / additional kitchen-ticket use case exists.
+- Validation: API type-check/test run in final validation.
+
+#### Frontend/UI Workstream
+- Scope: Restaurant adapter, table context panel, active order lifecycle/payment panel, unsupported flow, root routing.
+- Files inspected: POS core components/hooks/mappers/services, retail adapter, root routing, table hooks, generic POS reference.
+- Findings: Restaurant flow could reuse POS core but needed explicit policy and send-to-kitchen ownership.
+- Tasks: Implemented adapter and explicit unsupported route.
+- Risks: Browser smoke not run in terminal-only batch.
+- Validation: terminal-web type-check/test passed.
+
+#### Tests/Validation Workstream
+- Scope: Pure policy/helper and root routing tests.
+- Findings: Existing terminal-web script uses node:test/tsx pure tests.
+- Tasks: Added restaurant policy/helper tests and updated root routing test.
+- Risks: Component tests still deferred.
+- Validation: `pnpm --filter @pos/terminal-web test` passed.
+
+#### Documentation Workstream
+- Scope: P5 report, roadmap prompt checklist, main roadmap, PLANS.
+- Tasks: Created P5 report, checked off prompt completion checklist, appended roadmap status, updated plan.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Ensure no hardcoded tenant, use existing tenant-aware hooks/API, no orders_queue payment requirement.
+- Findings: Table/open order/order mutations go through existing tenant-aware hooks and credentials/header helpers.
+- Risks: None newly introduced in backend; frontend still relies on existing API guards for enforcement.
+
+### Execution Order
+1. Read task and dependencies.
+2. Inspect existing POS core, retail adapter, root routing, table/kitchen/order APIs.
+3. Implement restaurant adapter/policy/panels and unsupported flow.
+4. Update root routing and tests.
+5. Migrate/delete compatibility shims and generic fallback.
+6. Update docs/checklist/report/PLANS.
+7. Run validation.
+
+### Progress
+
+#### Completed
+- [x] Restaurant table-service adapter and policy implemented.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-flows/restaurant/*`
+  - Validation: `pnpm --filter @pos/terminal-web type-check`, `pnpm --filter @pos/terminal-web test`
+  - Docs updated: P5 report
+- [x] Unsupported profile routing implemented.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-flows/unsupported/*`, root routing files
+  - Validation: root routing tests
+  - Docs updated: P5 report
+- [x] Mixed generic POS runtime path removed.
+  - Files changed/deleted: deleted `GenericPOSPage.tsx`; POS root no longer imports it
+  - Validation: `rg` import/dead-code check and type-check
+  - Docs updated: P5 report
+- [x] POS compatibility shims removed.
+  - Files changed/deleted: deleted `features/pos/services/*` and `features/pos/mappers/*`; migrated imports to `features/pos-core`
+  - Validation: `rg` import/dead-code check and type-check
+  - Docs updated: P5 report
+
+#### Partially Completed
+- [ ] Browser/component smoke coverage.
+  - Completed: Pure tests and type-check.
+  - Remaining: Browser validation of restaurant send-to-kitchen/payment UX.
+  - Reason: Terminal-only environment.
+
+#### Blocked
+- [ ] Add items to existing active restaurant kitchen order.
+  - Blocker: No dedicated safe append-items/new-kitchen-ticket backend use case in current code; using generic PATCH would violate fired-item locks.
+  - Required next step: Implement `AppendRestaurantOrderItems` / `CreateAdditionalKitchenTicket` backend/application use case.
+
+#### Not Attempted
+- [ ] Cafe/quick/service-business adapters.
+  - Reason: P5 scope routes these to explicit unsupported flow; dedicated adapters are future phases.
+
+### Validation Log
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: Restaurant adapter/root routing compile.
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: pass
+- Notes: Root routing and restaurant policy/helper tests included.
+- Command: `rg -n "GenericPOSPage|features/pos/services|features/pos/mappers|compatibility shim|legacy" apps/pos-terminal-web/src packages apps/api/src`
+- Result: pass for removed active POS generic/shim references; remaining `legacy` word hits are unrelated comments/tests or warning copy.
+
+### Documentation Updates
+- File: `roadmap/business-flows/P5_restaurant_table_service_full_refactor_report.md`
+- Change: New P5 implementation report.
+- File: `roadmap/business-flows/main.md`
+- Change: Added P5 status section.
+- File: `roadmap/business-flows/replit_codex_P5_restaurant_table_service_full_refactor_prompt.md`
+- Change: Completion checklist checked honestly.
+
+### Checklist Updates
+- File: `roadmap/business-flows/replit_codex_P5_restaurant_table_service_full_refactor_prompt.md`
+- Change: P5 completion checklist marked complete for implemented/validated items.
+
+### Continuation Notes
+Next safest work: implement backend/application `AppendRestaurantOrderItems` / additional kitchen ticket flow, then expose an explicit restaurant add-on cart. Do not use generic `PATCH /orders/:id` to overwrite fired kitchen items.

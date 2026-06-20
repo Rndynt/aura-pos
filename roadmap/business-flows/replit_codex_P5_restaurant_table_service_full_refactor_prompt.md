@@ -521,24 +521,24 @@ Document exact findings.
 
 ## Completion checklist
 
-- [ ] RestaurantTableServicePOSFlow created.
-- [ ] useRestaurantTableServicePOSFlow created.
-- [ ] restaurantTableServiceFlowPolicy created.
-- [ ] Restaurant table/context panel created or existing table UI integrated.
-- [ ] Restaurant active order/lifecycle panel created or safely composed.
-- [ ] Send to Kitchen path owned by restaurant adapter.
-- [ ] Restaurant active/kitchen orders cannot enter editable cart.
-- [ ] Restaurant payment uses existing active order and remaining amount resolver.
-- [ ] Retail flow still works.
-- [ ] POS root routes retail -> retail adapter.
-- [ ] POS root routes restaurant_table_service -> restaurant adapter.
-- [ ] POS root routes unimplemented profiles -> UnsupportedPOSFlow.
-- [ ] Generic mixed POS fallback removed from active runtime.
-- [ ] Old compatibility shims/imports removed or blockers documented.
-- [ ] No orders_queue payment requirement added.
-- [ ] No plan/entitlement inference added.
-- [ ] Tests/validation documented.
-- [ ] P5 report created.
+- [x] RestaurantTableServicePOSFlow created.
+- [x] useRestaurantTableServicePOSFlow created.
+- [x] restaurantTableServiceFlowPolicy created.
+- [x] Restaurant table/context panel created or existing table UI integrated.
+- [x] Restaurant active order/lifecycle panel created or safely composed.
+- [x] Send to Kitchen path owned by restaurant adapter.
+- [x] Restaurant active/kitchen orders cannot enter editable cart.
+- [x] Restaurant payment uses existing active order and remaining amount resolver.
+- [x] Retail flow still works.
+- [x] POS root routes retail -> retail adapter.
+- [x] POS root routes restaurant_table_service -> restaurant adapter.
+- [x] POS root routes unimplemented profiles -> UnsupportedPOSFlow.
+- [x] Generic mixed POS fallback removed from active runtime.
+- [x] Old compatibility shims/imports removed or blockers documented.
+- [x] No orders_queue payment requirement added.
+- [x] No plan/entitlement inference added.
+- [x] Tests/validation documented.
+- [x] P5 report created.
 
 ## Commit
 

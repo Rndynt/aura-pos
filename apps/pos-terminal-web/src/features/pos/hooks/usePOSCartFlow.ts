@@ -1,5 +1,5 @@
-import { cartToOrderPayload } from "../mappers/cartToOrderPayload";
-import { getProductsById } from "../mappers/orderToCart";
+import { cartToOrderPayload } from "../../pos-core";
+import { getProductsById } from "../../pos-core";
 
 export function usePOSCartFlow() {
   return { cartToOrderPayload, getProductsById };

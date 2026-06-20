@@ -1,4 +1,4 @@
-import { enqueueReceiptPrintJob, hasPairedReceiptPrinter, markReceiptPrintFailed, printReceiptNow } from "../services/posPrinterService";
+import { enqueueReceiptPrintJob, hasPairedReceiptPrinter, markReceiptPrintFailed, printReceiptNow } from "../../pos-core";
 
 export function usePOSReceiptFlow() {
   return {

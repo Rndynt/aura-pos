@@ -645,3 +645,13 @@ refund/void/cancel primitives
 ```
 
 Business-specific behavior is isolated in business-flow adapters and UI flow modules, not scattered across the codebase.
+
+## P5 Status — Restaurant Table Service Adapter + Legacy Mixed POS Cleanup
+
+Date: 2026-06-20
+
+- Implemented explicit `restaurant_table_service` frontend adapter.
+- POS root now routes retail and restaurant profiles to explicit adapters.
+- Cafe/quick/service/unknown profiles now route to `UnsupportedPOSFlow` instead of the old mixed generic fallback.
+- Deleted `GenericPOSPage` and old frontend POS service/mapper compatibility re-export shims.
+- See `roadmap/business-flows/P5_restaurant_table_service_full_refactor_report.md` for proof, validation, risks, and next phase.

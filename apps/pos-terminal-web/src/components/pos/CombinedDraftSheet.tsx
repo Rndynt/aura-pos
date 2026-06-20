@@ -40,7 +40,7 @@ import {
   isActivePOSOrder,
   isTrueServerDraft,
   type POSLifecycleOrder,
-} from "@/features/pos/services/orderLifecycle";
+} from "@/features/pos-core";
 
 interface CombinedDraftSheetProps {
   open: boolean;

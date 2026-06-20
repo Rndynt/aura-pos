@@ -3,19 +3,19 @@ import { describe, it } from "node:test";
 import { resolvePOSFlowComponent } from "../resolvePOSFlowComponent";
 
 describe("resolvePOSFlowComponent", () => {
-  it("selects retail flow only for retail_standard", () => {
+  it("routes supported profiles to explicit adapters", () => {
     assert.equal(resolvePOSFlowComponent("retail_standard"), "retail_standard");
+    assert.equal(resolvePOSFlowComponent("restaurant_table_service"), "restaurant_table_service");
   });
 
-  it("keeps non-retail profiles on generic fallback", () => {
-    assert.equal(resolvePOSFlowComponent("restaurant_table_service"), "generic_fallback");
-    assert.equal(resolvePOSFlowComponent("cafe_counter"), "generic_fallback");
-    assert.equal(resolvePOSFlowComponent("quick_service"), "generic_fallback");
-    assert.equal(resolvePOSFlowComponent("service_business_later"), "generic_fallback");
+  it("routes unimplemented profiles to unsupported flow", () => {
+    assert.equal(resolvePOSFlowComponent("cafe_counter"), "unsupported");
+    assert.equal(resolvePOSFlowComponent("quick_service"), "unsupported");
+    assert.equal(resolvePOSFlowComponent("service_business_later"), "unsupported");
   });
 
-  it("keeps unknown/null profiles on generic fallback", () => {
-    assert.equal(resolvePOSFlowComponent(null), "generic_fallback");
-    assert.equal(resolvePOSFlowComponent(undefined), "generic_fallback");
+  it("routes unknown/null profiles to unsupported flow", () => {
+    assert.equal(resolvePOSFlowComponent(null), "unsupported");
+    assert.equal(resolvePOSFlowComponent(undefined), "unsupported");
   });
 });

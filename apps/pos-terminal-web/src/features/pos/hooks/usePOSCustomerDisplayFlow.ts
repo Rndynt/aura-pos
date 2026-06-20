@@ -1,6 +1,6 @@
 import { useEffect, type MutableRefObject } from "react";
 import { toCFDItem, useCustomerDisplaySender } from "@/hooks/useCustomerDisplay";
-import { buildOrderingCFDPayload } from "../mappers/cfdPayloadMapper";
+import { buildOrderingCFDPayload } from "../../pos-core";
 
 export function usePOSCustomerDisplayFlow(input: {
   cart: any;
