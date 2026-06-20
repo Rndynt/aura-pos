@@ -435,11 +435,24 @@ export const updateOrder = asyncHandler(async (req: Request, res: Response) => {
   await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
 
   // Execute use case - update existing order
-  const result = await container.updateOrder.execute({
-    order_id: id,
-    tenant_id: tenantId,
-    ...parsed.data,
-  });
+  let result;
+  try {
+    result = await container.updateOrder.execute({
+      order_id: id,
+      tenant_id: tenantId,
+      ...parsed.data,
+    });
+  } catch (error) {
+    const code = error instanceof Error ? (error as any).code : undefined;
+    if (code === 'ORDER_NOT_EDITABLE' || code === 'KITCHEN_ORDER_LOCKED' || code === 'FIRED_ITEMS_LOCKED') {
+      throw createError(
+        error instanceof Error ? error.message : 'Pesanan sudah aktif atau sudah dikirim ke dapur dan tidak bisa diedit dari keranjang.',
+        409,
+        code,
+      );
+    }
+    throw error;
+  }
 
   emitOrderQueueChanged(tenantId, { source: 'update_order', orderId: result.order.id });
 

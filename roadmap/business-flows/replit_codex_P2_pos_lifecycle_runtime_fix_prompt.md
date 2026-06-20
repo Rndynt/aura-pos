@@ -446,16 +446,16 @@ Report must include:
 
 ## Completion checklist
 
-- [ ] Server draft is separated from active orders in UI.
-- [ ] Active/kitchen orders cannot be loaded to editable cart through normal Lanjut.
-- [ ] Active/kitchen orders do not show trash draft delete.
-- [ ] Continued server draft can be paid and removed from draft list.
-- [ ] Fresh retail/counter create-and-pay does not draft-loop.
-- [ ] Backend rejects normal item update for non-draft/kitchen-locked orders.
-- [ ] PAY_ACTIVE_ORDER does not require orders_queue.
-- [ ] Local drafts still work.
-- [ ] P2 report created.
-- [ ] Validation output documented.
+- [x] Server draft is separated from active orders in UI.
+- [x] Active/kitchen orders cannot be loaded to editable cart through normal Lanjut.
+- [x] Active/kitchen orders do not show trash draft delete.
+- [x] Continued server draft can be paid and removed from draft list.
+- [ ] Fresh retail/counter create-and-pay does not draft-loop. Existing path preserved; dedicated runtime smoke not executed in this batch.
+- [x] Backend rejects normal item update for non-draft/kitchen-locked orders.
+- [x] PAY_ACTIVE_ORDER does not require orders_queue.
+- [x] Local drafts still work.
+- [x] P2 report created.
+- [x] Validation output documented.
 
 ## Commit
 

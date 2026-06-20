@@ -11,6 +11,7 @@ import {
   orderItemModifiers,
   orderPayments,
   products,
+  kitchenTickets,
   type Order,
   type InsertOrder,
   type OrderItem,
@@ -61,6 +62,7 @@ export interface IOrderRepository {
     filters?: Omit<OrderFilters, 'limit' | 'offset'>
   ): Promise<number>;
   findById(id: string, tenantId: string, context?: TransactionContext): Promise<any | null>;
+  getEditLockState(id: string, tenantId: string): Promise<{ hasKitchenTicket: boolean; hasFiredKitchenItems: boolean }>;
   findByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<any | null>;
   create(order: InsertOrder, orderItems: OrderItemInput[], tenantId: string): Promise<Order>;
   update(id: string, order: Partial<InsertOrder>, tenantId: string, context?: TransactionContext): Promise<Order>;
@@ -289,6 +291,27 @@ export class OrderRepository
       };
     } catch (error) {
       this.handleError('find order by id', error);
+    }
+  }
+
+  async getEditLockState(id: string, tenantId: string): Promise<{ hasKitchenTicket: boolean; hasFiredKitchenItems: boolean }> {
+    try {
+      const [ticketCount] = await this.db
+        .select({ value: sql<number>`count(*)::int` })
+        .from(kitchenTickets)
+        .where(and(eq(kitchenTickets.orderId, id), eq(kitchenTickets.tenantId, tenantId)));
+
+      const [firedItemCount] = await this.db
+        .select({ value: sql<number>`count(*)::int` })
+        .from(orderItems)
+        .where(and(eq(orderItems.orderId, id), inArray(orderItems.status, ['preparing', 'ready', 'delivered'] as any[])));
+
+      return {
+        hasKitchenTicket: (ticketCount?.value ?? 0) > 0,
+        hasFiredKitchenItems: (firedItemCount?.value ?? 0) > 0,
+      };
+    } catch (error) {
+      this.handleError('get order edit lock state', error);
     }
   }
 

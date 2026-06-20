@@ -45,6 +45,10 @@ export interface UpdateOrderOutput {
 
 export interface IOrderRepository {
   findById(orderId: string, tenantId?: string): Promise<Order | null>;
+  getEditLockState?(orderId: string, tenantId: string): Promise<{
+    hasKitchenTicket: boolean;
+    hasFiredKitchenItems: boolean;
+  }>;
   updateWithItems(
     orderId: string,
     orderUpdates: Partial<Order>,
@@ -78,6 +82,39 @@ export class UpdateOrder {
       const order = await this.orderRepository.findById(input.order_id, input.tenant_id);
       if (!order) {
         throw new Error('Order not found');
+      }
+
+      const lockState = await this.orderRepository.getEditLockState?.(input.order_id, input.tenant_id);
+      const hasKitchenTicket = lockState?.hasKitchenTicket ?? false;
+      const hasFiredKitchenItems =
+        lockState?.hasFiredKitchenItems ??
+        (Array.isArray((order as any).items) &&
+          (order as any).items.some((item: any) =>
+            ['preparing', 'ready', 'delivered'].includes(String(item.status ?? '').toLowerCase())
+          ));
+
+      if ((order as any).status !== 'draft') {
+        const error = new Error('Pesanan sudah aktif atau sudah dikirim ke dapur dan tidak bisa diedit dari keranjang.');
+        (error as any).code = 'ORDER_NOT_EDITABLE';
+        throw error;
+      }
+
+      if (['paid', 'refunded', 'voided'].includes(String((order as any).paymentStatus ?? (order as any).payment_status ?? '').toLowerCase())) {
+        const error = new Error('Pesanan sudah aktif atau sudah dikirim ke dapur dan tidak bisa diedit dari keranjang.');
+        (error as any).code = 'ORDER_NOT_EDITABLE';
+        throw error;
+      }
+
+      if (hasKitchenTicket) {
+        const error = new Error('Pesanan sudah aktif atau sudah dikirim ke dapur dan tidak bisa diedit dari keranjang.');
+        (error as any).code = 'KITCHEN_ORDER_LOCKED';
+        throw error;
+      }
+
+      if (hasFiredKitchenItems) {
+        const error = new Error('Pesanan sudah aktif atau sudah dikirim ke dapur dan tidak bisa diedit dari keranjang.');
+        (error as any).code = 'FIRED_ITEMS_LOCKED';
+        throw error;
       }
 
       // Validate items
@@ -191,6 +228,9 @@ export class UpdateOrder {
         pricing,
       };
     } catch (error) {
+      if (error instanceof Error && (error as any).code) {
+        throw error;
+      }
       throw new Error(`Failed to update order: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

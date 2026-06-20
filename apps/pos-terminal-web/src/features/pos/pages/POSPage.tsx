@@ -5,7 +5,16 @@ import { PaymentMethodDialog } from "@/components/pos/PaymentMethodDialog";
 import { CombinedDraftSheet } from "@/components/pos/CombinedDraftSheet";
 import type { PaymentMethod, OrderType } from "@/hooks/useCart";
 import { useCart } from "@/hooks/useCart";
-import { useProducts, useCreateOrder, useUpdateOrder, useCreateKitchenTicket, useOrderTypes, useRecordPayment, useOrders, useCreateAndPay } from "@/lib/api/hooks";
+import {
+  useProducts,
+  useCreateOrder,
+  useUpdateOrder,
+  useCreateKitchenTicket,
+  useOrderTypes,
+  useRecordPayment,
+  useOrders,
+  useCreateAndPay,
+} from "@/lib/api/hooks";
 import { useOfflineOrderSubmit } from "@/hooks/useOfflineOrderSubmit";
 import type { Product, ProductVariant } from "@pos/domain/catalog/types";
 import type { SelectedOption, Order } from "@pos/domain/orders/types";
@@ -16,18 +25,36 @@ import { getActiveTenantId } from "@/lib/tenant";
 import { useTenant } from "@/context/TenantContext";
 import { useTenantProfile } from "@/hooks/api/useTenantProfile";
 import { toCFDItem } from "@/hooks/useCustomerDisplay";
-import { saveLocalDraftOrder, getOrCreateTerminalIdentity, enqueueLocalKitchenTicket } from "@pos/offline";
+import {
+  saveLocalDraftOrder,
+  getOrCreateTerminalIdentity,
+  enqueueLocalKitchenTicket,
+} from "@pos/offline";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useKitchenChannelSender } from "@/hooks/useKitchenChannel";
 import { cartToOrderPayload } from "../mappers/cartToOrderPayload";
-import { buildCompletedCFDPayload, buildPaymentCFDPayload } from "../mappers/cfdPayloadMapper";
+import {
+  buildCompletedCFDPayload,
+  buildPaymentCFDPayload,
+} from "../mappers/cfdPayloadMapper";
 import { cartItemsToKitchenTicketItems } from "../mappers/kitchenTicketPayloadMapper";
 import { getLocalDraftItems, getProductsById } from "../mappers/orderToCart";
 import { buildReceiptPayload } from "../mappers/receiptPayloadMapper";
-import { fetchOrderForPOS, updatePOSOrderStatus } from "../services/posOrderService";
+import {
+  fetchOrderForPOS,
+  updatePOSOrderStatus,
+} from "../services/posOrderService";
+import {
+  isTrueServerDraft,
+  type POSLifecycleOrder,
+} from "../services/orderLifecycle";
 
-
-import { enqueueReceiptPrintJob, hasPairedReceiptPrinter, markReceiptPrintFailed, printReceiptNow } from "../services/posPrinterService";
+import {
+  enqueueReceiptPrintJob,
+  hasPairedReceiptPrinter,
+  markReceiptPrintFailed,
+  printReceiptNow,
+} from "../services/posPrinterService";
 import { usePOSCustomerDisplayFlow } from "../hooks/usePOSCustomerDisplayFlow";
 import { usePOSOrderQueueInvalidation } from "../hooks/usePOSOrderQueueFlow";
 import { useCloseMobileCartOnDesktop } from "../hooks/usePOSResponsiveFlow";
@@ -66,18 +93,27 @@ export default function POSPage() {
   const { tenantId } = useTenant();
   const { data: tenantProfile } = useTenantProfile(tenantId);
   // `can` is destructured above from useTenant().
-  const tenantName = tenantProfile?.tenant?.name || 'AuraPOS';
+  const tenantName = tenantProfile?.tenant?.name || "AuraPOS";
 
   // Prevent cart-change effect from overriding payment/completed CFD state
   const inPaymentFlowRef = useRef(false);
 
-  const { sendToCFD } = usePOSCustomerDisplayFlow({ cart, tenantName, inPaymentFlowRef, enabled: can("customer_display") });
+  const { sendToCFD } = usePOSCustomerDisplayFlow({
+    cart,
+    tenantName,
+    inPaymentFlowRef,
+    enabled: can("customer_display"),
+  });
 
   // Auto-close mobile cart drawer when switching to tablet/desktop
   useCloseMobileCartOnDesktop(isMobile, setMobileCartOpen);
 
   // Fetch products from backend (including inactive products to show with overlay)
-  const { data: productsData, isLoading: productsLoading, error: productsError } = useProducts();
+  const {
+    data: productsData,
+    isLoading: productsLoading,
+    error: productsError,
+  } = useProducts();
   const products = productsData?.products || [];
 
   // ── Outlet-aware stock guards (P5) ──────────────────────────────────────────
@@ -104,13 +140,16 @@ export default function POSPage() {
    * Returns `{ ok: true }` for non-tracked products, otherwise either
    * `{ ok: true }` or `{ ok: false, reason }` with a user-facing message.
    */
-  const evaluateStockForAdd = (product: Product, addQty: number): { ok: true } | { ok: false; reason: string } => {
+  const evaluateStockForAdd = (
+    product: Product,
+    addQty: number,
+  ): { ok: true } | { ok: false; reason: string } => {
     const latest = productById.get(product.id) ?? product;
     if (!latest.stock_tracking_enabled) return { ok: true };
     const available =
       typeof latest.availableQuantity === "number"
         ? latest.availableQuantity
-        : latest.stock_qty ?? 0;
+        : (latest.stock_qty ?? 0);
     const cartQty = cartQuantityByProductId.get(product.id) ?? 0;
     if (available <= 0) {
       return { ok: false, reason: `Stok ${latest.name} habis di outlet ini.` };
@@ -141,7 +180,7 @@ export default function POSPage() {
     const available =
       typeof latest.availableQuantity === "number"
         ? latest.availableQuantity
-        : latest.stock_qty ?? 0;
+        : (latest.stock_qty ?? 0);
     const cartQty = cartQuantityByProductId.get(product.id) ?? 0;
     const required = newQty + (cartQty - currentQty);
     if (available <= 0) {
@@ -170,26 +209,38 @@ export default function POSPage() {
 
   // Filter only active order types - defensive check even though API already filters
   const activeOrderTypes = useMemo(() => {
-    return orderTypes?.filter(ot => ot.isActive === true) || [];
+    return orderTypes?.filter((ot) => ot.isActive === true) || [];
   }, [orderTypes]);
 
   // Load order into cart if continueOrderId is provided
   const loadedOrderRef = useRef<string | null>(null);
-  
+
   useEffect(() => {
     if (continueOrderId && loadedOrderRef.current !== continueOrderId) {
       loadedOrderRef.current = continueOrderId;
-      
+
       const loadOrderIntoCart = async () => {
         try {
           const fullOrder = await fetchOrderForPOS(continueOrderId);
-          
+
+          if (!isTrueServerDraft(fullOrder as POSLifecycleOrder)) {
+            cart.clearCart();
+            toast({
+              title: "Pesanan sudah aktif",
+              description:
+                "Pesanan sudah aktif/diproses dan tidak bisa diedit dari keranjang. Gunakan Bayar atau Lihat Detail.",
+              variant: "destructive",
+            });
+            setLocation("/pos");
+            return;
+          }
+
           // Clear cart first to remove any stale data
           cart.clearCart();
-          
+
           // Load order into cart with fresh state
           cart.loadOrder(fullOrder);
-          
+
           // Enrich cart items with full product data (including images) from fetched products
           const productsMap = getProductsById(products as any[]);
           cart.items.forEach((item: any) => {
@@ -198,7 +249,7 @@ export default function POSPage() {
               item.product.image_url = fullProduct.image_url;
             }
           });
-          
+
           toast({
             title: "Order loaded",
             description: `Order #${fullOrder.orderNumber} for Table ${fullOrder.tableNumber} loaded. Continue editing and submit to save changes.`,
@@ -219,7 +270,11 @@ export default function POSPage() {
   // Auto-select first ACTIVE order type when loaded (only if not already in cart)
   // Also sync cart.orderType so the visual selection matches the selected order type ID
   useEffect(() => {
-    if (!orderTypesLoading && activeOrderTypes.length > 0 && !cart.selectedOrderTypeId) {
+    if (
+      !orderTypesLoading &&
+      activeOrderTypes.length > 0 &&
+      !cart.selectedOrderTypeId
+    ) {
       const firstType = activeOrderTypes[0];
       cart.setSelectedOrderTypeId(firstType.id);
       const code = firstType.code.toLowerCase().replace(/_/g, "-") as OrderType;
@@ -233,11 +288,13 @@ export default function POSPage() {
   const createKitchenTicketMutation = useCreateKitchenTicket();
   const recordPaymentMutation = useRecordPayment();
   const createAndPayMutation = useCreateAndPay();
-  const { submitOrder, isSubmitting: isOfflineSubmitting } = useOfflineOrderSubmit();
+  const { submitOrder, isSubmitting: isOfflineSubmitting } =
+    useOfflineOrderSubmit();
 
   const hasPartialPayment = can("payments_partial_payment");
   const hasMultiPayment = can("payments_multi_payment");
-  const hasSplitBill = can("payments_split_bill") || can("payments_split_payment");
+  const hasSplitBill =
+    can("payments_split_bill") || can("payments_split_payment");
   const hasKitchenTicket = can("restaurant_kitchen_ops");
 
   const ensureCartHasItems = () => {
@@ -263,11 +320,14 @@ export default function POSPage() {
     }
 
     // Validate that selected order type is active
-    const isValidOrderType = activeOrderTypes.some(ot => ot.id === cart.selectedOrderTypeId);
+    const isValidOrderType = activeOrderTypes.some(
+      (ot) => ot.id === cart.selectedOrderTypeId,
+    );
     if (!isValidOrderType) {
       toast({
         title: "Invalid order type",
-        description: "The selected order type is no longer available. Please select a valid order type.",
+        description:
+          "The selected order type is no longer available. Please select a valid order type.",
         variant: "destructive",
       });
       cart.setSelectedOrderTypeId(null);
@@ -277,17 +337,18 @@ export default function POSPage() {
     return true;
   };
 
-  const buildOrderPayload = () => cartToOrderPayload({
-    items: cart.toBackendOrderItems(),
-    taxRate: cart.taxRate,
-    serviceChargeRate: cart.serviceChargeRate,
-    selectedOrderTypeId: cart.selectedOrderTypeId,
-    customerName: cart.customerName,
-    tableNumber: cart.tableNumber,
-    orderDiscount: cart.orderDiscount,
-    orderDiscountAmount: cart.orderDiscountAmount,
-    itemsDiscountTotal: cart.itemsDiscountTotal,
-  });
+  const buildOrderPayload = () =>
+    cartToOrderPayload({
+      items: cart.toBackendOrderItems(),
+      taxRate: cart.taxRate,
+      serviceChargeRate: cart.serviceChargeRate,
+      selectedOrderTypeId: cart.selectedOrderTypeId,
+      customerName: cart.customerName,
+      tableNumber: cart.tableNumber,
+      orderDiscount: cart.orderDiscount,
+      orderDiscountAmount: cart.orderDiscountAmount,
+      itemsDiscountTotal: cart.itemsDiscountTotal,
+    });
 
   const handleAddToCart = (product: Product) => {
     // Block adding unavailable products to cart
@@ -312,8 +373,10 @@ export default function POSPage() {
     }
 
     // Check if product has variants or option_groups that require selection
-    const hasVariants = product.has_variants && product.variants && product.variants.length > 0;
-    const hasOptionGroups = product.option_groups && product.option_groups.length > 0;
+    const hasVariants =
+      product.has_variants && product.variants && product.variants.length > 0;
+    const hasOptionGroups =
+      product.option_groups && product.option_groups.length > 0;
 
     if ((hasVariants || hasOptionGroups) && hasProductVariants) {
       // Show dialog for variant/option selection
@@ -332,7 +395,7 @@ export default function POSPage() {
     product: Product,
     variant: ProductVariant | undefined,
     selectedOptions: SelectedOption[],
-    qty: number
+    qty: number,
   ) => {
     // P5: Same outlet stock guard for the variant/options dialog path.
     // Variants share the underlying product balance, so the check applies on
@@ -348,14 +411,16 @@ export default function POSPage() {
     }
     cart.addItem(product, variant, selectedOptions, qty);
     setSelectedProduct(null);
-    
+
     // Build description with variant and options
     let description = product.name;
     if (variant) {
       description += ` (${variant.name})`;
     }
     if (selectedOptions.length > 0) {
-      const optionsText = selectedOptions.map(opt => opt.option_name).join(", ");
+      const optionsText = selectedOptions
+        .map((opt) => opt.option_name)
+        .join(", ");
       description += ` - ${optionsText}`;
     }
 
@@ -366,11 +431,10 @@ export default function POSPage() {
   };
 
   const handleUpdateContinueOrder = async () => {
-    
     if (!ensureCartHasItems()) {
       return;
     }
-    
+
     if (!continueOrderId) {
       toast({
         title: "Error",
@@ -379,12 +443,12 @@ export default function POSPage() {
       });
       return;
     }
-    
+
     try {
       setIsProcessingQuickCharge(true);
-      
+
       const items = cart.toBackendOrderItems();
-      
+
       const orderPayload = {
         items,
         tax_rate: cart.taxRate,
@@ -393,26 +457,24 @@ export default function POSPage() {
         customer_name: cart.customerName || undefined,
         table_number: cart.tableNumber || undefined,
       };
-      
-      
+
       // Update the existing order
       const orderResult = await updateOrderMutation.mutateAsync({
         orderId: continueOrderId,
         ...orderPayload,
       });
-      
-      
+
       setIsProcessingQuickCharge(false);
       toast({
         title: "Order updated",
         description: `Order updated successfully`,
       });
-      
+
       cart.clearCart();
       setMobileCartOpen(false);
     } catch (error) {
       console.error("🔴 [UPDATE] Error caught:", error);
-      
+
       let errorMessage = "Failed to update order";
       if (error instanceof Error) {
         errorMessage = error.message;
@@ -424,7 +486,7 @@ export default function POSPage() {
       } else if (apiError?.body?.message) {
         errorMessage = apiError.body.message;
       }
-      
+
       setIsProcessingQuickCharge(false);
       toast({
         title: "Update failed",
@@ -433,41 +495,23 @@ export default function POSPage() {
       });
     }
   };
-  
+
   const handleCharge = async () => {
     if (!ensureCartHasItems()) return;
-    
-    // If continuing an order, check if it is partially paid first.
-    // A partially paid order is financially active and must NOT be routed
-    // into the normal draft-update path. Instead, open the payment dialog
-    // so the cashier can settle the remaining balance.
+
+    // Continued server drafts are paid by updating the draft first, then
+    // recording payment against the same order in handlePaymentMethodConfirm.
     if (continueOrderId) {
-      const continueOrder = orders.find(o => (o as any).id === continueOrderId) as any;
-      const paymentStatus = continueOrder?.payment_status ?? continueOrder?.paymentStatus ?? 'unpaid';
-
-      if (paymentStatus === 'partial') {
-        const total = Number(continueOrder.total_amount ?? continueOrder.total ?? 0);
-        const paid = Number(continueOrder.paid_amount ?? continueOrder.paidAmount ?? 0);
-        const remaining = Math.max(0, total - paid);
-        setPendingOrderForPayment({
-          orderId: continueOrderId,
-          totalAmount: remaining,
-          orderNumber: String(continueOrder.order_number ?? continueOrder.orderNumber ?? ''),
-        });
-        setPaymentMethodDialogOpen(true);
-        setMobileCartOpen(false);
-        return;
-      }
-
-      await handleUpdateContinueOrder();
+      setPaymentMethodDialogOpen(true);
+      setMobileCartOpen(false);
       return;
     }
-    
+
     // Auto-select first order type if none selected
     if (!cart.selectedOrderTypeId && activeOrderTypes.length > 0) {
       cart.setSelectedOrderTypeId(activeOrderTypes[0].id);
     }
-    
+
     // Buka dialog dulu — CFD akan diupdate saat user memilih metode bayar
     setPaymentMethodDialogOpen(true);
     setMobileCartOpen(false);
@@ -478,21 +522,31 @@ export default function POSPage() {
   const handleCFDMethodChange = (method: PaymentMethod) => {
     if (!cart.items.length) return;
     inPaymentFlowRef.current = true;
-    sendToCFD(buildPaymentCFDPayload({
-      tenantName,
-      orderNumber: pendingOrderForPayment?.orderNumber || cart.orderNumber || "",
-      total: pendingOrderForPayment?.totalAmount || cart.total,
-      items: cart.items.map(toCFDItem),
-      subtotal: cart.subtotal,
-      tax: cart.tax,
-      serviceCharge: cart.serviceCharge,
-      customerName: cart.customerName || undefined,
-      tableNumber: cart.tableNumber || undefined,
-    }, method));
+    sendToCFD(
+      buildPaymentCFDPayload(
+        {
+          tenantName,
+          orderNumber:
+            pendingOrderForPayment?.orderNumber || cart.orderNumber || "",
+          total: pendingOrderForPayment?.totalAmount || cart.total,
+          items: cart.items.map(toCFDItem),
+          subtotal: cart.subtotal,
+          tax: cart.tax,
+          serviceCharge: cart.serviceCharge,
+          customerName: cart.customerName || undefined,
+          tableNumber: cart.tableNumber || undefined,
+        },
+        method,
+      ),
+    );
   };
 
   // Handle payment method confirmation from dialog
-  const handlePaymentMethodConfirm = async (paymentMethod: PaymentMethod, _cashReceived?: number, partialAmount?: number) => {
+  const handlePaymentMethodConfirm = async (
+    paymentMethod: PaymentMethod,
+    _cashReceived?: number,
+    partialAmount?: number,
+  ) => {
     // ── SETTLE EXISTING PARTIAL ORDER ───────────────────────────────────────
     // When pendingOrderForPayment is set the cashier is settling the remaining
     // balance of an already-existing partial order. No new order is created;
@@ -501,7 +555,11 @@ export default function POSPage() {
     if (pendingOrderForPayment) {
       setIsProcessingQuickCharge(true);
       const fmtRp = (n: number) =>
-        new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
+        new Intl.NumberFormat("id-ID", {
+          style: "currency",
+          currency: "IDR",
+          minimumFractionDigits: 0,
+        }).format(n);
       try {
         await recordPaymentMutation.mutateAsync({
           orderId: pendingOrderForPayment.orderId,
@@ -519,7 +577,52 @@ export default function POSPage() {
       } catch (error) {
         toast({
           title: "Pembayaran gagal",
-          description: error instanceof Error ? error.message : "Gagal mencatat pembayaran",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Gagal mencatat pembayaran",
+          variant: "destructive",
+        });
+      } finally {
+        setIsProcessingQuickCharge(false);
+      }
+      return;
+    }
+
+    if (continueOrderId) {
+      if (!ensureCartHasItems()) return;
+      setIsProcessingQuickCharge(true);
+      try {
+        const orderPayload = buildOrderPayload();
+        const updateResult = await updateOrderMutation.mutateAsync({
+          orderId: continueOrderId,
+          ...orderPayload,
+        });
+        const totalAmount = Number(
+          (updateResult.order as any)?.total ??
+            (updateResult.pricing as any)?.total_amount ??
+            cart.total,
+        );
+        await recordPaymentMutation.mutateAsync({
+          orderId: continueOrderId,
+          amount: totalAmount,
+          payment_method: paymentMethod,
+          payment_flow: "full_payment",
+        });
+        toast({
+          title: "Pembayaran berhasil",
+          description: `Draft server #${(updateResult.order as any)?.order_number ?? continueOrderId} sudah dilunasi.`,
+        });
+        cart.clearCart();
+        setPaymentMethodDialogOpen(false);
+        setLocation("/pos");
+      } catch (error) {
+        toast({
+          title: "Pembayaran gagal",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Gagal memperbarui dan membayar draft server",
           variant: "destructive",
         });
       } finally {
@@ -556,10 +659,19 @@ export default function POSPage() {
 
         // Kirim ke dapur jika fitur aktif — pesanan tetap perlu disiapkan meski belum lunas
         if (hasKitchenTicket && orderId) {
-          try { await handleSendToKitchen(orderId); } catch { /* non-critical */ }
+          try {
+            await handleSendToKitchen(orderId);
+          } catch {
+            /* non-critical */
+          }
         }
 
-        const fmtRp = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
+        const fmtRp = (n: number) =>
+          new Intl.NumberFormat("id-ID", {
+            style: "currency",
+            currency: "IDR",
+            minimumFractionDigits: 0,
+          }).format(n);
         toast({
           title: "DP berhasil dicatat",
           description: `Order #${orderNumber} — Dibayar: ${fmtRp(partialAmount)}, Sisa: ${fmtRp(remainingAmount)}${hasKitchenTicket ? " · Dikirim ke dapur" : ""}`,
@@ -570,7 +682,10 @@ export default function POSPage() {
       } catch (error) {
         toast({
           title: "Gagal mencatat DP",
-          description: error instanceof Error ? error.message : "Gagal mencatat pembayaran",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Gagal mencatat pembayaran",
           variant: "destructive",
         });
       } finally {
@@ -596,17 +711,22 @@ export default function POSPage() {
     inPaymentFlowRef.current = true;
 
     // Update CFD dengan metode bayar yang dipilih
-    sendToCFD(buildPaymentCFDPayload({
-      tenantName,
-      orderNumber: cfdOrderNumber || "",
-      total: cfdTotal,
-      items: cfdItems,
-      subtotal: cfdSubtotal,
-      tax: cfdTax,
-      serviceCharge: cfdServiceCharge,
-      customerName: cfdCustomerName,
-      tableNumber: cfdTableNumber,
-    }, paymentMethod));
+    sendToCFD(
+      buildPaymentCFDPayload(
+        {
+          tenantName,
+          orderNumber: cfdOrderNumber || "",
+          total: cfdTotal,
+          items: cfdItems,
+          subtotal: cfdSubtotal,
+          tax: cfdTax,
+          serviceCharge: cfdServiceCharge,
+          customerName: cfdCustomerName,
+          tableNumber: cfdTableNumber,
+        },
+        paymentMethod,
+      ),
+    );
 
     setIsProcessingQuickCharge(true);
     try {
@@ -621,21 +741,28 @@ export default function POSPage() {
         amount: totalAmount,
         payment_method: paymentMethod,
       });
-      const orderNumber = (orderResult.order as any)?.order_number || orderResult.order?.id;
+      const orderNumber =
+        (orderResult.order as any)?.order_number || orderResult.order?.id;
       const isLocal = (orderResult as any).isLocal === true;
-      
+
       // Broadcast: pembayaran selesai
-      sendToCFD(buildCompletedCFDPayload({
-        tenantName,
-        orderNumber: String(orderNumber ?? cfdOrderNumber),
-        total: totalAmount,
-        items: cfdItems,
-        subtotal: cfdSubtotal,
-        tax: cfdTax,
-        serviceCharge: cfdServiceCharge,
-        customerName: cfdCustomerName,
-      }, totalAmount, 0));
-      
+      sendToCFD(
+        buildCompletedCFDPayload(
+          {
+            tenantName,
+            orderNumber: String(orderNumber ?? cfdOrderNumber),
+            total: totalAmount,
+            items: cfdItems,
+            subtotal: cfdSubtotal,
+            tax: cfdTax,
+            serviceCharge: cfdServiceCharge,
+            customerName: cfdCustomerName,
+          },
+          totalAmount,
+          0,
+        ),
+      );
+
       toast({
         title: isLocal
           ? "Pesanan tersimpan (OFFLINE)"
@@ -660,7 +787,11 @@ export default function POSPage() {
 
       let printJobId: string | null = null;
       try {
-        const { jobId: queuedPrintJobId, tenantId: qTenantId, terminalId } = await enqueueReceiptPrintJob({
+        const {
+          jobId: queuedPrintJobId,
+          tenantId: qTenantId,
+          terminalId,
+        } = await enqueueReceiptPrintJob({
           localOrderId: (orderResult.order as any)?.localId,
           orderNumber: String(orderNumber ?? cfdOrderNumber),
           payload: receiptPayload,
@@ -675,7 +806,8 @@ export default function POSPage() {
             const kitchenTicket = await enqueueLocalKitchenTicket({
               tenantId: qTenantId,
               terminalId: terminalId,
-              localOrderId: (orderResult.order as any)?.localId ?? String(orderNumber),
+              localOrderId:
+                (orderResult.order as any)?.localId ?? String(orderNumber),
               orderNumber: String(orderNumber ?? cfdOrderNumber),
               items: cartItemsToKitchenTicketItems(cart.items),
               customerName: cfdCustomerName,
@@ -701,21 +833,23 @@ export default function POSPage() {
           await markReceiptPrintFailed(printJobId, printError);
           toast({
             title: "Pembayaran sukses, cetak struk gagal",
-            description: "Struk disimpan di antrian cetak — buka Printer Hub untuk cetak ulang.",
+            description:
+              "Struk disimpan di antrian cetak — buka Printer Hub untuk cetak ulang.",
             variant: "destructive",
           });
         }
       } else {
         toast({
           title: "Pembayaran sukses",
-          description: "Struk tersimpan di antrian cetak. Buka Printer Hub untuk cetak.",
+          description:
+            "Struk tersimpan di antrian cetak. Buka Printer Hub untuk cetak.",
         });
       }
-      
+
       // Kembali ke idle setelah 7 detik — release lock lalu kirim idle
       setTimeout(() => {
         inPaymentFlowRef.current = false;
-        sendToCFD({ type: 'idle', tenantName });
+        sendToCFD({ type: "idle", tenantName });
       }, 7000);
 
       // Clear everything and close
@@ -733,13 +867,13 @@ export default function POSPage() {
       } else if (apiError?.body?.message) {
         errorMessage = apiError.body.message;
       }
-      
+
       console.error("Payment confirmation error:", error);
-      
+
       // Release CFD lock — send back to ordering state
       inPaymentFlowRef.current = false;
       sendToCFD({
-        type: 'ordering',
+        type: "ordering",
         tenantName,
         orderNumber: cfdOrderNumber || "",
         items: cfdItems,
@@ -762,8 +896,10 @@ export default function POSPage() {
     }
   };
 
-
-  const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
+  const handleUpdateOrderStatus = async (
+    orderId: string,
+    newStatus: string,
+  ) => {
     try {
       await updatePOSOrderStatus(orderId, newStatus);
 
@@ -783,12 +919,12 @@ export default function POSPage() {
   const handleSaveDraft = async () => {
     if (!ensureCartHasItems()) return;
     setIsDraftSaving(true);
-    
+
     // Auto-select first order type if none selected (no dialog needed)
     if (!cart.selectedOrderTypeId && activeOrderTypes.length > 0) {
       cart.setSelectedOrderTypeId(activeOrderTypes[0].id);
     }
-    
+
     // Still validate order type but now it should always pass
     if (!cart.selectedOrderTypeId) {
       toast({
@@ -801,21 +937,22 @@ export default function POSPage() {
 
     try {
       let orderResult;
-      
+
       // If continuing an order, update it; otherwise create new
       if (continueOrderId) {
         orderResult = await updateOrderMutation.mutateAsync({
           orderId: continueOrderId,
           ...buildOrderPayload(),
         });
-        
+
         toast({
           title: "Pesanan diperbarui",
           description: `Order #${orderResult.order?.order_number || orderResult.order?.id || "N/A"} berhasil diperbarui`,
         });
       } else {
-        orderResult = await createOrderMutation.mutateAsync(buildOrderPayload());
-        
+        orderResult =
+          await createOrderMutation.mutateAsync(buildOrderPayload());
+
         toast({
           title: "Pesanan disimpan",
           description: `Order #${orderResult.order?.order_number || orderResult.order?.id || "N/A"} berhasil disimpan sebagai draft`,
@@ -826,7 +963,9 @@ export default function POSPage() {
       setMobileCartOpen(false);
       if (continueOrderId) setLocation("/pos");
     } catch (error) {
-      const isNetworkError = error instanceof TypeError || (error instanceof Error && /network|fetch/i.test(error.message));
+      const isNetworkError =
+        error instanceof TypeError ||
+        (error instanceof Error && /network|fetch/i.test(error.message));
 
       if (isNetworkError) {
         try {
@@ -853,14 +992,15 @@ export default function POSPage() {
 
       toast({
         title: "Gagal menyimpan pesanan",
-        description: error instanceof Error ? error.message : "Gagal membuat pesanan",
+        description:
+          error instanceof Error ? error.message : "Gagal membuat pesanan",
         variant: "destructive",
       });
     } finally {
       setIsDraftSaving(false);
     }
   };
-  
+
   // Confirm & Send to Kitchen — saves order then immediately sends to kitchen, no dialog
   const handleConfirmAndKitchen = async () => {
     if (!ensureCartHasItems()) return;
@@ -888,7 +1028,8 @@ export default function POSPage() {
           ...buildOrderPayload(),
         });
       } else {
-        orderResult = await createOrderMutation.mutateAsync(buildOrderPayload());
+        orderResult =
+          await createOrderMutation.mutateAsync(buildOrderPayload());
       }
 
       const savedOrderId: string | null = orderResult?.order?.id ?? null;
@@ -902,7 +1043,10 @@ export default function POSPage() {
     } catch (error) {
       toast({
         title: "Gagal kirim ke dapur",
-        description: error instanceof Error ? error.message : "Gagal mengirim pesanan ke dapur",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Gagal mengirim pesanan ke dapur",
         variant: "destructive",
       });
     } finally {
@@ -917,9 +1061,17 @@ export default function POSPage() {
     const localItems = getLocalDraftItems(draft);
     localItems.forEach((item: any) => {
       if (!item?.product) return;
-      cart.addItem(item.product, item.variant, item.selectedOptions || [], item.quantity || 1);
+      cart.addItem(
+        item.product,
+        item.variant,
+        item.selectedOptions || [],
+        item.quantity || 1,
+      );
     });
-    toast({ title: "Draft lokal dimuat", description: `Draft LOCAL-${String(draft.id).slice(0,8)} siap dilanjutkan.` });
+    toast({
+      title: "Draft lokal dimuat",
+      description: `Draft LOCAL-${String(draft.id).slice(0, 8)} siap dilanjutkan.`,
+    });
   };
   const handleSendToKitchen = async (orderId: string) => {
     if (!hasKitchenTicket) {
@@ -948,12 +1100,14 @@ export default function POSPage() {
         sendToKDS({ type: "ticket_added", ticket: kitchenTicket });
         toast({
           title: "Tiket dapur disimpan lokal",
-          description: "Offline — tiket dikirim ke KDS di perangkat ini. Akan tersinkron saat online.",
+          description:
+            "Offline — tiket dikirim ke KDS di perangkat ini. Akan tersinkron saat online.",
         });
       } catch (err) {
         toast({
           title: "Gagal menyimpan tiket dapur",
-          description: err instanceof Error ? err.message : "Gagal membuat tiket lokal",
+          description:
+            err instanceof Error ? err.message : "Gagal membuat tiket lokal",
           variant: "destructive",
         });
       }
@@ -963,12 +1117,18 @@ export default function POSPage() {
     // ── Online: send to server ──────────────────────────────────────────────
     try {
       await createKitchenTicketMutation.mutateAsync({ orderId });
-      toast({ title: "Dikirim ke Dapur", description: "Pesanan berhasil dikirim ke dapur" });
+      toast({
+        title: "Dikirim ke Dapur",
+        description: "Pesanan berhasil dikirim ke dapur",
+      });
       await refetchOrders();
     } catch (error) {
       toast({
         title: "Gagal mengirim ke dapur",
-        description: error instanceof Error ? error.message : "Gagal membuat kitchen ticket",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Gagal membuat kitchen ticket",
         variant: "destructive",
       });
     }
@@ -983,7 +1143,11 @@ export default function POSPage() {
   const handleCartQuantityChange = (id: string, qty: number) => {
     const targetItem = cart.items.find((item) => item.id === id);
     if (targetItem && qty > targetItem.quantity) {
-      const stockCheck = evaluateStockForUpdate(targetItem.product, targetItem.quantity, qty);
+      const stockCheck = evaluateStockForUpdate(
+        targetItem.product,
+        targetItem.quantity,
+        qty,
+      );
       if (!stockCheck.ok) {
         toast({
           title: "Stok tidak cukup",
@@ -1064,6 +1228,24 @@ export default function POSPage() {
           setLocation(`/pos?continueOrderId=${orderId}`);
         }}
         onResumeLocalDraft={handleResumeLocalDraft}
+        onPayActiveOrder={(order) => {
+          const total = Number(
+            (order as any).total_amount ?? (order as any).total ?? 0,
+          );
+          const paid = Number(
+            (order as any).paid_amount ?? (order as any).paidAmount ?? 0,
+          );
+          setPendingOrderForPayment({
+            orderId: order.id,
+            totalAmount: Math.max(0, total - paid),
+            orderNumber: String(
+              (order as any).order_number ??
+                (order as any).orderNumber ??
+                order.id,
+            ),
+          });
+          setPaymentMethodDialogOpen(true);
+        }}
       />
 
       {/* Product Options Dialog */}
@@ -1101,7 +1283,10 @@ export default function POSPage() {
 
       {/* Quick Charge Processing Overlay */}
       {isProcessingQuickCharge && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" data-testid="dialog-quick-charge-processing">
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          data-testid="dialog-quick-charge-processing"
+        >
           <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4 max-w-xs">
             <Loader2 className="w-10 h-10 animate-spin text-primary" />
             <h2 className="text-lg font-semibold">Processing Order</h2>

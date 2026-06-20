@@ -8028,3 +8028,132 @@ Create a behavior-neutral Source of Truth for business profiles, business-flow a
 
 ### Continuation Notes
 Continue with P2 only after mapping existing runtime order/payment/fulfillment fields to the P1 vocabulary. Do not wire policies into runtime until tenant ownership, auth/RBAC, and payment/order integrity checks are included.
+
+## Plan: P2 POS Lifecycle Runtime Fix
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P2_pos_lifecycle_runtime_fix_prompt.md`
+- User request: Analisa mendalam dan eksekusi roadmap P2 POS lifecycle runtime fix
+- Date started: 2026-06-20
+- Current status: Mostly implemented; retail runtime smoke and full server-side allowedActions DTO deferred
+
+### Goal
+Make the existing POS runtime safer before the larger business-flow adapter split by separating true server drafts from active orders, preventing unsafe active/kitchen cart edits, fixing continued draft payment, and enforcing backend draft-only item update guards.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs (`P0_current_pos_flow_audit.md`, `P1_business_flow_sot_report.md` referenced via P2 report)
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: `PATCH /api/orders/:id`, payment endpoint behavior
+- Files inspected: `apps/api/src/http/controllers/OrdersController.ts`, `packages/application/orders/UpdateOrder.ts`, `packages/infrastructure/repositories/orders/OrderRepository.ts`, `packages/infrastructure/repositories/orders/DrizzleRecordPaymentRepository.ts`
+- Findings: Payment path does not require `orders_queue`; update-order item replacement lacked draft/kitchen lock guard.
+- Tasks: Added update-order guards and 409 code mapping.
+- Risks: Cancel endpoint remains broad; UI no longer exposes draft-trash for active rows.
+- Validation: application/api type-check passed.
+
+#### Frontend/UI Workstream
+- Scope: POS draft sheet and continue/payment flow
+- Files inspected: `POSPage.tsx`, `CombinedDraftSheet.tsx`, `DraftOrdersSheet.tsx`, API hooks, table hooks
+- Findings: All unpaid open orders were mixed as drafts; continued full-payment draft path updated only.
+- Tasks: Added lifecycle helper, split server/active sections, active pay action, stale URL guard, update-then-pay continued draft flow.
+- Risks: Active order detail modal deferred.
+- Validation: terminal-web type-check passed after type fix.
+
+#### Tests/Validation Workstream
+- Scope: Type-check and existing test command
+- Findings: No component test harness added in this batch.
+- Tasks: Ran relevant type-check commands and `pnpm --filter @pos/application test`.
+- Risks: Manual browser smoke not executed.
+- Validation: documented in P2 report.
+
+#### Documentation Workstream
+- Scope: P2 report and source checklist
+- Files inspected: roadmap prompt and business-flow reports
+- Findings: Need honest partial status for retail runtime smoke/server DTO.
+- Tasks: Created `P2_pos_lifecycle_runtime_fix_report.md`; updated completion checklist.
+- Risks: P3+ should add server-side lifecycle DTO/action policy.
+- Validation: report created.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Tenant-aware mutation safety
+- Findings: Existing repository/controller tenant filters remain in use; new lock checks include tenant id.
+- Tasks: `getEditLockState` filters kitchen ticket lock by tenant and order id.
+- Risks: None identified for cross-tenant access in changed code.
+- Validation: type-check.
+
+### Execution Order
+1. Backend update guard for data integrity
+2. Frontend classification/action hiding
+3. Continued draft payment fix
+4. Active payment action without editable cart
+5. Documentation/checklist sync
+6. Validation
+
+### Progress
+
+#### Completed
+- [x] Split server drafts from active orders in the POS sheet.
+  - Files changed: `CombinedDraftSheet.tsx`, `orderLifecycle.ts`
+  - Validation: `pnpm --filter @pos/terminal-web type-check`
+  - Docs updated: P2 report and checklist
+- [x] Block active/kitchen cart edit via normal UI and stale URL.
+  - Files changed: `POSPage.tsx`, `CombinedDraftSheet.tsx`
+  - Validation: `pnpm --filter @pos/terminal-web type-check`
+  - Docs updated: P2 report
+- [x] Continued server draft update-then-pay flow.
+  - Files changed: `POSPage.tsx`
+  - Validation: `pnpm --filter @pos/terminal-web type-check`
+  - Docs updated: P2 report
+- [x] Backend draft/kitchen-lock update guard.
+  - Files changed: `UpdateOrder.ts`, `OrderRepository.ts`, `OrdersController.ts`
+  - Validation: `pnpm --filter @pos/application type-check`, `pnpm --filter @pos/api type-check`
+  - Docs updated: P2 report
+
+#### Partially Completed
+- [ ] Fresh retail/counter create-and-pay runtime smoke.
+  - Completed: Existing path preserved and not routed into draft update.
+  - Remaining: Browser/API smoke against a seeded retail tenant.
+  - Reason: Non-interactive batch did not run app/browser smoke.
+
+#### Blocked
+- [ ] Server-side `allowedActions`/lifecycle DTO for `/api/orders/open`.
+  - Blocker: Larger API DTO contract change not necessary for P2 guard and deferred to P3+.
+  - Required next step: Add backend mapper using P1 policy and update clients.
+
+#### Not Attempted
+- [ ] Active order detail modal.
+  - Reason: P2 allowed minimal active payment action; full detail UX is P3+.
+
+### Validation Log
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: no output after successful TypeScript check
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: no output after successful TypeScript check
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass after fixing new lifecycle order type fields
+- Notes: initial failure was caused by missing `orderNumber/tableNumber/customerName/total` fields in the new helper type
+- Command: `pnpm --filter @pos/application test`
+- Result: pass/no visible output
+- Notes: command exited 0
+
+### Documentation Updates
+- File: `roadmap/business-flows/P2_pos_lifecycle_runtime_fix_report.md`
+- Change: Created full P2 implementation report, matrices, validation log, and risks.
+- File: `roadmap/business-flows/replit_codex_P2_pos_lifecycle_runtime_fix_prompt.md`
+- Change: Updated completion checklist honestly.
+
+### Checklist Updates
+- File: `roadmap/business-flows/replit_codex_P2_pos_lifecycle_runtime_fix_prompt.md`
+- Change: Marked completed items and left retail runtime smoke partial/unchecked.
+
+### Continuation Notes
+Next safest batch: add server-side lifecycle/action DTO (`isEditableDraft`, `isActiveOrder`, `isKitchenLocked`, `allowedActions`) to `/api/orders/open`, wire `CanPerformOrderAction` directly into backend mappers, and add component/API tests plus browser smoke for retail and restaurant scenarios.
