@@ -432,19 +432,19 @@ If scripts differ, run closest available and document exact output.
 
 ## Completion checklist
 
-- [ ] Business profile resolver created.
-- [ ] Resolver uses business type/code only, not plan/entitlement inference.
-- [ ] RETAIL_MINIMARKET or equivalent retail code maps to retail_standard.
-- [ ] Unknown/unsupported maps to null/unknown.
-- [ ] Tenant/profile API exposes explicit businessProfile.
-- [ ] Frontend tenant profile type/hook exposes businessProfile.
-- [ ] POS flow root/gate added.
-- [ ] retail_standard routes to RetailStandardPOSFlow.
-- [ ] non-retail/unknown routes to generic POS fallback.
-- [ ] Retail payment remains independent from orders_queue and restaurant_kitchen_ops.
-- [ ] No schema/migration unless documented as unavoidable.
-- [ ] Tests/validation documented.
-- [ ] P4.1 report created.
+- [x] Business profile resolver created.
+- [x] Resolver uses business type/code only, not plan/entitlement inference.
+- [x] RETAIL_MINIMARKET or equivalent retail code maps to retail_standard.
+- [x] Unknown/unsupported maps to null/unknown.
+- [x] Tenant/profile API exposes explicit businessProfile.
+- [x] Frontend tenant profile type/hook exposes businessProfile.
+- [x] POS flow root/gate added.
+- [x] retail_standard routes to RetailStandardPOSFlow.
+- [x] non-retail/unknown routes to generic POS fallback.
+- [x] Retail payment remains independent from orders_queue and restaurant_kitchen_ops.
+- [x] No schema/migration unless documented as unavoidable.
+- [x] Tests/validation documented.
+- [x] P4.1 report created.
 
 ## Commit
 

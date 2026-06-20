@@ -12,6 +12,7 @@ import { asyncHandler, createError } from '../middleware/errorHandler';
 import { db } from '@pos/infrastructure/database';
 import { tenants } from '@pos/infrastructure/db/schema';
 import { ENTITLEMENT_CATALOG } from '@pos/application/entitlements';
+import { resolveBusinessProfileFromBusinessType, resolveBusinessProfileSource } from '@pos/application/business-flows';
 import {
   getEffectiveEntitlementMap,
   loadTenantEntitlementContext,
@@ -49,6 +50,10 @@ async function buildEntitlementProfile(tenantId: string) {
 
   const context = await loadTenantEntitlementContext(tenantId);
   const entitlements = await getEffectiveEntitlementMap(tenantId);
+  const businessType = context?.businessType ?? tenantRow.businessType;
+  const businessProfileInput = { businessType, businessTypeCode: businessType };
+  const businessProfile = resolveBusinessProfileFromBusinessType(businessProfileInput);
+  const businessProfileSource = resolveBusinessProfileSource(businessProfileInput);
 
   return {
     tenant: {
@@ -59,8 +64,12 @@ async function buildEntitlementProfile(tenantId: string) {
       business_address: tenantRow.businessAddress,
       business_phone: tenantRow.businessPhone,
       business_email: tenantRow.businessEmail,
-      businessType: context?.businessType ?? tenantRow.businessType,
-      business_type: context?.businessType ?? tenantRow.businessType,
+      businessType,
+      business_type: businessType,
+      businessProfile,
+      business_profile: businessProfile,
+      businessProfileSource,
+      business_profile_source: businessProfileSource,
       planTier: context?.planCode ?? tenantRow.planTier,
       plan_tier: context?.planCode ?? tenantRow.planTier,
       subscription_status: tenantRow.subscriptionStatus,

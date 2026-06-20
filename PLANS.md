@@ -8546,3 +8546,144 @@ Next agent should run browser smoke against a seeded tenant, paired printer (or 
 
 ### Continuation Notes
 Next safe patch: expose or resolve an explicit POS `businessProfile` from tenant profile/API (for example `retail_standard` derived by a documented backend mapping, not frontend plan/entitlement inference), then introduce a minimal route/root gate so only `retail_standard` tenants render `RetailStandardPOSFlow` while unknown/non-retail tenants stay on generic `POSPage`.
+
+## Plan: P4.1 Business Profile Resolver + Safe POS Flow Root Gate
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P4_1_business_profile_resolver_pos_flow_gate_prompt.md`
+- User request: Analisa mendalam, pelajari, tambahkan report jika ada yang tidak sesuai, lalu eksekusi P4.1 roadmap
+- Date started: 2026-06-20
+- Current status: Implemented and validated with automated tests/type-checks; browser smoke not run in terminal-only environment
+
+### Goal
+Add explicit business-profile resolution from tenant business type, expose it through tenant profile API, and safely route only `retail_standard` POS tenants to the P4 retail adapter while all other profiles remain on the existing generic POS fallback.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs and P0-P4 reports
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: Tenant profile/entitlement response contract.
+- Files inspected: `apps/api/src/http/controllers/TenantsController.ts`, tenant entitlement service references.
+- Findings: `/api/me/entitlements` and `/api/tenants/profile` share one response builder and already expose business type.
+- Tasks: Added business profile/source fields without removing existing tenant fields.
+- Risks: No controller integration test was added; behavior is covered by type-check and resolver unit tests.
+- Validation: `pnpm --filter @pos/api type-check`, `pnpm --filter @pos/api test`.
+
+#### Database/Schema Workstream
+- Scope: Check whether schema changes are needed.
+- Files inspected: tenant business type references and registration flow.
+- Findings: Existing `tenants.businessType` is sufficient for P4.1 canonical mapping.
+- Tasks: No schema/migration changes.
+- Risks: Future persisted explicit profile field would require migration, deferred.
+- Validation: Type-checks passed.
+
+#### Frontend/UI Workstream
+- Scope: POS route gate and tenant profile typing.
+- Files inspected: `POSPage.tsx`, P4 retail adapter, `useTenantProfile`, `useEntitlements`.
+- Findings: P4 adapter exported and generic POS could be preserved by extraction.
+- Tasks: Extracted `GenericPOSPage`, created `POSFlowRoot`, routed only `retail_standard` to retail adapter.
+- Risks: Browser smoke not run.
+- Validation: `pnpm --filter @pos/terminal-web test`, `pnpm --filter @pos/terminal-web type-check`.
+
+#### Tests/Validation Workstream
+- Scope: Resolver and route decision tests plus required package validation.
+- Files inspected: package test scripts.
+- Findings: Pure unit test harness exists using `tsx` and `node:test`/assert.
+- Tasks: Added resolver tests and route decision tests; updated package scripts.
+- Risks: No visual browser test harness added in this batch.
+- Validation: Required commands run; see validation log.
+
+#### Documentation Workstream
+- Scope: P4.1 report, source checklist, PLANS.md.
+- Files inspected: P4 report and P4.1 prompt.
+- Findings: P4.1 needed explicit report and honest smoke limitation.
+- Tasks: Created report and updated checklist/plan.
+- Risks: `docs/ORDER_LIFECYCLE.md` did not require behavior lifecycle changes.
+- Validation: Documentation reviewed for consistency with code.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Ensure no cross-tenant or entitlement inference regression.
+- Files inspected: tenant controller and route profile flow.
+- Findings: Existing tenant middleware supplies `req.tenantId`; profile query remains tenant-scoped by ID.
+- Tasks: Resolver ignores plan/entitlements and uses business type only.
+- Risks: None identified for tenant isolation; no secrets touched.
+- Validation: API type-check.
+
+### Execution Order
+1. Read roadmap/report context and existing implementation.
+2. Add pure resolver and tests.
+3. Expose API contract.
+4. Add frontend type support and POS root gate.
+5. Validate.
+6. Update report/checklist/plan.
+
+### Progress
+
+#### Completed
+- [x] Business profile resolver and tests.
+  - Files changed: `packages/application/business-flows/resolveBusinessProfile.ts`, `packages/application/business-flows/__tests__/resolveBusinessProfile.test.ts`, `packages/application/business-flows/index.ts`, `packages/application/package.json`
+  - Validation: application test/type-check passed.
+  - Docs updated: P4.1 report and source checklist.
+- [x] Tenant profile API businessProfile contract.
+  - Files changed: `apps/api/src/http/controllers/TenantsController.ts`
+  - Validation: API type-check/test passed.
+  - Docs updated: P4.1 report.
+- [x] POS flow root gate with generic fallback.
+  - Files changed: `apps/pos-terminal-web/src/features/pos/pages/POSPage.tsx`, `apps/pos-terminal-web/src/features/pos/pages/GenericPOSPage.tsx`, `apps/pos-terminal-web/src/features/pos-flows/root/*`, `apps/pos-terminal-web/src/hooks/api/useEntitlements.ts`, `apps/pos-terminal-web/package.json`
+  - Validation: terminal-web test/type-check passed.
+  - Docs updated: P4.1 report.
+
+#### Partially Completed
+- [ ] Browser/manual smoke.
+  - Completed: Manual checklist documented.
+  - Remaining: Execute in browser against retail, non-retail, and unknown tenants.
+  - Reason: Terminal-only environment.
+
+#### Blocked
+- [ ] Visual/browser proof.
+  - Blocker: No browser session/manual device environment in this batch.
+  - Required next step: Run documented smoke checklist in a browser.
+
+#### Not Attempted
+- [ ] Restaurant/cafe/quick-service/service adapters.
+  - Reason: Explicitly forbidden/deferred by P4.1 scope.
+
+### Validation Log
+- Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Notes: Includes resolver tests.
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: pass
+- Notes: Includes root route decision tests.
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: Resolver compiles.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: Profile API contract compiles.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: Root gate and extracted generic page compile.
+- Command: `pnpm --filter @pos/domain type-check && pnpm --filter @pos/application type-check && pnpm --filter @pos/api type-check && pnpm --filter @pos/terminal-web type-check && pnpm --filter @pos/application test && pnpm --filter @pos/api test && pnpm --filter @pos/terminal-web test && pnpm type-check`
+- Result: pass
+- Notes: Full prompt-required validation passed, including root Turbo type-check across 10 packages.
+
+### Documentation Updates
+- File: `roadmap/business-flows/P4_1_business_profile_resolver_pos_flow_gate_report.md`
+- Change: Added summary, mapping table, API contract, route matrix, proofs, validation, smoke not-run statement, risks, next phase.
+- File: `roadmap/business-flows/replit_codex_P4_1_business_profile_resolver_pos_flow_gate_prompt.md`
+- Change: Completion checklist marked implemented/validated where supported.
+
+### Checklist Updates
+- File: `roadmap/business-flows/replit_codex_P4_1_business_profile_resolver_pos_flow_gate_prompt.md`
+- Change: P4.1 completion checklist marked complete for implemented/validated items.
+
+### Continuation Notes
+Next safe patch: build P5 restaurant table-service adapter using the now-explicit `restaurant_table_service` profile, but keep generic fallback until the adapter has lifecycle/kitchen/payment tests and browser smoke proof.

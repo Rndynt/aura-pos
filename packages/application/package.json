@@ -34,7 +34,7 @@
   },
   "scripts": {
     "type-check": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --tsconfig tsconfig.json orders/__tests__/orderLifecycleDtoMapper.test.ts && tsx --tsconfig tsconfig.json orders/__tests__/UpdateOrder.lifecycleLocks.test.ts"
+    "test": "tsx --tsconfig tsconfig.json orders/__tests__/orderLifecycleDtoMapper.test.ts && tsx --tsconfig tsconfig.json orders/__tests__/UpdateOrder.lifecycleLocks.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/resolveBusinessProfile.test.ts"
   },
   "keywords": [
     "application",

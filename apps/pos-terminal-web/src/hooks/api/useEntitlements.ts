@@ -12,6 +12,7 @@ import { getActiveTenantId } from "@/lib/tenant";
 import { buildApiHeaders } from "@/lib/outlet";
 import { saveCachedEntitlements, getCachedEntitlements } from "@pos/offline";
 import type { EntitlementCode, EntitlementCatalog } from "@pos/application/entitlements";
+import type { BusinessFlowProfileId } from "@pos/domain/business-flows";
 
 export type EntitlementMap = Partial<Record<EntitlementCode, boolean>>;
 
@@ -32,6 +33,10 @@ export type EntitlementTenant = {
   business_email?: string | null;
   businessType: string;
   business_type: string;
+  businessProfile?: BusinessFlowProfileId | null;
+  business_profile?: BusinessFlowProfileId | null;
+  businessProfileSource?: "business_type_mapping" | "explicit_field" | "unknown";
+  business_profile_source?: "business_type_mapping" | "explicit_field" | "unknown";
   planTier: string;
   plan_tier: string;
   subscription_status?: string;
@@ -81,6 +86,10 @@ async function fetchEntitlements(tenantId: string): Promise<EntitlementProfile> 
           name: "",
           businessType: "",
           business_type: "",
+          businessProfile: null,
+          business_profile: null,
+          businessProfileSource: "unknown",
+          business_profile_source: "unknown",
           planTier: "",
           plan_tier: "",
         },

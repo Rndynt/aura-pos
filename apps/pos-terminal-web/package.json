@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "test": "tsx -r tsconfig-paths/register src/features/pos-core/services/__tests__/posPaymentAmountService.test.ts && tsx -r tsconfig-paths/register src/features/pos-core/services/__tests__/posLifecycleService.test.ts && tsx -r tsconfig-paths/register src/features/pos-flows/retail/__tests__/retailStandardFlowPolicy.test.ts"
+    "test": "tsx -r tsconfig-paths/register src/features/pos-core/services/__tests__/posPaymentAmountService.test.ts && tsx -r tsconfig-paths/register src/features/pos-core/services/__tests__/posLifecycleService.test.ts && tsx -r tsconfig-paths/register src/features/pos-flows/retail/__tests__/retailStandardFlowPolicy.test.ts && tsx -r tsconfig-paths/register src/features/pos-flows/root/__tests__/resolvePOSFlowComponent.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
