@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearch, useLocation } from "wouter";
 import { ProductOptionsDialog } from "@/components/pos/ProductOptionsDialog";
-import { PaymentMethodDialog } from "@/components/pos/PaymentMethodDialog";
-import { CombinedDraftSheet } from "@/components/pos/CombinedDraftSheet";
+
 import type { PaymentMethod, OrderType } from "@/hooks/useCart";
 import { useCart } from "@/hooks/useCart";
 import {
@@ -15,7 +14,6 @@ import {
   useOrders,
   useCreateAndPay,
 } from "@/lib/api/hooks";
-import { useOfflineOrderSubmit } from "@/hooks/useOfflineOrderSubmit";
 import type { Product, ProductVariant } from "@pos/domain/catalog/types";
 import type { SelectedOption, Order } from "@pos/domain/orders/types";
 import { Loader2 } from "lucide-react";
@@ -32,31 +30,25 @@ import {
 } from "@pos/offline";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useKitchenChannelSender } from "@/hooks/useKitchenChannel";
-import { cartToOrderPayload } from "../mappers/cartToOrderPayload";
 import {
+  POSOrderLifecycleSheet,
+  POSPaymentDialog,
+  cartItemsToKitchenTicketItems,
+  cartToOrderPayload,
   buildCompletedCFDPayload,
   buildPaymentCFDPayload,
-} from "../mappers/cfdPayloadMapper";
-import { cartItemsToKitchenTicketItems } from "../mappers/kitchenTicketPayloadMapper";
-import { getLocalDraftItems, getProductsById } from "../mappers/orderToCart";
-import { buildReceiptPayload } from "../mappers/receiptPayloadMapper";
-import {
   fetchOrderForPOS,
-  updatePOSOrderStatus,
-} from "../services/posOrderService";
-import {
-  getOrderRemainingAmount,
+  getLocalDraftItems,
+  getProductsById,
   isTrueServerDraft,
   type POSLifecycleOrder,
-} from "../services/orderLifecycle";
-
-import {
-  enqueueReceiptPrintJob,
-  hasPairedReceiptPrinter,
-  markReceiptPrintFailed,
-  printReceiptNow,
-} from "../services/posPrinterService";
-import { usePOSCustomerDisplayFlow } from "../hooks/usePOSCustomerDisplayFlow";
+  updatePOSOrderStatus,
+  usePOSActiveOrderPayment,
+  usePOSCustomerDisplayController,
+  usePOSOfflineSubmit,
+  usePOSReceiptController,
+  usePOSStockGuard,
+} from "@/features/pos-core";
 import { usePOSOrderQueueInvalidation } from "../hooks/usePOSOrderQueueFlow";
 import { useCloseMobileCartOnDesktop } from "../hooks/usePOSResponsiveFlow";
 import { POSLayout } from "../components/POSLayout";
@@ -85,8 +77,13 @@ export default function POSPage() {
   const { can } = useTenant();
   // Product variants / options are base catalog behavior — never commercially gated.
   const hasProductVariants = true;
-  const hasPairedPrinter = hasPairedReceiptPrinter();
-  const shouldAutoPrintReceipt = hasPairedPrinter; // browser print disabled — only auto-print when BT printer is actually paired
+  const {
+    buildReceiptPayload,
+    enqueueReceiptPrintJob,
+    markReceiptPrintFailed,
+    printReceiptNow,
+    shouldAutoPrintReceipt,
+  } = usePOSReceiptController();
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { isOnline } = useNetworkStatus();
@@ -99,7 +96,7 @@ export default function POSPage() {
   // Prevent cart-change effect from overriding payment/completed CFD state
   const inPaymentFlowRef = useRef(false);
 
-  const { sendToCFD } = usePOSCustomerDisplayFlow({
+  const { sendToCFD } = usePOSCustomerDisplayController({
     cart,
     tenantName,
     inPaymentFlowRef,
@@ -117,84 +114,10 @@ export default function POSPage() {
   } = useProducts();
   const products = productsData?.products || [];
 
-  // ── Outlet-aware stock guards (P5) ──────────────────────────────────────────
-  // Map of latest product-by-id so cart actions consult the freshest stock
-  // (rather than stale `item.product` snapshots).
-  const productById = useMemo(() => {
-    const map = new Map<string, Product>();
-    for (const p of products) map.set(p.id, p);
-    return map;
-  }, [products]);
-
-  // Aggregate cart quantity per product (sum across variants/options).
-  const cartQuantityByProductId = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const item of cart.items) {
-      map.set(item.product.id, (map.get(item.product.id) ?? 0) + item.quantity);
-    }
-    return map;
-  }, [cart.items]);
-
-  /**
-   * Validates whether `addQty` units of `product` may be added to the cart given
-   * the current outlet stock and existing cart quantity for the same product.
-   * Returns `{ ok: true }` for non-tracked products, otherwise either
-   * `{ ok: true }` or `{ ok: false, reason }` with a user-facing message.
-   */
-  const evaluateStockForAdd = (
-    product: Product,
-    addQty: number,
-  ): { ok: true } | { ok: false; reason: string } => {
-    const latest = productById.get(product.id) ?? product;
-    if (!latest.stock_tracking_enabled) return { ok: true };
-    const available =
-      typeof latest.availableQuantity === "number"
-        ? latest.availableQuantity
-        : (latest.stock_qty ?? 0);
-    const cartQty = cartQuantityByProductId.get(product.id) ?? 0;
-    if (available <= 0) {
-      return { ok: false, reason: `Stok ${latest.name} habis di outlet ini.` };
-    }
-    const remaining = available - cartQty;
-    if (addQty > remaining) {
-      return {
-        ok: false,
-        reason: `Stok ${latest.name} tidak cukup. Tersedia: ${available}, sudah di cart: ${cartQty}.`,
-      };
-    }
-    return { ok: true };
-  };
-
-  /**
-   * Validates an in-cart quantity change (e.g. +/- buttons). `newQty` is the
-   * target value; `currentQty` is the qty already held by this cart row so it
-   * is excluded from the "already in cart" tally.
-   */
-  const evaluateStockForUpdate = (
-    product: Product,
-    currentQty: number,
-    newQty: number,
-  ): { ok: true } | { ok: false; reason: string } => {
-    if (newQty <= currentQty) return { ok: true };
-    const latest = productById.get(product.id) ?? product;
-    if (!latest.stock_tracking_enabled) return { ok: true };
-    const available =
-      typeof latest.availableQuantity === "number"
-        ? latest.availableQuantity
-        : (latest.stock_qty ?? 0);
-    const cartQty = cartQuantityByProductId.get(product.id) ?? 0;
-    const required = newQty + (cartQty - currentQty);
-    if (available <= 0) {
-      return { ok: false, reason: `Stok ${latest.name} habis di outlet ini.` };
-    }
-    if (required > available) {
-      return {
-        ok: false,
-        reason: `Stok ${latest.name} tidak cukup. Tersedia: ${available}.`,
-      };
-    }
-    return { ok: true };
-  };
+  const { evaluateStockForAdd, evaluateStockForUpdate } = usePOSStockGuard(
+    products,
+    cart.items,
+  );
 
   // Fetch orders for queue display
   const { data: ordersData, refetch: refetchOrders } = useOrders(undefined, {
@@ -290,7 +213,7 @@ export default function POSPage() {
   const recordPaymentMutation = useRecordPayment();
   const createAndPayMutation = useCreateAndPay();
   const { submitOrder, isSubmitting: isOfflineSubmitting } =
-    useOfflineOrderSubmit();
+    usePOSOfflineSubmit();
 
   const hasPartialPayment = can("payments_partial_payment");
   const hasMultiPayment = can("payments_multi_payment");
@@ -1161,6 +1084,12 @@ export default function POSPage() {
     cart.updateQuantity(id, qty);
   };
 
+
+  const { payActiveOrder } = usePOSActiveOrderPayment({
+    setPendingOrderForPayment,
+    openPaymentDialog: () => setPaymentMethodDialogOpen(true),
+  });
+
   const cartPanelProps = {
     items: cart.items,
     onUpdateQty: handleCartQuantityChange,
@@ -1221,7 +1150,7 @@ export default function POSPage() {
       />
 
       {/* Combined Draft Orders Sheet */}
-      <CombinedDraftSheet
+      <POSOrderLifecycleSheet
         open={combinedDraftOpen}
         onOpenChange={setCombinedDraftOpen}
         onContinueOrder={(orderId) => {
@@ -1229,30 +1158,7 @@ export default function POSPage() {
           setLocation(`/pos?continueOrderId=${orderId}`);
         }}
         onResumeLocalDraft={handleResumeLocalDraft}
-        onPayActiveOrder={(order) => {
-          const remainingAmount = getOrderRemainingAmount(order);
-          if (remainingAmount === null || remainingAmount <= 0) {
-            toast({
-              title: "Pembayaran diblokir",
-              description:
-                remainingAmount === 0
-                  ? "Tagihan aktif ini sudah lunas."
-                  : "Sisa pembayaran tidak dapat dihitung dari data order.",
-              variant: "destructive",
-            });
-            return;
-          }
-          setPendingOrderForPayment({
-            orderId: order.id,
-            totalAmount: remainingAmount,
-            orderNumber: String(
-              (order as any).order_number ??
-                (order as any).orderNumber ??
-                order.id,
-            ),
-          });
-          setPaymentMethodDialogOpen(true);
-        }}
+        onPayActiveOrder={payActiveOrder}
       />
 
       {/* Product Options Dialog */}
@@ -1264,7 +1170,7 @@ export default function POSPage() {
       />
 
       {/* Payment Method Selection Dialog */}
-      <PaymentMethodDialog
+      <POSPaymentDialog
         open={paymentMethodDialogOpen}
         onClose={() => {
           if (pendingOrderForPayment) {
