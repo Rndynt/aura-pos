@@ -530,17 +530,17 @@ If exact scripts differ, run the closest available commands and document results
 
 ## Completion checklist
 
-- [ ] Business profile ids defined.
-- [ ] Order action ids defined.
-- [ ] Lifecycle vocabulary defined.
-- [ ] Business flow registry implemented.
-- [ ] Policy evaluator implemented.
-- [ ] Entitlement relationship metadata defined.
-- [ ] Pure unit tests added.
-- [ ] Report created.
-- [ ] No runtime POS behavior changed.
-- [ ] No schema/migration changes.
-- [ ] No UI/controller behavior changes.
+- [x] Business profile ids defined.
+- [x] Order action ids defined.
+- [x] Lifecycle vocabulary defined.
+- [x] Business flow registry implemented.
+- [x] Policy evaluator implemented.
+- [x] Entitlement relationship metadata defined.
+- [x] Pure unit tests added.
+- [x] Report created.
+- [x] No runtime POS behavior changed.
+- [x] No schema/migration changes.
+- [x] No UI/controller behavior changes.
 
 ## Commit
 
