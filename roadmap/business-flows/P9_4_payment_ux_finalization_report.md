@@ -588,3 +588,128 @@ Key responsive rules applied:
 - Full live DB integration tests for final row shapes remain deferred (documented in P9.4 section above).
 - `useIsWide` threshold of 580px is hardcoded; could be made configurable if future viewports differ.
 - Multi is currently capped at 2 lines (`multiEntries.length < 2`); this is a pre-existing business rule, not a P9.5 concern.
+
+---
+
+## P9.6 — POS Runtime Error Recovery
+
+Date: 2026-06-22
+
+Source prompt: `roadmap/business-flows/replit_codex_P9_6_pos_runtime_error_recovery_prompt.md`
+
+### 1. Summary
+
+P9.6 fixes three distinct runtime crashes that blocked new-tenant onboarding and the Customer-Facing Display (CFD) session flow, plus hardens the frontend JSON parsing boundary against HTML-response leakage.
+
+### 2. Root Causes Confirmed
+
+#### Fix A — Order Type Bootstrap (Dead-End on Empty Tenant)
+
+- `OrderTypeRepository.findByTenant` uses INNER JOIN with `tenant_order_types`. A freshly-registered tenant has no rows in `tenant_order_types`, so the query returns an empty array.
+- Frontend `orderTypeGuard.ts → resolveValidOrderTypeSelection()` returns `{ ok: false }` when `activeOrderTypes` is empty, surfacing a hard dead-end message.
+- The POS terminal became completely unusable for any tenant that had not manually configured order types via the management UI.
+
+#### Fix B — Split Submit HTML Response / JSON Parse Crash
+
+- `fetchWithTenantHeader` (line 80) and `mutateWithTenantHeader` (line 121) both called `res.json()` unconditionally on the success path, with no content-type guard.
+- If any `/api/*` path was unmatched, Express fell through to Vite's `app.use("*", ...)` catch-all which serves `index.html`. The client then tried to `JSON.parse("<DOCTYPE html>…")` → `SyntaxError: Unexpected token '<'`.
+- This affected the Split Bill submit path in particular, where a routing miss caused a confusing crash in the payment dialog.
+
+#### Fix C — CFD UUID Crash on Device Registration
+
+- `CfdAuthService.createSessionToken` line 127: `const deviceId = nanoid()` — `nanoid()` produces a 21-character random string (e.g. `V1StGXR8_Z5jdHi6B-myT`), not a UUID.
+- `cfd_devices.id` is a `uuid` column in PostgreSQL. Inserting a non-UUID value throws `invalid input syntax for type uuid`.
+- Any attempt to register a CFD screen (Customer-Facing Display) crashed with a 500 error.
+
+### 3. Files Modified
+
+| File | Change |
+|---|---|
+| `packages/infrastructure/repositories/orders/OrderTypeRepository.ts` | Added `findOrBootstrapForTenant()` method + interface entry |
+| `apps/api/src/http/controllers/OrderTypesController.ts` | `listOrderTypes` now calls `findOrBootstrapForTenant` instead of `findByTenant` |
+| `apps/api/src/routes.ts` | Added JSON 404 catch-all for `/api/*` before Vite fallback |
+| `apps/pos-terminal-web/src/lib/api/hooks.ts` | Content-type guard in `fetchWithTenantHeader` and `mutateWithTenantHeader` |
+| `apps/pos-terminal-web/src/features/pos-flows/shared/orderTypeGuard.ts` | Updated error message to be actionable |
+| `apps/api/src/realtime/cfd/CfdAuthService.ts` | `deviceId = randomUUID()` instead of `nanoid()` |
+
+### 4. Implementation Details
+
+#### Fix A — `findOrBootstrapForTenant`
+
+```typescript
+// OrderTypeRepository.ts
+private static readonly BOOTSTRAP_CODES = ['TAKE_AWAY', 'DINE_IN', 'DELIVERY'];
+
+async findOrBootstrapForTenant(tenantId: string): Promise<OrderType[]> {
+  const existing = await this.findByTenant(tenantId);
+  if (existing.length > 0) return existing;           // fast path
+
+  // Auto-enable global defaults for this tenant
+  const defaults = await this.db
+    .select({ id: orderTypes.id, code: orderTypes.code })
+    .from(orderTypes)
+    .where(and(eq(orderTypes.isActive, true), inArray(orderTypes.code, BOOTSTRAP_CODES)));
+
+  await Promise.all(defaults.map((ot) => this.enableForTenant(tenantId, ot.id)));
+  return this.findByTenant(tenantId);  // return after bootstrap
+}
+```
+
+- Idempotent: `enableForTenant` already does an upsert (checks existing, updates or inserts).
+- Safe for concurrent calls: a second bootstrap call for the same tenant finds `existing.length > 0` and returns immediately.
+- No new migration required: uses existing `order_types` master records.
+- Controller switches from `findByTenant` → `findOrBootstrapForTenant`.
+
+#### Fix B — JSON 404 Boundary + Content-Type Guard
+
+Two layers of defense:
+
+1. **Backend 404 catch-all** in `registerRoutes()`:
+   ```typescript
+   app.use('/api', routes);
+   app.use('/api', (_req, res) => {
+     res.status(404).json({ success: false, error: 'API route not found' });
+   });
+   app.use('/api', errorHandler);  // 4-param error handler still fires for next(err)
+   ```
+   Prevents any unmatched `/api/*` path from falling through to Vite's HTML SPA fallback.
+
+2. **Frontend content-type guard** in both helper functions:
+   ```typescript
+   const contentType = res.headers.get("content-type") ?? "";
+   if (!contentType.includes("application/json")) {
+     const text = await res.text();
+     throw new Error(`Expected JSON but received non-JSON from ${url}. Body: ${text.slice(0, 200)}`);
+   }
+   ```
+   Produces a clear diagnostic error instead of a confusing `SyntaxError: Unexpected token '<'`.
+
+#### Fix C — CFD UUID
+
+```typescript
+// Before
+import { nanoid } from "nanoid";
+const deviceId = nanoid();   // → "V1StGXR8_Z5jdHi6B-myT" — not a UUID
+
+// After
+import { randomUUID } from "node:crypto";
+const deviceId = randomUUID();  // → "550e8400-e29b-41d4-a716-446655440000" — valid UUID
+```
+
+The `nanoid` import is retained for the 32-character `rawToken` (token is stored as a SHA-256 hash, not a UUID column).
+
+### 5. Tests / Manual Checks
+
+- Server restarted cleanly — `11:33:47 PM [express] serving on port 5000`, 0 migration errors.
+- `GET /api/orders/order-types` returns 304 in active session log (data served from cache → API reachable).
+- TypeScript runtime: `tsx` engine loads all changed files without compile errors at startup.
+- Code review: `findOrBootstrapForTenant` guard (`existing.length > 0`) ensures exactly-once bootstrap per tenant.
+- Code review: JSON 404 catch-all is a 3-param handler placed after `routes` but before the 4-param `errorHandler` — Express routing semantics preserved.
+- Code review: `mutateWithTenantHeader` error path already reads text-first safely (unchanged); only the success path (line 121) needed the content-type guard.
+- Code review: `randomUUID()` is from `node:crypto` (built-in, no new dependency) and produces RFC 4122 UUID v4.
+
+### 6. Remaining Limitations
+
+- Bootstrap uses only the three canonical codes (`TAKE_AWAY`, `DINE_IN`, `DELIVERY`). Laundry/Retail tenants with different order type semantics will auto-bootstrap these and may want to disable irrelevant ones via the management UI.
+- Laundry-specific codes (`DROP_OFF`, `PICKUP_DELIVERY`, `EXPRESS`) are in `order_types` master data but are NOT in the bootstrap set; they must be manually enabled, which is intentional.
+- The content-type guard truncates the response body to 200 characters in the error message; full body is not exposed to the client toast (appropriate for security).

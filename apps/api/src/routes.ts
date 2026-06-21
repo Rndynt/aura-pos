@@ -49,6 +49,11 @@ export async function registerRoutes(
   });
 
   app.use('/api', routes);
+  // JSON 404 catch-all — prevents unmatched /api/* routes from falling through to Vite's
+  // HTML SPA fallback, which would cause "Unexpected token '<'" JSON parse errors on the client.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ success: false, error: 'API route not found' });
+  });
   app.use('/api', errorHandler);
 
   const httpServer = createServer(app);

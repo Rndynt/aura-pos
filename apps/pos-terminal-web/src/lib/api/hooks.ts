@@ -65,7 +65,6 @@ function mapApiOrder(raw: Record<string, any>): Order {
 
 // Helper to add tenant header to fetch requests
 async function fetchWithTenantHeader(url: string) {
-  const tenantId = getActiveTenantId();
   const headers = buildApiHeaders();
   const res = await fetch(url, {
     headers,
@@ -75,6 +74,12 @@ async function fetchWithTenantHeader(url: string) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
+  }
+
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const text = await res.text();
+    throw new Error(`Expected JSON but received non-JSON response from ${url}. Body: ${text.slice(0, 200)}`);
   }
 
   const response = await res.json();
@@ -116,6 +121,12 @@ async function mutateWithTenantHeader(
     if (parsed?.code) err.code = parsed.code;
     if (parsed) err.body = parsed;
     throw err;
+  }
+
+  const mutateContentType = res.headers.get("content-type") ?? "";
+  if (!mutateContentType.includes("application/json")) {
+    const text = await res.text();
+    throw new Error(`Expected JSON but received non-JSON response from ${url}. Body: ${text.slice(0, 200)}`);
   }
 
   const response = await res.json();

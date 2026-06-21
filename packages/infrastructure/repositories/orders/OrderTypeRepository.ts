@@ -19,6 +19,7 @@ export interface IOrderTypeRepository {
   findAll(): Promise<OrderType[]>;
   findByCode(code: string): Promise<OrderType | null>;
   findByTenant(tenantId: string): Promise<OrderType[]>;
+  findOrBootstrapForTenant(tenantId: string): Promise<OrderType[]>;
   enableForTenant(tenantId: string, orderTypeId: string, config?: Record<string, any>): Promise<TenantOrderType>;
   disableForTenant(tenantId: string, orderTypeId: string): Promise<void>;
   create(orderType: InsertOrderType): Promise<OrderType>;
@@ -63,6 +64,45 @@ export class OrderTypeRepository
       return result[0] || null;
     } catch (error) {
       this.handleError('find order type by code', error);
+    }
+  }
+
+  /**
+   * Default order type codes bootstrapped for tenants with no configuration.
+   * Priority order: TAKE_AWAY first (always safe for any business type).
+   */
+  private static readonly BOOTSTRAP_CODES = ['TAKE_AWAY', 'DINE_IN', 'DELIVERY'];
+
+  /**
+   * Find enabled order types for a tenant — auto-bootstraps defaults if none configured.
+   * Safe to call from any endpoint; idempotent (enableForTenant handles upsert).
+   */
+  async findOrBootstrapForTenant(tenantId: string): Promise<OrderType[]> {
+    try {
+      const existing = await this.findByTenant(tenantId);
+      if (existing.length > 0) return existing;
+
+      // No order types enabled for this tenant — auto-enable the global defaults
+      const defaults = await this.db
+        .select({ id: orderTypes.id, code: orderTypes.code })
+        .from(orderTypes)
+        .where(
+          and(
+            eq(orderTypes.isActive, true),
+            inArray(orderTypes.code, OrderTypeRepository.BOOTSTRAP_CODES)
+          )
+        );
+
+      if (defaults.length === 0) return [];
+
+      // Enable each default order type for this tenant (upsert semantics)
+      await Promise.all(
+        defaults.map((ot) => this.enableForTenant(tenantId, ot.id))
+      );
+
+      return this.findByTenant(tenantId);
+    } catch (error) {
+      this.handleError('find or bootstrap order types for tenant', error);
     }
   }
 

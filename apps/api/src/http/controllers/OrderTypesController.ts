@@ -26,7 +26,7 @@ export async function listOrderTypes(
       return;
     }
 
-    const orderTypes = await container.orderTypeRepository.findByTenant(tenantId);
+    const orderTypes = await container.orderTypeRepository.findOrBootstrapForTenant(tenantId);
 
     res.status(200).json({
       success: true,

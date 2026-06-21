@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import { sql } from "drizzle-orm";
 import { fromNodeHeaders } from "better-auth/node";
@@ -124,7 +124,7 @@ export class CfdAuthService {
   }> {
     const rawToken = nanoid(32);
     const tokenHash = hashCfdApiKey(rawToken);
-    const deviceId = nanoid();
+    const deviceId = randomUUID();
     const rawDeviceName = typeof req.body?.deviceName === 'string' ? req.body.deviceName.trim() : '';
     const deviceName = rawDeviceName ? rawDeviceName.slice(0, 120) : 'Customer Display';
 

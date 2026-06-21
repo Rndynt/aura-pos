@@ -1,6 +1,6 @@
 import type { OrderType } from "@/hooks/useCart";
 
-export const ORDER_TYPE_UNAVAILABLE_MESSAGE = "Tipe pesanan belum tersedia. Muat ulang POS atau aktifkan tipe pesanan terlebih dahulu.";
+export const ORDER_TYPE_UNAVAILABLE_MESSAGE = "Tipe pesanan belum tersedia. Sistem mencoba mengaktifkan default secara otomatis — coba muat ulang halaman (F5). Jika masih gagal, hubungi administrator.";
 
 export type ActiveOrderTypeOption = {
   id: string;
