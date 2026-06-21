@@ -101,7 +101,7 @@ const bodySchema = z.object({
 // User-safe error mapping
 // ---------------------------------------------------------------------------
 
-function mapToUserSafeError(error: unknown): { message: string; code: string; status: number } {
+export function mapToUserSafeError(error: unknown): { message: string; code: string; status: number } {
   if (error instanceof POSPaymentValidationError) {
     return { message: error.message, code: error.code, status: 400 };
   }
@@ -109,6 +109,8 @@ function mapToUserSafeError(error: unknown): { message: string; code: string; st
 
   if (/order tidak ditemukan/i.test(msg)) return { message: msg, code: 'ORDER_NOT_FOUND', status: 404 };
   if (/order_type|tipe pesanan/i.test(msg)) return { message: 'Tipe pesanan tidak valid atau belum aktif untuk tenant ini. Muat ulang POS lalu coba lagi.', code: 'INVALID_ORDER_TYPE', status: 400 };
+  if (/jumlah pembayaran harus sama dengan sisa bill/i.test(msg)) return { message: 'Jumlah pembayaran harus sama dengan sisa bill yang dipilih.', code: 'SPLIT_BILL_AMOUNT_MISMATCH', status: 400 };
+  if (/^bill yang dipilih sudah lunas\.?$/i.test(msg.trim())) return { message: 'Bill yang dipilih sudah lunas.', code: 'SPLIT_BILL_ALREADY_PAID', status: 409 };
   if (/melebihi sisa/i.test(msg)) return { message: 'Jumlah pembayaran melebihi sisa tagihan.', code: 'PAYMENT_AMOUNT_EXCEEDS_REMAINING', status: 400 };
   if (/split|bill yang dipilih/i.test(msg)) return { message: 'Bill yang dipilih tidak valid atau sudah lunas.', code: 'INVALID_SPLIT_BILL', status: 400 };
   if (/metode pembayaran/i.test(msg)) return { message: 'Metode pembayaran tidak valid.', code: 'PAYMENT_METHOD_INVALID', status: 400 };

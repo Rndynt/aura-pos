@@ -162,3 +162,87 @@ Remaining `cart.clearCart()` calls include draft load/save, manual flow actions,
 - [x] No card/ewallet/provider mapping was added.
 - [x] No legacy alias compatibility was added.
 - [x] Report file exists and documents the final user-readable flow.
+
+## P9.3.2 Split Bill Backend Invariant Fix
+
+### 1. What was still risky after P9.3.1
+
+P9.3.1 made split replay accounting safer by using only non-replayed payment rows for `order_bill_splits.amount_paid` and `orders.paid_amount`. The remaining risk was that the backend still updated the selected split by `newLineTotal` without first proving that the selected bill was payable and that the new payment amount exactly matched the selected bill's remaining amount. That meant frontend validation was doing too much of the safety work.
+
+### 2. Selected bill invariant rule
+
+For `SPLIT_BILL`, the repository now resolves the selected bill state before inserting payment rows or updating split/order totals. It uses database `amount_due` and `amount_paid` when the split row already exists, and only falls back to request split values for a newly created split row. The invariant is:
+
+- idempotent replay with `newLineTotal = 0` returns safely and does not reject just because the bill is now paid;
+- a new payment must target a resolvable split bill identity;
+- the selected bill must have positive `amountDue` and positive remaining amount;
+- `newLineTotal` must equal selected bill remaining within `EPSILON = 0.001`;
+- mismatch, overpay, and underpay are rejected before split/payment/order mutation.
+
+### 3. Valid Bill A payment behavior
+
+When Bill A has `amountDue = 15,000`, `amountPaid = 0`, and the new non-replayed payment total is `15,000`, the backend accepts the payment. The selected split is incremented once, the payment row is inserted with the real split id after the split row exists or is found, and the parent order `paid_amount` is incremented only by `newLineTotal`.
+
+### 4. Overpay behavior
+
+When a cashier attempts to pay more than the selected bill remaining, the repository throws the user-safe mismatch message before any split/payment/order mutation:
+
+`Jumlah pembayaran harus sama dengan sisa bill yang dipilih.`
+
+The API maps this to `SPLIT_BILL_AMOUNT_MISMATCH` with HTTP 400.
+
+### 5. Underpay behavior
+
+P9.3.2 intentionally does not introduce partial-per-bill behavior. When a cashier attempts to pay less than the selected bill remaining, the repository rejects with the same user-safe mismatch message before any mutation.
+
+### 6. Already-paid selected bill behavior
+
+A new different-idempotency request against a selected bill whose remaining amount is already zero is rejected with:
+
+`Bill yang dipilih sudah lunas.`
+
+The API maps this to `SPLIT_BILL_ALREADY_PAID` with HTTP 409.
+
+### 7. Idempotent replay behavior
+
+A replay of the same selected bill payment is detected by deterministic payment-line idempotency key before split validation and mutation. Because all replayed lines produce `newLineTotal = 0`, the invariant helper allows the request to return current aggregate state safely. The selected split and parent order are not incremented again.
+
+### 8. Files changed
+
+- `packages/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository.ts`
+- `apps/api/src/http/controllers/POSPaymentController.ts`
+- `apps/api/src/__tests__/submit-pos-payment-split-invariant.test.ts`
+- `roadmap/business-flows/replit_codex_P9_3_2_split_bill_backend_invariant_prompt.md`
+- `roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md`
+- `PLANS.md`
+
+### 9. Tests added/updated
+
+Added `apps/api/src/__tests__/submit-pos-payment-split-invariant.test.ts` with focused backend/API coverage for:
+
+- valid selected bill payment where `newLineTotal` equals remaining;
+- overpay rejection;
+- underpay rejection;
+- already-paid selected bill rejection for a new request;
+- idempotent replay allowance with `newLineTotal = 0`;
+- cashier-readable API mapping for mismatch, already-paid, and invalid split bill errors.
+
+Limitation: the new test directly covers the extracted invariant helper and API error mapper rather than a full Drizzle transaction against a live database. Existing API and type-check validation still cover integration build compatibility.
+
+### 10. Validation output
+
+- `pnpm --filter @pos/domain type-check`: passed.
+- `pnpm --filter @pos/application type-check`: passed.
+- `pnpm --filter @pos/application test`: passed.
+- `pnpm --filter @pos/api type-check`: passed.
+- `pnpm --filter @pos/api test`: passed, 189 tests passed.
+- `pnpm --filter @pos/terminal-web type-check`: passed.
+- `pnpm --filter @pos/terminal-web test`: passed.
+- `pnpm type-check`: passed, 10/10 Turbo tasks successful.
+- Provider/gateway grep check: no provider/card/e-wallet/gateway concepts were added to built-in SubmitPOSPayment runtime code.
+- Alias grep check: only the existing application test still mentions rejected old flow string `full_payment`; no runtime old alias support was added.
+- Invariant grep check: backend code contains the new split amount update and API error codes for split mismatch/already-paid behavior.
+
+### 11. Final user-readable Split Bill flow
+
+Cashier chooses Split, selects Bill A, and pays exactly Bill A's remaining amount. Backend resolves Bill A, validates that the payment equals the selected bill remaining, records the payment once, marks Bill A paid, and keeps the parent order partial if other bills remain unpaid. Retrying the same request returns safely without double-counting. Overpaying, underpaying, selecting an invalid bill, or paying an already-paid bill with a new request returns a cashier-readable error.

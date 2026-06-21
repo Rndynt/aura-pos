@@ -456,20 +456,20 @@ Be honest. Do not mark something complete if code does not prove it.
 ## Acceptance checklist
 
 ```txt
-- [ ] Backend explicitly validates selected split bill remaining.
-- [ ] Valid selected bill payment succeeds only when payment amount equals selected bill remaining.
-- [ ] Overpay selected bill is rejected before DB mutation.
-- [ ] Underpay selected bill is rejected before DB mutation.
-- [ ] Already-paid selected bill rejects new different-idempotency payment.
-- [ ] Idempotent replay of an already paid selected bill returns safely without double-counting.
-- [ ] Split amountPaid increments only by newly inserted payment rows.
-- [ ] Order paidAmount increments only by newly inserted payment rows.
-- [ ] Payment row uses real split_id when split row exists or is created.
-- [ ] Error messages are cashier-readable.
-- [ ] No provider/card/e-wallet/gateway logic added.
-- [ ] No old flow/method alias support added.
-- [ ] Report updated with P9.3.2 section.
-- [ ] Type-check and tests pass or any unrelated failure is documented clearly.
+- [x] Backend explicitly validates selected split bill remaining.
+- [x] Valid selected bill payment succeeds only when payment amount equals selected bill remaining.
+- [x] Overpay selected bill is rejected before DB mutation.
+- [x] Underpay selected bill is rejected before DB mutation.
+- [x] Already-paid selected bill rejects new different-idempotency payment.
+- [x] Idempotent replay of an already paid selected bill returns safely without double-counting.
+- [x] Split amountPaid increments only by newly inserted payment rows.
+- [x] Order paidAmount increments only by newly inserted payment rows.
+- [x] Payment row uses real split_id when split row exists or is created.
+- [x] Error messages are cashier-readable.
+- [x] No provider/card/e-wallet/gateway logic added.
+- [x] No old flow/method alias support added.
+- [x] Report updated with P9.3.2 section.
+- [x] Type-check and tests pass or any unrelated failure is documented clearly.
 ```
 
 ## Commit message

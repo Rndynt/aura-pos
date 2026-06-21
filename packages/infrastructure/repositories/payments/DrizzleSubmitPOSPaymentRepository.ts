@@ -36,10 +36,48 @@ import type { SubmitPOSPaymentRepositoryPort } from "@pos/application/payments";
 import type { SubmitPOSPaymentCommand, SubmitPOSPaymentCommandItem } from "@pos/application/payments";
 import type { SubmitPOSPaymentResult, SubmitPOSPaymentResultSplit } from "@pos/application/payments";
 
-type TxClient = ReturnType<typeof DrizzleUnitOfWork.fromContext>;
+type TxClient = NonNullable<ReturnType<typeof DrizzleUnitOfWork.fromContext>>;
+const EPSILON = 0.001;
+type CommandSplit = NonNullable<SubmitPOSPaymentCommand["payment"]["splits"]>[number];
+
+type SelectedSplitState = {
+  clientBillId: string;
+  splitNo: number;
+  splitDbId?: string;
+  amountDue: number;
+  amountPaid: number;
+  remaining: number;
+};
 
 function roundCurrency(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+export function validateSelectedSplitPaymentInvariant(
+  selectedSplit: SelectedSplitState,
+  newLineTotal: number,
+): void {
+  if (newLineTotal <= EPSILON) return;
+
+  if (selectedSplit.amountDue <= EPSILON) {
+    throw new Error("Bill yang dipilih tidak valid atau sudah lunas.");
+  }
+
+  if (selectedSplit.remaining <= EPSILON) {
+    throw new Error("Bill yang dipilih sudah lunas.");
+  }
+
+  if (Math.abs(newLineTotal - selectedSplit.remaining) > EPSILON) {
+    throw new Error("Jumlah pembayaran harus sama dengan sisa bill yang dipilih.");
+  }
+}
+
+function findRequestSplit(
+  splits: SubmitPOSPaymentCommand["payment"]["splits"],
+  selectedBillId: string | undefined,
+): CommandSplit | undefined {
+  if (!selectedBillId || !splits) return undefined;
+  return splits.find((split) => split.clientBillId === selectedBillId);
 }
 
 function buildDeterministicIdempotencyKey(
@@ -51,6 +89,84 @@ function buildDeterministicIdempotencyKey(
   amount: number,
 ): string {
   return `${sessionId}:${flow}:${targetBillId ?? "none"}:${lineIndex}:${method}:${amount}`;
+}
+
+async function resolveSelectedSplitState({
+  tx,
+  orderId,
+  targetBillId,
+  lineBillId,
+  lineSplitDbId,
+  splits,
+}: {
+  tx: TxClient;
+  orderId: string;
+  targetBillId?: string;
+  lineBillId?: string;
+  lineSplitDbId?: string;
+  splits: SubmitPOSPaymentCommand["payment"]["splits"];
+}): Promise<{ selectedSplit: SelectedSplitState; existingSplits: any[] }> {
+  const selectedBillId = targetBillId ?? lineBillId ?? lineSplitDbId;
+  if (!selectedBillId) {
+    throw new Error("Bill yang dipilih tidak valid atau sudah lunas.");
+  }
+
+  const existingSplits = await tx
+    .select()
+    .from(orderBillSplits)
+    .where(eq(orderBillSplits.orderId, orderId))
+    .for("update");
+
+  const matchingDbSplit = existingSplits.find(
+    (split) =>
+      split.clientBillId === selectedBillId ||
+      split.id === selectedBillId ||
+      (lineSplitDbId != null && split.id === lineSplitDbId),
+  );
+
+  const requestSplit =
+    findRequestSplit(splits, targetBillId) ??
+    findRequestSplit(splits, lineBillId) ??
+    (matchingDbSplit ? splits?.find((split) => split.splitNo === matchingDbSplit.splitNo) : undefined);
+
+  if (splits?.length && targetBillId && !findRequestSplit(splits, targetBillId) && targetBillId !== matchingDbSplit?.id) {
+    throw new Error("Bill yang dipilih tidak valid atau sudah lunas.");
+  }
+
+  if (!requestSplit && !matchingDbSplit) {
+    throw new Error("Bill yang dipilih tidak valid atau sudah lunas.");
+  }
+
+  const selectedSplitNo = matchingDbSplit?.splitNo ?? requestSplit?.splitNo;
+  const splitByNo = selectedSplitNo
+    ? existingSplits.find((split) => split.splitNo === selectedSplitNo)
+    : undefined;
+  const dbSplit = matchingDbSplit ?? splitByNo;
+
+  if (!dbSplit && !requestSplit) {
+    throw new Error("Bill yang dipilih tidak valid atau sudah lunas.");
+  }
+
+  const amountDue = roundCurrency(parseFloat(dbSplit?.amountDue ?? String(requestSplit?.amountDue ?? 0)));
+  const amountPaid = roundCurrency(parseFloat(dbSplit?.amountPaid ?? String(requestSplit?.amountPaid ?? 0)));
+  const clientBillId = requestSplit?.clientBillId ?? dbSplit?.clientBillId ?? selectedBillId;
+  const splitNo = dbSplit?.splitNo ?? requestSplit?.splitNo;
+
+  if (!clientBillId || !splitNo) {
+    throw new Error("Bill yang dipilih tidak valid atau sudah lunas.");
+  }
+
+  return {
+    existingSplits,
+    selectedSplit: {
+      clientBillId,
+      splitNo,
+      splitDbId: dbSplit?.id,
+      amountDue,
+      amountPaid,
+      remaining: roundCurrency(amountDue - amountPaid),
+    },
+  };
 }
 
 function computeOrderTotals(
@@ -284,30 +400,45 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
 
       // ── 4. Persist bill splits for SPLIT_BILL ─────────────────────────
       const splitIdMap = new Map<string, string>(); // clientBillId → db split id
+      let existingSplitRows: any[] = [];
+      let selectedSplitState: SelectedSplitState | undefined;
+
+      if (flow === "SPLIT_BILL") {
+        const selectedLine = lineStates.find((state) => !state.existingPayment)?.line ?? lines[0];
+        const resolved = await resolveSelectedSplitState({
+          tx,
+          orderId,
+          targetBillId,
+          lineBillId: selectedLine?.clientBillId,
+          lineSplitDbId: selectedLine?.orderBillSplitId,
+          splits,
+        });
+        existingSplitRows = resolved.existingSplits;
+        selectedSplitState = resolved.selectedSplit;
+        validateSelectedSplitPaymentInvariant(selectedSplitState, newLineTotal);
+
+        for (const existing of existingSplitRows) {
+          splitIdMap.set(existing.id, existing.id);
+          if (existing.clientBillId) {
+            splitIdMap.set(existing.clientBillId, existing.id);
+          }
+        }
+      }
 
       if (flow === "SPLIT_BILL" && splits.length > 0) {
         for (const split of splits) {
-          // Look for existing split row by clientBillId on this order
-          const existingSplits = await tx
-            .select()
-            .from(orderBillSplits)
-            .where(
-              and(
-                eq(orderBillSplits.orderId, orderId),
-                eq(orderBillSplits.splitNo, split.splitNo),
-              ),
-            )
-            .limit(1);
+          const existing = existingSplitRows.find(
+            (row) => row.splitNo === split.splitNo || row.clientBillId === split.clientBillId,
+          );
 
-          if (existingSplits[0]) {
-            const existing = existingSplits[0];
+          if (existing) {
             splitIdMap.set(split.clientBillId, existing.id);
             // Update amountPaid and status if this is the selected bill
-            if (split.clientBillId === targetBillId && newLineTotal > 0) {
+            if (selectedSplitState?.splitNo === existing.splitNo && newLineTotal > EPSILON) {
               const newPaid = roundCurrency(parseFloat(existing.amountPaid ?? "0") + newLineTotal);
               const due = parseFloat(existing.amountDue);
               const splitStatus =
-                newPaid >= due - 0.001 ? "paid" : newPaid > 0 ? "partial" : "unpaid";
+                newPaid >= due - EPSILON ? "paid" : newPaid > 0 ? "partial" : "unpaid";
               await tx
                 .update(orderBillSplits)
                 .set({
@@ -318,11 +449,11 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
                 .where(eq(orderBillSplits.id, existing.id));
             }
           } else {
-            const isTargetBill = split.clientBillId === targetBillId;
+            const isTargetBill = selectedSplitState?.clientBillId === split.clientBillId;
             const paidNow = isTargetBill ? newLineTotal : 0;
             const due = split.amountDue;
             const splitStatus =
-              paidNow >= due - 0.001 ? "paid" : paidNow > 0 ? "partial" : "unpaid";
+              paidNow >= due - EPSILON ? "paid" : paidNow > 0 ? "partial" : "unpaid";
 
             const [newSplit] = await tx
               .insert(orderBillSplits)

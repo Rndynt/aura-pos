@@ -10514,3 +10514,151 @@ Wire POS payment submission to the canonical SubmitPOSPayment endpoint, remove f
 
 ### Continuation Notes
 P9.3.1 core flow is complete for this batch. Recommended next batch: add a dedicated repository-level database integration test fixture for SubmitPOSPayment split replay if the project adds a reusable DB fixture for this repository.
+
+## Plan: P9.3.2 Split Bill Backend Invariant Fix
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P9_3_2_split_bill_backend_invariant_prompt.md`
+- User request: Analisa mendalam, pahami/pelajari, tambahkan report bila ada yang tidak sesuai, dan eksekusi roadmap P9.3.2.
+- Date started: 2026-06-21
+- Current status: Implemented and validated
+
+### Goal
+Enforce backend-selected split bill invariants before any split/payment/order mutation so a selected bill can only be paid exactly once for its remaining amount, while idempotent replay remains safe.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs/report: `roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md`
+- [x] Relevant source files listed by roadmap
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: SubmitPOSPayment repository transaction order and API error mapping.
+- Files inspected: `packages/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository.ts`, `apps/api/src/http/controllers/POSPaymentController.ts`.
+- Findings: Split rows were persisted and selected split amount was incremented by `newLineTotal`, but selected bill remaining was not explicitly validated before mutation.
+- Tasks: Completed selected split resolver/invariant validation and user-safe error mapping.
+- Risks: Full DB-backed transaction test was not added in this batch; focused helper/API tests cover invariant behavior.
+- Validation: Passed API/application/domain/POS/root type-check and tests listed below.
+
+#### Database/Schema Workstream
+- Scope: Existing `order_bill_splits` and `order_payments.split_id` usage.
+- Files inspected: `packages/infrastructure/db/schema/orders.schema.ts`.
+- Findings: No schema change required.
+- Tasks: Existing/created split rows are mapped so payment rows can use real split ids.
+- Risks: None identified for schema.
+- Validation: Type-check and API test pass.
+
+#### Frontend/UI Workstream
+- Scope: Existing request mapping only; no UI behavior change.
+- Files inspected: `apps/pos-terminal-web/src/features/pos-core/services/posPaymentSubmissionService.ts`, related test.
+- Findings: Frontend validation existed but backend protection was required.
+- Tasks: No UI code change needed.
+- Risks: None introduced.
+- Validation: POS terminal type-check/test pass.
+
+#### Tests/Validation Workstream
+- Scope: Add closest backend/application-level coverage possible.
+- Files inspected: application/API test setup.
+- Findings: No dedicated infrastructure repository test runner exists; API tests can import the focused infrastructure invariant helper.
+- Tasks: Added `apps/api/src/__tests__/submit-pos-payment-split-invariant.test.ts`.
+- Risks: Full DB transaction test remains recommended for a future batch.
+- Validation: Required validation commands pass.
+
+#### Documentation Workstream
+- Scope: P9.3 report and roadmap checklist.
+- Files inspected: roadmap report and active prompt.
+- Findings: Report lacked P9.3.2 section.
+- Tasks: Added P9.3.2 report section and checked the active acceptance checklist.
+- Risks: Documented test limitation honestly.
+- Validation: Diff reviewed.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Tenant/order isolation around split/payment mutation.
+- Files inspected: repository and schema.
+- Findings: Order lock is tenant-scoped; split lookup is order-scoped after tenant-scoped order resolution.
+- Tasks: Preserved tenant-aware order update and DB-as-source-of-truth for existing split paid amounts.
+- Risks: None identified.
+- Validation: Code review and grep checks pass.
+
+### Execution Order
+1. [x] Add selected split state/invariant helper in repository.
+2. [x] Reorder SPLIT_BILL transaction path to validate before split/payment/order mutation.
+3. [x] Ensure API maps split mismatch/already-paid errors to cashier-readable codes/messages.
+4. [x] Add focused tests for invariant helper/error mapping.
+5. [x] Update report, roadmap checklist, and PLANS.md progress.
+6. [x] Run required validation commands and grep checks.
+
+### Progress
+
+#### Completed
+- [x] Backend explicitly validates selected split bill remaining.
+  - Files changed: `packages/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository.ts`
+  - Validation: Required type-check/test commands passed.
+  - Docs updated: P9.3.2 report and prompt checklist.
+- [x] Cashier-readable split bill errors.
+  - Files changed: `apps/api/src/http/controllers/POSPaymentController.ts`
+  - Validation: API test and type-check passed.
+  - Docs updated: P9.3.2 report.
+- [x] Focused invariant tests.
+  - Files changed: `apps/api/src/__tests__/submit-pos-payment-split-invariant.test.ts`
+  - Validation: `pnpm --filter @pos/api test` passed.
+  - Docs updated: P9.3.2 report documents limitation.
+
+#### Partially Completed
+- [ ] Full DB-backed repository transaction tests.
+  - Completed: Focused invariant helper/API mapping tests cover expected split invariant cases.
+  - Remaining: Add live Drizzle transaction test that asserts no rows are mutated on rejected overpay/underpay.
+  - Reason: Current repo lacks dedicated infrastructure test runner; API test coverage was the closest low-risk backend-level coverage for this batch.
+
+#### Blocked
+- [ ] None.
+  - Blocker: None.
+  - Required next step: Not applicable.
+
+#### Not Attempted
+- [ ] UI changes.
+  - Reason: Roadmap required backend invariant; existing frontend request mapping was already canonical and no UI behavior change was needed.
+
+### Validation Log
+- Command: `pnpm --filter @pos/domain type-check`
+- Result: pass
+- Notes: Domain type-check passed.
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: Application type-check passed.
+- Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Notes: Application tests passed.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: API type-check passed.
+- Command: `pnpm --filter @pos/api test`
+- Result: pass
+- Notes: API tests passed, 189 tests.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: POS terminal type-check passed.
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: pass
+- Notes: POS terminal tests passed.
+- Command: `pnpm type-check`
+- Result: pass
+- Notes: 10/10 Turbo tasks successful.
+- Command: Roadmap grep checks
+- Result: pass
+- Notes: No provider/gateway concepts added; no runtime old alias support added; split invariant markers present.
+
+### Documentation Updates
+- File: `roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md`
+- Change: Added P9.3.2 section with risk, invariant, behavior, tests, validation, and final flow.
+
+### Checklist Updates
+- File: `roadmap/business-flows/replit_codex_P9_3_2_split_bill_backend_invariant_prompt.md`
+- Change: Marked acceptance checklist items complete after implementation and validation.
+
+### Continuation Notes
+Next recommended batch: add full DB-backed repository/integration tests for rejected SPLIT_BILL overpay/underpay proving no payment/split/order rows mutate on failure.
