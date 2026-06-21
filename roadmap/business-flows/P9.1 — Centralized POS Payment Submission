@@ -1,0 +1,688 @@
+Replit/Codex Prompt P9.1 — Centralized POS Payment Submission
+
+Repository: "Rndynt/AuraPoS"
+
+Goal
+
+Fix P9 payment implementation so Full Payment, DP / Partial Payment, Multi Payment, and Split Bill Payment are handled by one shared POS payment submission layer, not duplicated inside each business-flow hook.
+
+Payment flow must be independent from business type.
+
+Business type / business flow adapters such as Retail, Food & Beverage, Service, and Restaurant may decide:
+
+- where the Pay button appears;
+- what context is available, for example cart, active order, table, customer;
+- whether additional business-specific actions are shown, for example kitchen/send-to-kitchen.
+
+But they must not own payment persistence rules.
+
+Payment rules must live in "pos-core".
+
+This phase is a correction/hotfix after P9 because the current P9 implementation still has payment submit logic inside business-flow hooks. That breaks the original refactor goal.
+
+This is not a permission/RBAC task.
+
+This is not a NorthFlow/payment-orchestration rewrite.
+
+This is not a business-type-specific patch.
+
+---
+
+Current Problem
+
+A runtime error appeared in cashier UI:
+
+Invalid request body: [{"received":"split","code":"invalid_enum_value","options":["full_payment","partial_payment_dp"],"path":["payment_flow"],"message":"Invalid enum value. Expected 'full_payment' | 'partial_payment_dp', received 'split'"}]
+
+This means a POS payment flow sent:
+
+payment_flow = split
+
+into an API path that still expected old/legacy values:
+
+full_payment
+partial_payment_dp
+
+That should not happen.
+
+The immediate retail-only hotfix is not enough, because:
+
+- Retail flow had its own payment submit logic.
+- Restaurant flow still has its own payment submit logic.
+- Food Beverage and Service must not inherit duplicated broken behavior.
+- Payment submit rules are still scattered across business-flow hooks.
+- Multi/Split behavior can break again in another flow.
+
+Therefore P9.1 must centralize the entire POS payment submission behavior.
+
+---
+
+Non-Negotiable Architecture Rule
+
+Do not patch payment per business type.
+
+Do not make separate payment submit behavior for:
+
+- retail
+- food_beverage
+- service
+- restaurant
+
+Payment flow must be shared.
+
+Correct architecture:
+
+Retail / Food Beverage / Service / Restaurant flow hook
+        ↓
+shared POS payment submission layer in pos-core
+        ↓
+create order if needed
+        ↓
+record payment rows
+        ↓
+return standardized result for toast, receipt, navigation, CFD
+
+Business-flow hooks must only prepare context and delegate.
+
+---
+
+Payment Concept Separation
+
+Do not mix payment method and payment flow mode.
+
+Payment Method
+
+Payment method means how the money is paid.
+
+Built-in POS payment methods:
+
+cash
+manual_transfer
+manual_qris
+
+If the current API/domain still maps manual methods into legacy values, normalize them safely and document the mapping.
+
+Example mapping if current backend still only supports generic method enum:
+
+cash             -> cash
+manual_transfer  -> other or bank_transfer if available
+manual_qris      -> ewallet or qris if available
+
+Do not expose external payment gateway/orchestration concepts in cashier UI.
+
+Payment Flow Mode
+
+Payment flow mode means how the order is settled.
+
+Supported flow modes:
+
+full
+dp
+multi
+split
+
+Rules:
+
+Full Payment:
+- core POS flow
+- always available
+- no entitlement required
+
+DP / Partial Payment:
+- optional independent feature
+- entitlement: payments_partial_payment
+
+Multi Payment:
+- optional independent feature
+- entitlement: payments_multi_payment
+
+Split Bill Payment:
+- optional independent feature
+- entitlement: payments_split_bill or payments_split_payment, follow current SOT alias
+
+DP, Multi, and Split must stay independent.
+
+Do not make DP depend on Multi.
+
+Do not make Multi depend on Split.
+
+Do not make Split depend on Multi.
+
+---
+
+Read First
+
+Read these files before coding:
+
+roadmap/business-flows/P9_pos_payment_usability_completion_report.md
+roadmap/business-flows/replit_codex_P9_pos_payment_usability_completion_prompt.md
+
+apps/pos-terminal-web/src/features/pos-core/services/posPaymentFlowService.ts
+apps/pos-terminal-web/src/features/pos-core/services/__tests__/posPaymentFlowService.test.ts
+
+apps/pos-terminal-web/src/features/pos-flows/retail/useRetailStandardPOSFlow.ts
+apps/pos-terminal-web/src/features/pos-flows/restaurant/useRestaurantTableServicePOSFlow.ts
+apps/pos-terminal-web/src/features/pos-flows/food-beverage/FoodBeveragePOSFlow.tsx
+apps/pos-terminal-web/src/features/pos-flows/service/ServiceCorePOSFlow.tsx
+
+apps/pos-terminal-web/src/components/pos/PaymentMethodDialog.tsx
+apps/pos-terminal-web/src/lib/api/hooks.ts
+apps/pos-terminal-web/src/hooks/api/useOrders.ts
+
+apps/api/src/http/controllers/OrdersController.ts
+
+packages/application/orders/RecordPayment.ts
+packages/application/orders/CreateAndPayOrder.ts
+packages/application/orders/ports/CreateAndPayOrderRepositoryPort.ts
+packages/application/orders/ports/RecordPaymentRepositoryPort.ts
+
+packages/infrastructure/repositories/orders/DrizzleRecordPaymentRepository.ts
+packages/infrastructure/repositories/orders/DrizzleCreateAndPayOrderRepository.ts
+packages/infrastructure/db/schema/orders.schema.ts
+migrations/0016_p9_payment_flows.sql
+
+Run search:
+
+rg -n "handlePaymentMethodConfirm|recordPaymentLines|normalizePaymentDetails|payment_flow: details.flow|payment_flow: \"split\"|payment_flow: \"multi\"|create-and-pay|useCreateAndPay|useRecordPayment|useCreateOrder|useUpdateOrder|recordPaymentMutation\\.mutateAsync|Multi payment dan split bill|P9 harus digunakan|persisten aman" apps/pos-terminal-web/src apps/api/src packages/application packages/infrastructure roadmap
+
+---
+
+Scope
+
+Allowed:
+
+- Add shared POS payment submission service/hook in pos-core.
+- Move payment detail normalization to shared layer.
+- Move payment line normalization to shared layer.
+- Move payment row recording loop to shared layer.
+- Move fresh-cart create-order-before-payment behavior to shared layer.
+- Refactor Retail flow to use shared submit handler.
+- Refactor Restaurant flow to use shared submit handler.
+- Ensure Food Beverage and Service use the same shared payment path.
+- Normalize legacy payment_flow values safely.
+- Prevent create-and-pay from receiving multi or split flow.
+- Keep full payment create-and-pay only if safe.
+- Keep DP create-and-pay only if safe and correct.
+- Add tests.
+- Add report.
+
+Forbidden:
+
+- Do not continue P8.4 permission work.
+- Do not add persisted permission claims.
+- Do not rewrite RBAC.
+- Do not rewrite NorthFlow.
+- Do not rewrite external payment orchestration.
+- Do not patch only Retail and call it complete.
+- Do not patch only Restaurant and call it complete.
+- Do not duplicate payment submit rules in every business-flow hook.
+- Do not make Full Payment require orders_queue.
+- Do not make DP, Multi, and Split depend on each other.
+- Do not send payment_flow=multi to create-and-pay.
+- Do not send payment_flow=split to create-and-pay.
+- Do not expose raw backend enum/Zod validation JSON to cashier UI.
+- Do not expose internal phase labels like P9/P9.1/roadmap in runtime UI copy.
+- Do not reintroduce GenericPOSPage.
+- Do not reintroduce old feature/pos services or mappers shims.
+
+---
+
+Required Shared POS Payment Submission Layer
+
+Create shared payment submission layer in "pos-core".
+
+Preferred file:
+
+apps/pos-terminal-web/src/features/pos-core/hooks/usePOSPaymentSubmission.ts
+
+If service-only style fits better, add:
+
+apps/pos-terminal-web/src/features/pos-core/services/posPaymentSubmissionService.ts
+
+The shared layer must own:
+
+- payment flow normalization;
+- payment method normalization if needed;
+- payment line normalization;
+- total/paid/remaining/change calculation for submit;
+- full payment submission;
+- DP submission;
+- multi payment submission;
+- split bill payment submission;
+- fresh cart createOrder before Multi/Split payment rows;
+- saved/active order recordPayment rows;
+- split session metadata handling;
+- user-safe result message generation.
+
+Business-flow hooks must not keep these responsibilities.
+
+---
+
+Suggested Shared Types
+
+Use exact project style, but the shared layer should have a contract similar to this.
+
+export type POSPaymentFlow = "full" | "dp" | "multi" | "split";
+
+export type POSPaymentKind =
+  | "full_payment"
+  | "down_payment"
+  | "remaining_payment"
+  | "multi_line"
+  | "split_line";
+
+export type POSPaymentSubmissionMode =
+  | "fresh_cart"
+  | "saved_order"
+  | "active_order";
+
+export type POSPaymentLineInput = {
+  method: PaymentMethod;
+  amount: number;
+  receivedAmount?: number;
+  splitId?: string;
+  referenceNote?: string;
+};
+
+export type POSPaymentSubmissionInput = {
+  mode: POSPaymentSubmissionMode;
+  orderId?: string;
+  orderNumber?: string;
+  totalAmount: number;
+  cartPayload?: unknown;
+  paymentMethod: PaymentMethod;
+  cashReceived?: number;
+  partialAmount?: number;
+  paymentDetails?: {
+    flow?: POSPaymentFlow | "full_payment" | "partial_payment_dp";
+    paymentKind?: POSPaymentKind;
+    lines?: POSPaymentLineInput[];
+    splits?: Array<{
+      id?: string;
+      label?: string;
+      amountDue: number;
+      amountPaid?: number;
+    }>;
+  };
+};
+
+Dependency injection should be explicit so this shared layer can be tested without depending on a business-flow hook.
+
+Suggested dependency shape:
+
+export type POSPaymentSubmissionDependencies = {
+  createOrder: (payload: unknown) => Promise<any>;
+  updateOrder?: (payload: { orderId: string } & Record<string, unknown>) => Promise<any>;
+  recordPayment: (payload: {
+    orderId: string;
+    amount: number;
+    payment_method: PaymentMethod;
+    payment_flow: POSPaymentFlow;
+    payment_kind: POSPaymentKind;
+    received_amount?: number;
+    change_amount?: number;
+    split_id?: string;
+    sequence?: number;
+    reference_note?: string;
+    metadata?: Record<string, unknown>;
+  }) => Promise<any>;
+  createAndPay?: (payload: unknown) => Promise<any>;
+};
+
+Suggested result shape:
+
+export type POSPaymentSubmissionResult = {
+  orderId: string;
+  orderNumber: string;
+  paymentFlow: POSPaymentFlow;
+  paidAmount: number;
+  remainingAmount: number;
+  status: "paid" | "partial" | "saved_needs_payment";
+  shouldClearCart: boolean;
+  shouldPrintReceipt: boolean;
+  messageTitle: string;
+  messageDescription: string;
+};
+
+Do not over-engineer; use the existing project style.
+
+---
+
+Required Payment Flow Normalization
+
+Centralize this in one function.
+
+Example:
+
+export function normalizePOSPaymentFlow(input: unknown): POSPaymentFlow {
+  if (input === "full_payment") return "full";
+  if (input === "partial_payment_dp") return "dp";
+  if (input === "full") return "full";
+  if (input === "dp") return "dp";
+  if (input === "multi") return "multi";
+  if (input === "split") return "split";
+  return "full";
+}
+
+Required mapping:
+
+full_payment        -> full
+partial_payment_dp  -> dp
+full                -> full
+dp                  -> dp
+multi               -> multi
+split               -> split
+undefined           -> full unless partialAmount implies dp
+
+Only shared layer should do this.
+
+Do not repeat this mapping inside Retail or Restaurant hooks.
+
+---
+
+Required Fresh Cart Behavior
+
+Fresh cart means the cashier is paying from a cart that does not yet have a saved "orderId".
+
+Fresh Cart + Full Payment
+
+Allowed behavior:
+
+- may use create-and-pay if current implementation is safe;
+- must create exactly one payment row;
+- must set paid only after payment row covers total;
+- must clear cart only after success;
+- must not require orders_queue.
+
+Fresh Cart + DP
+
+Allowed behavior:
+
+- may use create-and-pay only if it persists one down_payment row and leaves order partial;
+- if create-and-pay cannot safely do that, use createOrder -> recordPayment;
+- must create one down_payment row;
+- must not mark order paid if DP amount < total;
+- must show remaining amount.
+
+Fresh Cart + Multi Payment
+
+Required behavior:
+
+- must create order first with createOrder;
+- then call recordPayment once per payment line;
+- max 2 payment lines in P9/P9.1;
+- each payment row must use payment_flow=multi and payment_kind=multi_line;
+- total of payment lines must cover remaining amount for paid status;
+- must never send payment_flow=multi to create-and-pay.
+
+Fresh Cart + Split Bill
+
+Required behavior:
+
+- must create order first with createOrder;
+- then call recordPayment for paid split lines;
+- max 4 split bills;
+- each split payment row must use payment_flow=split and payment_kind=split_line;
+- original order must not be paid until all splits are paid and total paid covers order total;
+- must never send payment_flow=split to create-and-pay.
+
+---
+
+Required Saved / Active Order Behavior
+
+Saved/active order means the payment has an existing "orderId".
+
+Existing Order + Full Payment
+
+- call recordPayment once;
+- payment_flow=full;
+- payment_kind=full_payment;
+- amount should cover remaining amount.
+
+Existing Order + DP
+
+- call recordPayment once;
+- payment_flow=dp;
+- payment_kind=down_payment if amount is less than remaining;
+- payment_kind=remaining_payment if amount completes remaining;
+- keep status partial when amount does not cover total.
+
+Existing Order + Multi Payment
+
+- call recordPayment once per payment line;
+- max 2 lines;
+- payment_flow=multi;
+- payment_kind=multi_line;
+- do not call create-and-pay.
+
+Existing Order + Split Bill
+
+- call recordPayment once per paid split line;
+- max 4 splits;
+- payment_flow=split;
+- payment_kind=split_line;
+- do not call create-and-pay.
+
+Split id handling:
+
+- If splitId is a valid UUID, send it as split_id.
+- If splitId is a UI/session-only id, do not send it as split_id.
+- Store UI/session split id in metadata, for example metadata.session_split_id.
+
+This avoids invalid UUID backend errors.
+
+---
+
+Required Refactor of Business Flow Hooks
+
+Refactor:
+
+apps/pos-terminal-web/src/features/pos-flows/retail/useRetailStandardPOSFlow.ts
+apps/pos-terminal-web/src/features/pos-flows/restaurant/useRestaurantTableServicePOSFlow.ts
+
+After refactor, these hooks must not define:
+
+normalizePaymentDetails
+recordPaymentLines
+for (...) recordPaymentMutation.mutateAsync(...)
+payment row persistence loop
+split id UUID filtering
+payment_flow normalization
+
+They should only:
+
+- collect cart/order context;
+- pass dependencies to shared payment hook/service;
+- call submitPOSPayment;
+- handle returned result for toast/receipt/navigation/CFD.
+
+Food Beverage and Service must continue through shared payment behavior. If they use Retail view/hook, verify they inherit the shared handler. If they own a hook, refactor them too.
+
+---
+
+Required User-Facing Copy Cleanup
+
+Runtime cashier UI must not display internal/dev/phase terms.
+
+Remove user-facing runtime text containing:
+
+P9
+P9.1
+roadmap
+persisten aman
+Invalid enum value
+full_payment | partial_payment_dp
+raw JSON validation body
+
+Allowed cashier messages:
+
+Pembayaran gagal dicatat. Silakan coba lagi.
+Simpan order terlebih dahulu untuk memakai Multi Payment atau Split Bill.
+Pembayaran sebagian tersimpan.
+Sisa tagihan dapat dilunasi dari order aktif.
+Order berhasil disimpan. Pembayaran yang dipilih sudah dicatat.
+
+If API returns a raw technical validation error, map it to a user-safe message in the payment submission layer.
+
+---
+
+Required API Payload Rules
+
+For "/api/orders/create-and-pay":
+
+Allowed:
+- full
+- dp only if current backend supports partial create-and-pay safely
+
+Forbidden:
+- multi
+- split
+
+For "/api/orders/:id/payments":
+
+Allowed:
+- full
+- dp
+- multi
+- split
+
+If the backend still accepts legacy aliases, it may continue doing so, but frontend shared layer should send normalized values.
+
+---
+
+Required Tests
+
+Add or update tests for shared POS payment submission.
+
+Minimum test coverage:
+
+- normalize full_payment to full;
+- normalize partial_payment_dp to dp;
+- normalize full/dp/multi/split unchanged;
+- fresh cart full uses safe full payment path;
+- fresh cart DP creates or records down_payment safely;
+- fresh cart Multi creates order first, then records payment rows;
+- fresh cart Split creates order first, then records payment rows;
+- saved order Multi does not call create-and-pay;
+- saved order Split does not call create-and-pay;
+- Multi is capped at 2 lines;
+- Split is capped at 4 splits;
+- non-UUID split id goes to metadata, not split_id;
+- user-facing messages do not contain P9/P9.1/roadmap/internal technical copy;
+- business-flow hooks do not contain duplicated payment row loops.
+
+Keep existing tests passing:
+
+- posPaymentFlowService tests;
+- payment row persistence tests;
+- record-payment idempotency tests;
+- order action direct-bypass tests;
+- lifecycle lock tests;
+- cashier copy guard tests;
+- business-flow routing tests.
+
+---
+
+Required Validation Commands
+
+Run:
+
+pnpm --filter @pos/terminal-web type-check
+pnpm --filter @pos/terminal-web test
+pnpm --filter @pos/application type-check
+pnpm --filter @pos/application test
+pnpm --filter @pos/api type-check
+pnpm --filter @pos/api test
+pnpm type-check
+
+Run grep validation:
+
+rg -n "handlePaymentMethodConfirm|recordPaymentLines|normalizePaymentDetails|payment_flow: details.flow|recordPaymentMutation\\.mutateAsync" apps/pos-terminal-web/src/features/pos-flows
+
+Expected:
+
+Business-flow hooks should not contain payment submission internals.
+
+Run:
+
+rg -n "create-and-pay.*payment_flow.*split|create-and-pay.*payment_flow.*multi|payment_flow.*split|payment_flow.*multi" apps/pos-terminal-web/src apps/api/src
+
+Expected:
+
+No fresh-cart create-and-pay path sends multi or split.
+`/orders/:id/payments` may receive multi/split.
+
+Run:
+
+rg -n "P9|P9.1|roadmap|persisten aman|Invalid enum value|full_payment \\| partial_payment_dp" apps/pos-terminal-web/src
+
+Expected:
+
+No runtime user-facing copy contains internal phase/dev/backend enum wording.
+
+Run:
+
+rg -n "orders_queue.*full payment|orders_queue.*recordPayment|recordPayment.*orders_queue|restaurant_table_service.*businessType|businessType.*restaurant_table_service|GenericPOSPage|features/pos/services|features/pos/mappers" apps packages shared
+
+Expected:
+
+No regression from earlier phases.
+
+---
+
+Required Report
+
+Create:
+
+roadmap/business-flows/P9_1_centralized_pos_payment_submission_report.md
+
+Report must include:
+
+1. Summary
+2. Root cause
+3. Why retail-only patch was insufficient
+4. Shared payment submission design
+5. Files changed
+6. Flow-hook refactor summary
+7. Fresh cart Full/DP/Multi/Split behavior
+8. Saved/active order Full/DP/Multi/Split behavior
+9. API payload normalization matrix
+10. User-facing copy cleanup
+11. Tests added/updated
+12. Validation output
+13. Grep cleanup findings
+14. Remaining limitations
+15. Next recommended phase
+
+Update if used for phase tracking:
+
+roadmap/business-flows/main.md
+PLANS.md
+
+---
+
+Completion Checklist
+
+- [ ] Shared POS payment submission layer added in pos-core.
+- [ ] Payment flow normalization centralized.
+- [ ] Payment line normalization centralized.
+- [ ] Payment row recording loop centralized.
+- [ ] Retail hook delegates payment submission to shared handler.
+- [ ] Restaurant hook delegates payment submission to shared handler.
+- [ ] Food Beverage uses same shared payment path.
+- [ ] Service uses same shared payment path.
+- [ ] Fresh cart Multi uses createOrder -> recordPayment rows.
+- [ ] Fresh cart Split uses createOrder -> recordPayment rows.
+- [ ] create-and-pay is not called with payment_flow=multi.
+- [ ] create-and-pay is not called with payment_flow=split.
+- [ ] Non-UUID split session ids go to metadata only.
+- [ ] Runtime UI contains no P9/P9.1/roadmap/internal dev copy.
+- [ ] Raw enum/Zod validation is not shown directly to cashier.
+- [ ] Tests added/updated.
+- [ ] Validation commands run and documented.
+- [ ] Grep checks documented.
+- [ ] P9.1 report created.
+
+Commit
+
+fix(pos): centralize cashier payment submission
