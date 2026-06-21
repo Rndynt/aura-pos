@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { nanoid } from "nanoid";
 import type { Product, ProductVariant } from "@pos/domain/catalog/types";
 import type { SelectedOption } from "@pos/domain/orders/types";
+import type { POSPaymentMethod } from "@pos/domain/payments";
 import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE } from "@pos/core/pricing";
 import { getActiveTenantId, resolveInitialTenantId } from "@/lib/tenant";
 import { clearCartSession, migrateLegacySession, saveCartSession } from "@pos/offline";
@@ -91,6 +92,10 @@ function cartStorageKey(tenantId: string): string {
   return `${STORAGE_KEY_PREFIX}_${tenantId}`;
 }
 
+// ─── Types ─────────────────────────────────────────────────────────────────────
+export type PaymentMethod = POSPaymentMethod;
+export type OrderType = "dine-in" | "take-away" | "delivery";
+
 interface CartSession {
   items: CartItem[];
   customerName: string;
@@ -102,11 +107,17 @@ interface CartSession {
   orderDiscount: ItemDiscount | null;
 }
 
+function normalizeSessionPaymentMethod(value: unknown): PaymentMethod {
+  if (value === "CASH" || value === "MANUAL_TRANSFER" || value === "MANUAL_QRIS") return value;
+  return "CASH";
+}
+
 function loadSession(tenantId: string): CartSession | null {
   try {
     const raw = sessionStorage.getItem(cartStorageKey(tenantId));
     if (!raw) return null;
-    return JSON.parse(raw) as CartSession;
+    const parsed = JSON.parse(raw) as CartSession;
+    return { ...parsed, paymentMethod: normalizeSessionPaymentMethod(parsed.paymentMethod) };
   } catch {
     return null;
   }
@@ -128,10 +139,6 @@ function clearSession(tenantId: string) {
   }
 }
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
-export type PaymentMethod = "cash" | "card" | "ewallet" | "other";
-export type OrderType = "dine-in" | "take-away" | "delivery";
-
 // ─── Hook ──────────────────────────────────────────────────────────────────────
 export function useCart() {
   const tenantId = getActiveTenantId() || resolveInitialTenantId() || "default";
@@ -140,7 +147,7 @@ export function useCart() {
   const [items, setItems] = useState<CartItem[]>(saved.current?.items ?? []);
   const [customerName, setCustomerName] = useState<string>(saved.current?.customerName ?? "");
   const [tableNumber, setTableNumber] = useState<string>(saved.current?.tableNumber ?? "");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(saved.current?.paymentMethod ?? "cash");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(saved.current?.paymentMethod ?? "CASH");
   const [selectedOrderTypeId, setSelectedOrderTypeId] = useState<string | null>(saved.current?.selectedOrderTypeId ?? null);
   const [orderType, setOrderType] = useState<OrderType>(saved.current?.orderType ?? "dine-in");
   const [orderNumber] = useState<string>(() => {
@@ -158,7 +165,7 @@ export function useCart() {
       setItems(persisted.items ?? []);
       setCustomerName(persisted.customerName ?? "");
       setTableNumber(persisted.tableNumber ?? "");
-      setPaymentMethod(persisted.paymentMethod ?? "cash");
+      setPaymentMethod(normalizeSessionPaymentMethod(persisted.paymentMethod));
       setSelectedOrderTypeId(persisted.selectedOrderTypeId ?? null);
       setOrderType(persisted.orderType ?? "dine-in");
       setOrderDiscount(persisted.orderDiscount ?? null);
@@ -260,55 +267,27 @@ export function useCart() {
     setItems([]);
     setCustomerName("");
     setTableNumber("");
-    setPaymentMethod("cash");
+    setPaymentMethod("CASH");
     setSelectedOrderTypeId(null);
-    setOrderType("dine-in");
     setOrderDiscount(null);
     clearSession(tenantId);
-    clearCartSession().catch(() => undefined);
   };
 
-  const loadOrder = (order: any): string => {
-    setTableNumber(order.tableNumber || order.table_number || "");
-    setCustomerName(order.customerName || order.customer_name || "");
-
-    const orderItems = order.items || order.orderItems || order.order_items || [];
-    const cartItems = orderItems.map((item: any) => {
-      const productId = item.productId || item.product_id;
-      const productName = item.productName || item.product_name;
-      const basePrice = item.unitPrice || item.basePrice || item.base_price || item.unit_price;
-      const itemSubtotal =
-        item.itemSubtotal || item.subtotal || item.item_subtotal || parseFloat(basePrice || 0) * item.quantity;
-      const selectedOpts = item.selectedOptions || item.selected_options || [];
-
-      return {
-        id: item.id || `cart-${Math.random()}`,
-        product: {
-          id: productId,
-          name: productName,
-          base_price: parseFloat(basePrice || 0),
-          image_url: item.imageUrl || item.image_url || item.productImage || "",
-        },
-        selectedOptions: selectedOpts,
-        quantity: item.quantity,
-        itemTotal: parseFloat(itemSubtotal || 0),
-        note: item.notes || item.note || "",
-      };
+  const addItemsFromOrder = (orderItems: Array<{
+    product: Product;
+    variant?: ProductVariant;
+    selectedOptions?: SelectedOption[];
+    quantity: number;
+    notes?: string;
+    discount?: ItemDiscount;
+  }>) => {
+    orderItems.forEach((item) => {
+      addItem(item.product, item.variant, item.selectedOptions ?? [], item.quantity);
     });
-
-    setItems(cartItems);
-    return order.id;
   };
 
-  const getItemPrice = (item: CartItem): number => {
-    const basePrice = item.product.base_price;
-    const variantDelta = item.variant?.price_delta || 0;
-    const optionsDelta = item.selectedOptions.reduce((sum, opt) => sum + opt.price_delta, 0);
-    return basePrice + variantDelta + optionsDelta;
-  };
-
-  const toBackendOrderItems = (): BackendOrderItem[] => {
-    return items.map((item) => {
+  const toBackendOrderItems = (): BackendOrderItem[] =>
+    items.map((item) => {
       const discountAmount = getItemDiscountAmount(item);
       return {
         product_id: item.product.id,
@@ -318,63 +297,30 @@ export function useCart() {
         variant_id: item.variant?.id,
         variant_name: item.variant?.name,
         variant_price_delta: item.variant?.price_delta,
-        selected_options: item.selectedOptions.length > 0 ? item.selectedOptions : undefined,
-        notes: item.note || undefined,
+        selected_options: item.selectedOptions,
+        notes: item.note,
         discount_type: item.discount?.type,
         discount_value: item.discount?.value,
         discount_amount: discountAmount > 0 ? discountAmount : undefined,
       };
     });
-  };
 
-  // ── Totals (memoized) ─────────────────────────────────────────────────────
+  const subtotal = useMemo(() => items.reduce((sum, item) => sum + getItemEffectiveTotal(item), 0), [items]);
+  const itemsDiscountTotal = useMemo(() => items.reduce((sum, item) => sum + getItemDiscountAmount(item), 0), [items]);
+  const orderDiscountAmount = useMemo(() => {
+    if (!orderDiscount || orderDiscount.value <= 0) return 0;
+    if (orderDiscount.type === "percent") return subtotal * (Math.min(orderDiscount.value, 100) / 100);
+    return Math.min(orderDiscount.value, subtotal);
+  }, [orderDiscount, subtotal]);
+  const discountedSubtotal = Math.max(0, subtotal - orderDiscountAmount);
   const taxRate = DEFAULT_TAX_RATE;
   const serviceChargeRate = DEFAULT_SERVICE_CHARGE_RATE;
-
-  const totals = useMemo(() => {
-    const itemsDiscountTotal = items.reduce((sum, item) => sum + getItemDiscountAmount(item), 0);
-    const subtotal = items.reduce((sum, item) => sum + getItemEffectiveTotal(item), 0);
-
-    const orderDiscountAmount =
-      orderDiscount && orderDiscount.value > 0
-        ? orderDiscount.type === "percent"
-          ? subtotal * (Math.min(orderDiscount.value, 100) / 100)
-          : Math.min(orderDiscount.value, subtotal)
-        : 0;
-
-    const discountedSubtotal = subtotal - orderDiscountAmount;
-
-    const tax = discountedSubtotal * taxRate;
-    const serviceCharge = discountedSubtotal * serviceChargeRate;
-    const total = discountedSubtotal + tax + serviceCharge;
-
-    const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
-
-    return { itemsDiscountTotal, subtotal, orderDiscountAmount, discountedSubtotal, tax, serviceCharge, total, itemCount };
-  }, [items, orderDiscount, taxRate, serviceChargeRate]);
+  const tax = discountedSubtotal * taxRate;
+  const serviceCharge = discountedSubtotal * serviceChargeRate;
+  const total = discountedSubtotal + tax + serviceCharge;
 
   return {
     items,
-    addItem,
-    removeItem,
-    updateQuantity,
-    updateNote,
-    setItemDiscount,
-    clearCart,
-    loadOrder,
-    getItemPrice,
-    toBackendOrderItems,
-    subtotal: totals.subtotal,
-    taxRate,
-    serviceChargeRate,
-    tax: totals.tax,
-    serviceCharge: totals.serviceCharge,
-    total: totals.total,
-    itemsDiscountTotal: totals.itemsDiscountTotal,
-    orderDiscount,
-    setOrderDiscount,
-    orderDiscountAmount: totals.orderDiscountAmount,
-    itemCount: totals.itemCount,
     customerName,
     setCustomerName,
     tableNumber,
@@ -386,5 +332,24 @@ export function useCart() {
     orderType,
     setOrderType,
     orderNumber,
+    orderDiscount,
+    setOrderDiscount,
+    addItem,
+    removeItem,
+    updateQuantity,
+    updateNote,
+    setItemDiscount,
+    clearCart,
+    addItemsFromOrder,
+    toBackendOrderItems,
+    subtotal,
+    itemsDiscountTotal,
+    orderDiscountAmount,
+    taxRate,
+    tax,
+    serviceChargeRate,
+    serviceCharge,
+    total,
+    getItemPrice: getItemEffectiveTotal,
   };
 }
