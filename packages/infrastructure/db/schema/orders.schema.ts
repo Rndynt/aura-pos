@@ -245,6 +245,7 @@ export const orderBillSplits = pgTable("order_bill_splits", {
   orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
   splitNo: integer("split_no").notNull(),
   splitLabel: text("split_label"),
+  clientBillId: varchar("client_bill_id", { length: 128 }),
   amountDue: decimal("amount_due", { precision: 10, scale: 2 }).notNull(),
   amountPaid: decimal("amount_paid", { precision: 10, scale: 2 }).notNull().default("0"),
   status: varchar("status", { length: 50 }).notNull().default("unpaid"),
@@ -254,6 +255,7 @@ export const orderBillSplits = pgTable("order_bill_splits", {
   tenantIdx: index("order_bill_splits_tenant_idx").on(table.tenantId),
   orderIdx: index("order_bill_splits_order_idx").on(table.orderId),
   orderSplitUnique: uniqueIndex("order_bill_splits_order_split_no_unique").on(table.orderId, table.splitNo),
+  clientBillIdx: index("order_bill_splits_client_bill_idx").on(table.orderId, table.clientBillId),
 }));
 
 export type InsertOrderBillSplit = typeof orderBillSplits.$inferInsert;
