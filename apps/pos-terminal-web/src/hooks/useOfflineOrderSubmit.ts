@@ -147,7 +147,7 @@ export function useOfflineOrderSubmit() {
           tax_rate: input.tax_rate,
           service_charge_rate: input.service_charge_rate,
           amount: input.amount,
-          payment_method: input.payment_method,
+          payment_method: input.payment_method === "CASH" ? "cash" : input.payment_method === "MANUAL_QRIS" ? "ewallet" : input.payment_method === "MANUAL_TRANSFER" ? "card" : "other",
           transaction_ref: input.transaction_ref,
           payment_notes: input.payment_notes,
           fulfillment_mode: input.fulfillment_mode,

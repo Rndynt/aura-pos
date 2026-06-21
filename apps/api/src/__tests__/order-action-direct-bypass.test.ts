@@ -123,7 +123,7 @@ describe('order action API/controller direct-bypass guards', async () => {
     (container as any).recordPayment = { execute: async () => ({ payment: { id: 'pay-1' }, order: { id: 'order-1' }, remainingAmount: 0 }) };
     const app = buildApp(controllers.recordPayment, 'post', '/api/orders/:id/payments');
 
-    const response = await request(app, 'POST', '/api/orders/order-1/payments', { amount: 10, payment_method: 'cash', payment_flow: 'full_payment' });
+    const response = await request(app, 'POST', '/api/orders/order-1/payments', { amount: 10, payment_method: 'CASH', payment_flow: 'FULL' });
 
     assert.equal(response.status, 201);
     assert.equal(response.body?.success, true);
@@ -134,7 +134,7 @@ describe('order action API/controller direct-bypass guards', async () => {
     controllers.__setOrderActionPolicyBaseOverrideForTests(() => ({ businessProfile: 'food_beverage', entitlements: [] }));
     const app = buildApp(controllers.recordPayment, 'post', '/api/orders/:id/payments');
 
-    const response = await request(app, 'POST', '/api/orders/order-1/payments', { amount: 5, payment_method: 'cash', payment_flow: 'partial_payment_dp' });
+    const response = await request(app, 'POST', '/api/orders/order-1/payments', { amount: 5, payment_method: 'CASH', payment_flow: 'DOWN_PAYMENT' });
 
     assert.equal(response.status, 403);
     assert.equal(response.body?.code, 'PARTIAL_PAYMENT_ENTITLEMENT_REQUIRED');
@@ -146,7 +146,7 @@ describe('order action API/controller direct-bypass guards', async () => {
     (container as any).recordPayment = { execute: async () => ({ payment: { id: 'pay-1' }, order: { id: 'order-1' }, remainingAmount: 5 }) };
     const app = buildApp(controllers.recordPayment, 'post', '/api/orders/:id/payments');
 
-    const response = await request(app, 'POST', '/api/orders/order-1/payments', { amount: 5, payment_method: 'cash', payment_flow: 'partial_payment_dp' });
+    const response = await request(app, 'POST', '/api/orders/order-1/payments', { amount: 5, payment_method: 'CASH', payment_flow: 'DOWN_PAYMENT' });
 
     assert.equal(response.status, 201);
     assert.equal(response.body?.success, true);
@@ -156,7 +156,7 @@ describe('order action API/controller direct-bypass guards', async () => {
     setOrder({ id: 'order-1', tenant_id: 'tenant-1', status: 'cancelled', payment_status: 'unpaid' });
     const app = buildApp(controllers.recordPayment, 'post', '/api/orders/:id/payments');
 
-    const response = await request(app, 'POST', '/api/orders/order-1/payments', { amount: 10, payment_method: 'cash' });
+    const response = await request(app, 'POST', '/api/orders/order-1/payments', { amount: 10, payment_method: 'CASH' });
 
     assert.equal(response.status, 409);
     assert.equal(response.body?.code, 'PAYMENT_NOT_ALLOWED');

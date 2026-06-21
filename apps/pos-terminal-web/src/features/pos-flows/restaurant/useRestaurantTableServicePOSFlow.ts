@@ -31,6 +31,8 @@ import {
   usePOSStockGuard,
   submitPOSPayment,
   toUserSafePaymentError,
+  toCanonicalPaymentMethod,
+  createClientPaymentSessionId,
 } from "@/features/pos-core";
 import { getSendToKitchenEligibility } from "./restaurantTableServiceFlowPolicy";
 import { RESTAURANT_TABLE_SERVICE_FLOW_POLICY } from "./restaurantTableServiceFlowPolicy";
@@ -48,6 +50,7 @@ export function useRestaurantTableServicePOSFlow() {
   const { data: tenantProfile } = useTenantProfile(tenantId);
   const tenantName = tenantProfile?.tenant?.name || "AuraPOS";
   const inPaymentFlowRef = useRef(false);
+  const paymentSessionIdRef = useRef<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [combinedDraftOpen, setCombinedDraftOpen] = useState(false);
@@ -247,11 +250,12 @@ export function useRestaurantTableServicePOSFlow() {
     setIsProcessingQuickCharge(true);
     try {
       const result = await submitPOSPayment({
-        mode: "active_order",
+        mode: "ACTIVE_ORDER",
+        clientPaymentSessionId: paymentSessionIdRef.current ?? (paymentSessionIdRef.current = createClientPaymentSessionId()),
         orderId: pendingOrderForPayment.orderId,
         orderNumber: pendingOrderForPayment.orderNumber,
         totalAmount: pendingOrderForPayment.totalAmount,
-        paymentMethod,
+        paymentMethod: toCanonicalPaymentMethod(paymentMethod),
         cashReceived,
         partialAmount,
         paymentDetails,

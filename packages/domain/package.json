@@ -18,7 +18,9 @@
     "./seating": "./seating/index.ts",
     "./seating/*": "./seating/*.ts",
     "./business-flows": "./business-flows/index.ts",
-    "./business-flows/*": "./business-flows/*.ts"
+    "./business-flows/*": "./business-flows/*.ts",
+    "./payments": "./payments/index.ts",
+    "./payments/*": "./payments/*.ts"
   },
   "scripts": {
     "type-check": "tsc -p tsconfig.json --noEmit"

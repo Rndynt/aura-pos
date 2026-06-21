@@ -273,8 +273,8 @@ export class DrizzleCreateAndPayOrderRepository {
       }
 
       // 4. Record payment
-      const paymentFlow = input.payment_flow ?? (amount + 0.001 >= totalAmount ? 'full' : 'dp');
-      const paymentKind = input.payment_kind ?? (paymentFlow === 'dp' ? 'down_payment' : 'full_payment');
+      const paymentFlow = input.payment_flow ?? (amount + 0.001 >= totalAmount ? 'FULL' : 'DOWN_PAYMENT');
+      const paymentKind = input.payment_kind ?? (paymentFlow === 'DOWN_PAYMENT' ? 'DOWN_PAYMENT' : 'FULL_PAYMENT');
       const [newPayment] = await tx.insert(orderPayments).values({
         tenantId: tenant_id,
         outletId: outlet_id ?? null,

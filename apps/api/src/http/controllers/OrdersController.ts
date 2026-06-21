@@ -229,18 +229,19 @@ export const recordPayment = asyncHandler(async (req: Request, res: Response) =>
 
   const bodySchema = z.object({
     amount: z.number().positive(),
-    payment_method: z.enum(['cash', 'card', 'ewallet', 'other']),
+    payment_method: z.enum(['CASH', 'MANUAL_TRANSFER', 'MANUAL_QRIS']),
     transaction_ref: z.string().optional(),
     notes: z.string().optional(),
     idempotency_key: z.string().min(8).max(128).optional(),
-    payment_flow: z.enum(['full_payment', 'partial_payment_dp', 'full', 'dp', 'multi', 'split']).optional(),
-    payment_kind: z.enum(['full_payment', 'down_payment', 'remaining_payment', 'multi_line', 'split_line']).optional(),
+    payment_flow: z.enum(['FULL', 'DOWN_PAYMENT', 'MULTI_PAYMENT', 'SPLIT_BILL']).optional(),
+    payment_kind: z.enum(['FULL_PAYMENT', 'DOWN_PAYMENT', 'REMAINING_PAYMENT', 'MULTI_PAYMENT_LINE', 'SPLIT_BILL_LINE']).optional(),
     received_amount: z.number().nonnegative().optional(),
     change_amount: z.number().nonnegative().optional(),
     split_id: z.string().uuid().optional(),
     sequence: z.number().int().positive().max(4).optional(),
     reference_note: z.string().optional(),
     metadata: z.record(z.unknown()).optional(),
+    client_payment_session_id: z.string().min(8).max(128).optional(),
   });
 
   const parsed = bodySchema.safeParse(req.body);
@@ -253,8 +254,8 @@ export const recordPayment = asyncHandler(async (req: Request, res: Response) =>
 
   const order = await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
 
-  const normalizedPaymentFlow = parsed.data.payment_flow === 'partial_payment_dp' ? 'dp' : parsed.data.payment_flow === 'full_payment' ? 'full' : parsed.data.payment_flow ?? 'full';
-  const paymentAction = normalizedPaymentFlow === 'dp' ? 'PARTIAL_PAYMENT' : normalizedPaymentFlow === 'split' ? 'SPLIT_BILL' : 'PAY_ACTIVE_ORDER';
+  const normalizedPaymentFlow = parsed.data.payment_flow ?? 'FULL';
+  const paymentAction = normalizedPaymentFlow === 'DOWN_PAYMENT' ? 'PARTIAL_PAYMENT' : normalizedPaymentFlow === 'SPLIT_BILL' ? 'SPLIT_BILL' : 'PAY_ACTIVE_ORDER';
   const policyBase = await getOrderActionPolicyBase(tenantId, { requireEntitlements: paymentAction === 'PARTIAL_PAYMENT' || paymentAction === 'SPLIT_BILL' });
   try {
     assertCanPerformOrderAction({
@@ -269,13 +270,13 @@ export const recordPayment = asyncHandler(async (req: Request, res: Response) =>
     throw error;
   }
 
-  if (normalizedPaymentFlow === 'dp') {
+  if (normalizedPaymentFlow === 'DOWN_PAYMENT') {
     await requirePaymentEntitlement(tenantId, 'payments_partial_payment');
   }
-  if (normalizedPaymentFlow === 'multi') {
+  if (normalizedPaymentFlow === 'MULTI_PAYMENT') {
     await requirePaymentEntitlement(tenantId, 'payments_multi_payment');
   }
-  if (normalizedPaymentFlow === 'split') {
+  if (normalizedPaymentFlow === 'SPLIT_BILL') {
     await requirePaymentEntitlement(tenantId, 'payments_split_bill');
   }
 
@@ -293,6 +294,7 @@ export const recordPayment = asyncHandler(async (req: Request, res: Response) =>
     sequence: parsed.data.sequence,
     reference_note: parsed.data.reference_note?.trim(),
     metadata: parsed.data.metadata,
+    client_payment_session_id: parsed.data.client_payment_session_id,
     notes: parsed.data.notes,
     transaction_ref: transactionRef,
     idempotency_key: idempotencyKey,
@@ -898,17 +900,18 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
     service_charge_rate: z.number().optional(),
     // Payment fields
     amount: z.number().positive(),
-    payment_method: z.enum(['cash', 'card', 'ewallet', 'other']),
+    payment_method: z.enum(['CASH', 'MANUAL_TRANSFER', 'MANUAL_QRIS']),
     transaction_ref: z.string().optional(),
     payment_notes: z.string().optional(),
     idempotency_key: z.string().min(8).max(128).optional(),
     fulfillment_mode: z.enum(['standard', 'instant']).optional(),
-    payment_flow: z.enum(['full_payment', 'partial_payment_dp', 'full', 'dp', 'multi', 'split']).optional(),
-    payment_kind: z.enum(['full_payment', 'down_payment', 'remaining_payment', 'multi_line', 'split_line']).optional(),
+    payment_flow: z.enum(['FULL', 'DOWN_PAYMENT', 'MULTI_PAYMENT', 'SPLIT_BILL']).optional(),
+    payment_kind: z.enum(['FULL_PAYMENT', 'DOWN_PAYMENT', 'REMAINING_PAYMENT', 'MULTI_PAYMENT_LINE', 'SPLIT_BILL_LINE']).optional(),
     received_amount: z.number().nonnegative().optional(),
     change_amount: z.number().nonnegative().optional(),
     reference_note: z.string().optional(),
     metadata: z.record(z.unknown()).optional(),
+    client_payment_session_id: z.string().min(8).max(128).optional(),
   });
 
   const parsed = bodySchema.safeParse(req.body);
@@ -918,11 +921,11 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
 
   const idempotencyKey = getIdempotencyKey(req, parsed.data.idempotency_key);
   const estimatedTotal = estimateCreateAndPayTotal(parsed.data);
-  const normalizedCreatePaymentFlow = parsed.data.payment_flow === 'partial_payment_dp' ? 'dp' : parsed.data.payment_flow === 'full_payment' ? 'full' : parsed.data.payment_flow ?? (parsed.data.amount < estimatedTotal - 0.01 ? 'dp' : 'full');
-  if (normalizedCreatePaymentFlow === 'multi' || normalizedCreatePaymentFlow === 'split') {
+  const normalizedCreatePaymentFlow = parsed.data.payment_flow ?? (parsed.data.amount < estimatedTotal - 0.01 ? 'DOWN_PAYMENT' : 'FULL');
+  if (normalizedCreatePaymentFlow === 'MULTI_PAYMENT' || normalizedCreatePaymentFlow === 'SPLIT_BILL') {
     throw createError('Multi payment dan split bill harus dicatat melalui order aktif.', 400, 'UNSUPPORTED_CREATE_AND_PAY_FLOW');
   }
-  const isDpPayment = normalizedCreatePaymentFlow === 'dp' || parsed.data.amount < estimatedTotal - 0.01;
+  const isDpPayment = normalizedCreatePaymentFlow === 'DOWN_PAYMENT' || parsed.data.amount < estimatedTotal - 0.01;
   if (isDpPayment) {
     await requirePaymentEntitlement(tenantId, 'payments_partial_payment');
   }
@@ -950,6 +953,7 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
       change_amount: parsed.data.change_amount,
       reference_note: parsed.data.reference_note?.trim(),
       metadata: parsed.data.metadata,
+      client_payment_session_id: parsed.data.client_payment_session_id,
       transaction_ref: parsed.data.transaction_ref,
       payment_notes: parsed.data.payment_notes,
       idempotency_key: idempotencyKey,

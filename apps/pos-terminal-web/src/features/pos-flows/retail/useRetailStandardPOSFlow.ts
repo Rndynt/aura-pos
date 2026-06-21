@@ -28,6 +28,8 @@ import {
   usePOSStockGuard,
   submitPOSPayment,
   toUserSafePaymentError,
+  toCanonicalPaymentMethod,
+  createClientPaymentSessionId,
 } from "@/features/pos-core";
 import { RETAIL_STANDARD_FLOW_POLICY } from "./retailStandardFlowPolicy";
 
@@ -44,6 +46,7 @@ export function useRetailStandardPOSFlow() {
   const { data: tenantProfile } = useTenantProfile(tenantId);
   const tenantName = tenantProfile?.tenant?.name || "AuraPOS";
   const inPaymentFlowRef = useRef(false);
+  const paymentSessionIdRef = useRef<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [combinedDraftOpen, setCombinedDraftOpen] = useState(false);
@@ -202,16 +205,18 @@ export function useRetailStandardPOSFlow() {
     try {
       if (pendingOrderForPayment) {
         const result = await submitPOSPayment({
-          mode: "active_order",
+          mode: "ACTIVE_ORDER",
+          clientPaymentSessionId: paymentSessionIdRef.current ?? (paymentSessionIdRef.current = createClientPaymentSessionId()),
           orderId: pendingOrderForPayment.orderId,
           orderNumber: pendingOrderForPayment.orderNumber,
           totalAmount: pendingOrderForPayment.totalAmount,
-          paymentMethod,
+          paymentMethod: toCanonicalPaymentMethod(paymentMethod),
           cashReceived,
           partialAmount,
           paymentDetails,
         }, dependencies);
         toast({ title: result.messageTitle, description: result.messageDescription });
+        if (result.shouldClearCart) paymentSessionIdRef.current = null;
         setPendingOrderForPayment(null);
         setPaymentMethodDialogOpen(false);
         return;
@@ -225,21 +230,23 @@ export function useRetailStandardPOSFlow() {
       inPaymentFlowRef.current = true;
       sendToCFD(buildPaymentCFDPayload({ tenantName, orderNumber: snapshot.orderNumber || "", total: snapshot.total, items: cfdItems, subtotal: snapshot.subtotal, tax: snapshot.tax, serviceCharge: snapshot.serviceCharge, customerName: snapshot.customerName }, paymentMethod));
 
-      const mode = continueOrderId ? "saved_order" : "fresh_cart";
+      const mode = continueOrderId ? "SAVED_ORDER" : "FRESH_CART";
       if (continueOrderId) {
         const updateResult = await updateOrderMutation.mutateAsync({ orderId: continueOrderId, ...buildOrderPayload() });
         const totalAmount = Number((updateResult.order as any)?.total ?? (updateResult.pricing as any)?.total_amount ?? cart.total);
         const result = await submitPOSPayment({
           mode,
+          clientPaymentSessionId: paymentSessionIdRef.current ?? (paymentSessionIdRef.current = createClientPaymentSessionId()),
           orderId: continueOrderId,
           orderNumber: (updateResult.order as any)?.order_number ?? continueOrderId,
           totalAmount,
-          paymentMethod,
+          paymentMethod: toCanonicalPaymentMethod(paymentMethod),
           cashReceived,
           partialAmount,
           paymentDetails,
         }, dependencies);
         toast({ title: result.messageTitle, description: result.messageDescription });
+        if (result.shouldClearCart) paymentSessionIdRef.current = null;
         cart.clearCart();
         setPaymentMethodDialogOpen(false);
         setMobileCartOpen(false);
@@ -249,6 +256,7 @@ export function useRetailStandardPOSFlow() {
 
       const result = await submitPOSPayment({
         mode,
+        clientPaymentSessionId: paymentSessionIdRef.current ?? (paymentSessionIdRef.current = createClientPaymentSessionId()),
         totalAmount: snapshot.total,
         cartPayload: {
           items: cart.toBackendOrderItems(),
@@ -257,15 +265,15 @@ export function useRetailStandardPOSFlow() {
           order_type_id: cart.selectedOrderTypeId,
           customer_name: snapshot.customerName,
           amount: partialAmount ?? snapshot.total,
-          payment_method: paymentMethod,
+          payment_method: toCanonicalPaymentMethod(paymentMethod),
         },
-        paymentMethod,
+        paymentMethod: toCanonicalPaymentMethod(paymentMethod),
         cashReceived,
         partialAmount,
         paymentDetails,
       }, dependencies);
 
-      if (result.status === "paid") {
+      if (result.status === "PAID") {
         sendToCFD(buildCompletedCFDPayload({ tenantName, orderNumber: result.orderNumber, total: snapshot.total, items: cfdItems, subtotal: snapshot.subtotal, tax: snapshot.tax, serviceCharge: snapshot.serviceCharge, customerName: snapshot.customerName }, snapshot.total, 0));
         const receiptPayload = buildReceiptPayload({ orderNumber: result.orderNumber, tenantName, customerName: snapshot.customerName, paymentMethod, subtotal: snapshot.subtotal, tax: snapshot.tax, serviceCharge: snapshot.serviceCharge, total: snapshot.total, items: cfdItems });
         let printJobId: string | null = null;
@@ -277,7 +285,8 @@ export function useRetailStandardPOSFlow() {
           try { await printReceiptNow(printJobId, receiptPayload); } catch (printError) { await markReceiptPrintFailed(printJobId, printError); }
         }
       }
-      toast({ title: result.status === "paid" ? "Pesanan berhasil dibuat & dibayar" : result.messageTitle, description: result.status === "paid" ? `Order #${result.orderNumber} - Total: Rp ${snapshot.total.toLocaleString("id-ID")}` : result.messageDescription });
+      toast({ title: result.status === "PAID" ? "Pesanan berhasil dibuat & dibayar" : result.messageTitle, description: result.status === "PAID" ? `Order #${result.orderNumber} - Total: Rp ${snapshot.total.toLocaleString("id-ID")}` : result.messageDescription });
+      if (result.shouldClearCart) paymentSessionIdRef.current = null;
       cart.clearCart();
       setPaymentMethodDialogOpen(false);
       setMobileCartOpen(false);

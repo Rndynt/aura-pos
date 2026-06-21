@@ -262,7 +262,7 @@ export class DrizzleSyncOfflineOrderRepository {
           tax_rate: item.tax_rate,
           service_charge_rate: item.service_charge_rate,
           amount: item.amount,
-          payment_method: item.payment_method,
+          payment_method: item.payment_method === "cash" ? "CASH" : item.payment_method === "ewallet" ? "MANUAL_QRIS" : item.payment_method === "card" ? "MANUAL_TRANSFER" : "CASH",
           transaction_ref: item.transaction_ref ?? item.idempotency_key,
           payment_notes: item.payment_notes,
           idempotency_key: item.idempotency_key,

@@ -724,7 +724,7 @@ export default function OrdersPage() {
       await recordPaymentMutation.mutateAsync({
         orderId: selectedOrder.id,
         amount: remaining,
-        payment_method: settlePaymentMethod,
+        payment_method: settlePaymentMethod === "cash" ? "CASH" : settlePaymentMethod === "ewallet" ? "MANUAL_QRIS" : "MANUAL_TRANSFER",
       });
       toast({ title: "Pembayaran berhasil", description: `${formatPrice(remaining)} telah dicatat.` });
     } catch (error) {

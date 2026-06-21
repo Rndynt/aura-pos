@@ -436,7 +436,7 @@ const orderInput = (idempotencyKey: string) => ({
   tax_rate: 0,
   service_charge_rate: 0,
   amount: 10,
-  payment_method: 'cash' as const,
+  payment_method: 'CASH' as const,
   idempotency_key: idempotencyKey,
 });
 
