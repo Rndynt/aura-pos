@@ -65,7 +65,9 @@ const splitSchema = z.object({
   clientBillId: z.string(),
   label: z.string(),
   splitNo: z.number().int().positive(),
-  amountDue: z.number().positive(),
+  // nonnegative: placeholder non-selected bills may arrive with amountDue=0.
+  // The selected-bill positive-amount invariant is enforced by the use case.
+  amountDue: z.number().nonnegative(),
   amountPaid: z.number().nonnegative().optional(),
   status: z.enum(['UNPAID', 'PARTIAL', 'PAID']).optional(),
 });
@@ -111,6 +113,8 @@ export function mapToUserSafeError(error: unknown): { message: string; code: str
   if (/order_type|tipe pesanan/i.test(msg)) return { message: 'Tipe pesanan tidak valid atau belum aktif untuk tenant ini. Muat ulang POS lalu coba lagi.', code: 'INVALID_ORDER_TYPE', status: 400 };
   if (/jumlah pembayaran harus sama dengan sisa bill/i.test(msg)) return { message: 'Jumlah pembayaran harus sama dengan sisa bill yang dipilih.', code: 'SPLIT_BILL_AMOUNT_MISMATCH', status: 400 };
   if (/^bill yang dipilih sudah lunas\.?$/i.test(msg.trim())) return { message: 'Bill yang dipilih sudah lunas.', code: 'SPLIT_BILL_ALREADY_PAID', status: 409 };
+  if (/order sudah lunas/i.test(msg)) return { message: 'Order sudah lunas. Pembayaran baru tidak dapat dicatat.', code: 'ORDER_ALREADY_PAID', status: 409 };
+  if (/total multi payment.*sisa tagihan/i.test(msg)) return { message: 'Total multi payment harus sama dengan sisa tagihan.', code: 'MULTI_PAYMENT_TOTAL_MISMATCH', status: 400 };
   if (/melebihi sisa/i.test(msg)) return { message: 'Jumlah pembayaran melebihi sisa tagihan.', code: 'PAYMENT_AMOUNT_EXCEEDS_REMAINING', status: 400 };
   if (/split|bill yang dipilih/i.test(msg)) return { message: 'Bill yang dipilih tidak valid atau sudah lunas.', code: 'INVALID_SPLIT_BILL', status: 400 };
   if (/metode pembayaran/i.test(msg)) return { message: 'Metode pembayaran tidak valid.', code: 'PAYMENT_METHOD_INVALID', status: 400 };
@@ -118,7 +122,7 @@ export function mapToUserSafeError(error: unknown): { message: string; code: str
   if (/cancelled|dibatalkan/i.test(msg)) return { message: 'Tidak dapat mencatat pembayaran untuk order yang dibatalkan.', code: 'ORDER_CANCELLED', status: 409 };
   if (/violates foreign key|fk_/i.test(msg)) return { message: 'Data tidak valid. Muat ulang POS lalu coba lagi.', code: 'CONSTRAINT_VIOLATION', status: 400 };
 
-  return { message: 'Pembayaran gagal dicatat. Silakan coba lagi.', code: 'PAYMENT_ERROR', status: 500 };
+  return { message: 'Pembayaran belum tersimpan. Periksa data pembayaran lalu coba lagi.', code: 'PAYMENT_ERROR', status: 500 };
 }
 
 // ---------------------------------------------------------------------------

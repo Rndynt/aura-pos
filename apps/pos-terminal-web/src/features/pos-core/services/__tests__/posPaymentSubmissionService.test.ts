@@ -55,3 +55,15 @@ assert.equal(partialResult.shouldClearCart, false);
 assert.throws(() => buildCanonicalPaymentCommand({ clientPaymentSessionId: "sess-too-many", mode: "SAVED_ORDER", orderId: "o", totalAmount: 100, paymentMethod: "CASH", paymentDetails: { flow: "MULTI_PAYMENT", lines: [{ method: "CASH", amount: 30 }, { method: "MANUAL_QRIS", amount: 30 }, { method: "MANUAL_TRANSFER", amount: 40 }] } }));
 assert.throws(() => buildCanonicalPaymentCommand({ clientPaymentSessionId: "sess-split-many", mode: "SAVED_ORDER", orderId: "o", totalAmount: 100, paymentMethod: "CASH", paymentDetails: { flow: "SPLIT_BILL", lines: [{ method: "CASH", amount: 20 }, { method: "CASH", amount: 20 }, { method: "CASH", amount: 20 }, { method: "CASH", amount: 20 }, { method: "CASH", amount: 20 }] } }));
 assert.equal(toUserSafePaymentError(new Error(['Invalid', 'enum value. Expected FULL', 'DOWN_PAYMENT'].join(' | '))), "Pembayaran gagal dicatat. Silakan coba lagi.");
+
+// Fix B: clientBillId is preserved via clientBillId field (not just splitId fallback)
+const splitWithClientBillIdOnly = buildSubmitPOSPaymentRequest({ clientPaymentSessionId: "sess-cbid", mode: "FRESH_CART", totalAmount: 25000, cartPayload: { items: [] }, paymentMethod: "CASH", paymentDetails: { flow: "SPLIT_BILL", targetBillId: "B", lines: [{ method: "CASH", amount: 25000, clientBillId: "B" }], splits: [{ id: "B", label: "Bill B", amountDue: 25000, amountPaid: 0 }] } });
+assert.equal(splitWithClientBillIdOnly.payment.lines[0].clientBillId, "B", "clientBillId must be mapped from line.clientBillId");
+assert.equal(splitWithClientBillIdOnly.payment.lines[0].orderBillSplitId, undefined, "orderBillSplitId must not be set from clientBillId");
+assert.equal(splitWithClientBillIdOnly.payment.targetBillId, "B", "targetBillId fallback must use clientBillId");
+
+// Fix A: only non-zero splits are built by buildSplitPayload (dialog filters before calling, service passes through)
+const splitOnlyBillA = buildSubmitPOSPaymentRequest({ clientPaymentSessionId: "sess-split-a-only", mode: "FRESH_CART", totalAmount: 14000, cartPayload: { items: [] }, paymentMethod: "CASH", paymentDetails: { flow: "SPLIT_BILL", targetBillId: "A", lines: [{ method: "CASH", amount: 14000, clientBillId: "A" }], splits: [{ id: "A", label: "Bill A", amountDue: 14000, amountPaid: 0 }] } });
+assert.equal(splitOnlyBillA.payment.splits?.length, 1, "only Bill A with amountDue>0 should be in splits");
+assert.equal(splitOnlyBillA.payment.splits?.[0].amountDue, 14000);
+assert.equal(splitOnlyBillA.payment.splits?.[0].clientBillId, "A");

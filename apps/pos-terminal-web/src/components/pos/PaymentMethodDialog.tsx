@@ -252,19 +252,26 @@ export function PaymentMethodDialog({
       }
       if (flow === "SPLIT_BILL") {
         if (!canPayActiveBill) return;
-        onConfirm(method, undefined, activeBillTotal, {
-          flow: "SPLIT_BILL",
-          paymentKind: "SPLIT_BILL_LINE",
-          targetBillId: activeBill,
-          lines: [{ method, amount: activeBillTotal, splitId: activeBill, clientBillId: activeBill }],
-          splits: splitBills.map((bill, index) => ({
+        // Only send splits with amountDue > 0.
+        // Placeholder bills with zero items must not be sent — backend splitSchema
+        // enforces the selected-bill amount invariant, and zero-amount non-selected
+        // bills provide no information that the backend needs.
+        const nonZeroSplits = splitBills
+          .map((bill, index) => ({
             id: bill,
             label: `Bill ${bill}`,
             splitNo: index + 1,
             amountDue: getBillTotal(bill),
             amountPaid: 0,
-            status: "UNPAID",
-          })),
+            status: "UNPAID" as const,
+          }))
+          .filter((split) => split.amountDue > 0);
+        onConfirm(method, undefined, activeBillTotal, {
+          flow: "SPLIT_BILL",
+          paymentKind: "SPLIT_BILL_LINE",
+          targetBillId: activeBill,
+          lines: [{ method, amount: activeBillTotal, clientBillId: activeBill }],
+          splits: nonZeroSplits,
         });
         return;
       }
@@ -425,7 +432,7 @@ export function PaymentMethodDialog({
         <div className="p-4 flex flex-col gap-3 flex-1 min-h-0">
           {/* Status bar */}
           <div className="bg-teal-50 border border-teal-200 rounded-xl px-3 py-2 text-sm font-bold text-teal-700">
-            Terbayar {fmt(multiPaid)} · Sisa {fmt(multiRemaining)}
+            Dimasukkan {fmt(multiPaid)} · Kurang {fmt(multiRemaining)}
           </div>
 
           {/* Added lines */}
@@ -479,7 +486,7 @@ export function PaymentMethodDialog({
             <>
               <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2">
                 <CheckCircle2 size={14} className="text-green-500 shrink-0" />
-                <p className="text-xs font-bold text-green-700">Semua pembayaran terpenuhi</p>
+                <p className="text-xs font-bold text-green-700">Siap dikonfirmasi — klik untuk menyimpan pembayaran</p>
               </div>
               <button
                 onClick={process}

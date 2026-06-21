@@ -7,7 +7,15 @@ export type POSPaymentLineInput = {
   method: POSPaymentMethod;
   amount: number;
   receivedAmount?: number;
+  /** UI bill identifier (e.g. "A", "B"). Preserved as clientBillId in the backend request. */
+  clientBillId?: string;
+  /**
+   * Legacy alias kept for backward compat — dialog may set either splitId or clientBillId.
+   * Prefer clientBillId. Do NOT map splitId to orderBillSplitId (that expects a DB UUID).
+   */
   splitId?: string;
+  /** Real DB UUID for an existing split row — only set when continuing a partially-paid split. */
+  orderBillSplitId?: string;
   referenceNote?: string;
 };
 
@@ -113,7 +121,7 @@ export function buildCanonicalPaymentCommand(input: POSPaymentSubmissionInput): 
   const lineTotal = roundCurrency(lines.reduce((sum, line) => sum + line.amount, 0));
   if (flow === "MULTI_PAYMENT" && Math.abs(lineTotal - input.totalAmount) > 0.001) throw new Error("Total multi payment harus sama dengan total tagihan.");
   if (flow === "SPLIT_BILL") {
-    const targetBillId = input.paymentDetails?.targetBillId ?? lines[0]?.splitId;
+    const targetBillId = input.paymentDetails?.targetBillId ?? lines[0]?.clientBillId ?? lines[0]?.splitId;
     const bill = input.paymentSession?.bills.find((b) => b.clientBillId === targetBillId || b.orderBillSplitId === targetBillId);
     if (bill && !isSelectedBillPayable({ billAmountDue: bill.amountDue, billAmountPaid: bill.amountPaid, lineTotal })) throw new Error("Bill yang dipilih sudah lunas atau jumlah pembayaran tidak sesuai.");
   }
@@ -156,13 +164,16 @@ export function buildSubmitPOSPaymentRequest(input: POSPaymentSubmissionInput): 
     payment: {
       flow,
       paymentKind,
-      targetBillId: input.paymentDetails?.targetBillId ?? lines[0]?.splitId,
+      targetBillId: input.paymentDetails?.targetBillId ?? lines[0]?.clientBillId ?? lines[0]?.splitId,
       lines: lines.map((line) => ({
         method: line.method,
         amount: line.amount,
         receivedAmount: line.receivedAmount,
         referenceNote: line.referenceNote,
-        clientBillId: line.splitId,
+        // clientBillId takes priority; splitId is a legacy alias.
+        // orderBillSplitId is only set when continuing an existing DB split row.
+        clientBillId: line.clientBillId ?? line.splitId,
+        orderBillSplitId: line.orderBillSplitId,
       })),
       splits: buildSplitPayload(input),
     },

@@ -712,4 +712,76 @@ The `nanoid` import is retained for the 32-character `rawToken` (token is stored
 
 - Bootstrap uses only the three canonical codes (`TAKE_AWAY`, `DINE_IN`, `DELIVERY`). Laundry/Retail tenants with different order type semantics will auto-bootstrap these and may want to disable irrelevant ones via the management UI.
 - Laundry-specific codes (`DROP_OFF`, `PICKUP_DELIVERY`, `EXPRESS`) are in `order_types` master data but are NOT in the bootstrap set; they must be manually enabled, which is intentional.
+
+---
+
+## P9.7 — Payment Submit Truth + Validation Final Fix
+
+Date: 2026-06-21
+
+Source prompt: `roadmap/business-flows/replit_codex_P9_7_payment_submit_truth_and_validation_fix_prompt.md`
+
+### 1. Root Causes Diagnosed
+
+Four independent bugs were confirmed through code inspection before any changes were made.
+
+**Bug A — Split Bill: placeholder Bill B (amountDue=0) rejected by backend schema**
+
+`PaymentMethodDialog.tsx` `process()` sent ALL bills in `splitBills` array, including placeholder
+Bill B that has zero items and therefore `getBillTotal(bill) === 0`. The backend `splitSchema`
+had `amountDue: z.number().positive()` which rejects 0, causing the entire request to fail with
+`VALIDATION_ERROR: "Data pembayaran tidak valid"` even when Bill A was fully assigned and valid.
+
+**Bug B — clientBillId field missing from `POSPaymentLineInput` type**
+
+`POSPaymentLineInput` (the internal service input type) declared `splitId?: string` but NOT
+`clientBillId`. The dialog was sending `{ method, amount, splitId: activeBill, clientBillId: activeBill }`
+on each line, but the service type silently dropped `clientBillId`. The mapper at
+`buildSubmitPOSPaymentRequest` had `clientBillId: line.splitId` as a workaround, but the
+`targetBillId` fallback at two locations only read `lines[0]?.splitId`, not `lines[0]?.clientBillId`,
+which would break if the dialog later migrated to `clientBillId`-only lines.
+
+**Bug C — Multi Payment status bar showed "Terbayar" before backend confirmation**
+
+Line 428 of the dialog: `Terbayar {fmt(multiPaid)} · Sisa {fmt(multiRemaining)}` — the word
+"Terbayar" (= "has been paid") was displayed as soon as the user finished entering multi-payment
+lines. This was semantically incorrect: the payment had NOT been saved yet. Pressing submit could
+still fail, leaving the UI displaying a false "Terbayar" state.
+
+**Bug D — Multi Payment and unknown errors mapped to generic fallback in `mapToUserSafeError`**
+
+`mapToUserSafeError` in `POSPaymentController.ts` did not have a pattern for
+`"Total multi payment harus sama dengan sisa tagihan."` (thrown by the repository's MULTI_PAYMENT
+total check). The error fell through to the catch-all: `"Pembayaran gagal dicatat. Silakan coba lagi."`
+which was confusing — it sounded like a transient server error rather than a data-validation issue.
+Additionally, `"Order sudah lunas"` had no mapping and also fell through to the same generic message.
+
+### 2. Files Changed
+
+| File | Change |
+|------|--------|
+| `apps/api/src/http/controllers/POSPaymentController.ts` | `splitSchema.amountDue: .positive()` → `.nonnegative()` (Bug A backend); added patterns for `MULTI_PAYMENT_TOTAL_MISMATCH` and `ORDER_ALREADY_PAID` in `mapToUserSafeError` (Bug D); improved generic fallback message wording |
+| `apps/pos-terminal-web/src/components/pos/PaymentMethodDialog.tsx` | Filter zero-amountDue bills before sending (Bug A frontend); changed "Terbayar" → "Dimasukkan", "Sisa" → "Kurang" (Bug C); changed "Semua pembayaran terpenuhi" → "Siap dikonfirmasi — klik untuk menyimpan pembayaran"; removed `splitId` field from line sent to `onConfirm`, using `clientBillId` only |
+| `apps/pos-terminal-web/src/features/pos-core/services/posPaymentSubmissionService.ts` | Added `clientBillId?: string` and `orderBillSplitId?: string` to `POSPaymentLineInput` with JSDoc comments (Bug B); updated line mapper to `clientBillId: line.clientBillId ?? line.splitId`; fixed both `targetBillId` fallbacks to `?? lines[0]?.clientBillId ?? lines[0]?.splitId` |
+| `apps/pos-terminal-web/src/features/pos-core/services/__tests__/posPaymentSubmissionService.test.ts` | Added test: `clientBillId` preserved when only `clientBillId` is on the line (not `splitId`); added test: single-bill split payload maps correctly; verified `orderBillSplitId` is NOT set from a UI bill identifier |
+
+### 3. Invariants Preserved
+
+- **State retention on error:** On multi-payment submit failure, `multiEntries` is local state
+  in the dialog and is NOT reset (dialog stays open, entries visible). The flow's `finally` block
+  calls `setIsProcessingQuickCharge(false)` which re-enables the confirm button. Users can retry
+  immediately.
+- **Split assignment retention on error:** `itemBillMap` is local to the dialog. A submit failure
+  does not close the dialog, so all item assignments are preserved for retry.
+- **Idempotency:** `clientPaymentSessionId` propagation is unchanged. A retry re-uses the same
+  session ID, so a double-submit is safely deduplicated by the repository's idempotency check.
+- **Zero-amount Bill B non-regression:** The backend `splitSchema` now accepts `amountDue=0` for
+  non-selected placeholder bills. The use case's selected-bill positive-amount invariant
+  (`line.amount > 0` per-line check in `SubmitPOSPayment.validate()`) still rejects any attempt
+  to actually pay a zero-amount split line.
+
+### 4. Tests
+
+- `npx tsx --tsconfig tsconfig.json --test src/features/pos-core/services/__tests__/posPaymentSubmissionService.test.ts` → **1 pass, 0 fail**
+- `npx tsc --noEmit` in both `apps/api` and `apps/pos-terminal-web` → **0 errors**
 - The content-type guard truncates the response body to 200 characters in the error message; full body is not exposed to the client toast (appropriate for security).
