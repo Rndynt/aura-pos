@@ -222,17 +222,17 @@ if the repo tracks phase progress there.
 
 ## Completion checklist
 
-- [ ] PATCH/update direct-bypass tests added.
-- [ ] recordPayment direct-bypass tests added.
-- [ ] cancelOrder direct-bypass tests added.
-- [ ] active cancel reason requirement tested.
-- [ ] active cancel permission source audited and mapped or limitation documented.
-- [ ] refund/void/delete routes audited and guarded/tested if exposed.
-- [ ] full payment without orders_queue tested as allowed.
-- [ ] partial payment without entitlement tested as rejected.
-- [ ] validation commands run and documented.
-- [ ] cleanup grep documented.
-- [ ] P8.1 report created.
+- [x] PATCH/update direct-bypass tests added.
+- [x] recordPayment direct-bypass tests added.
+- [x] cancelOrder direct-bypass tests added.
+- [x] active cancel reason requirement tested.
+- [x] active cancel permission source audited and mapped or limitation documented.
+- [x] refund/void/delete routes audited and guarded/tested if exposed.
+- [x] full payment without orders_queue tested as allowed.
+- [x] partial payment without entitlement tested as rejected.
+- [x] validation commands run and documented.
+- [x] cleanup grep documented.
+- [x] P8.1 report created.
 
 ## Commit
 

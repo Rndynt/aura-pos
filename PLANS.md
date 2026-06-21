@@ -9493,3 +9493,138 @@ Harden backend POS/order mutation endpoints with the existing business-flow poli
 
 ### Continuation Notes
 Next agent should add API/controller-level bypass tests for OrdersController with mocked tenant entitlement context and order repository, then tighten active-cancel permissions against the real RBAC permission model if available.
+
+## Plan: P8.1 API Direct-Bypass Tests + RBAC Permission Mapping
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P8_1_api_direct_bypass_tests_rbac_prompt.md`
+- User request: Analisa mendalam, pahami/pelajari, tambahkan report jika ada yang tidak sesuai, eksekusi roadmap P8.1
+- Date started: 2026-06-21
+- Current status: Implemented and validated
+
+### Goal
+Prove P8 backend order-action guards at API/controller level and tighten active cancellation permission input without adding new payment/refund/void engines.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs/reports (`P8_backend_action_policy_guard_report.md`, business-flow roadmap)
+- [x] Relevant source files (order controller/routes, RBAC middleware, policy/helper/profile files, existing tests)
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: order controller policy input, direct controller tests
+- Files inspected: `apps/api/src/http/controllers/OrdersController.ts`, `apps/api/src/http/routes/orders.ts`, `apps/api/src/__tests__/record-payment-idempotency.test.ts`
+- Findings: Active cancel previously mapped permission from reason presence; direct-bypass coverage was missing.
+- Tasks: Add direct-bypass tests and role-derived policy permission mapping.
+- Risks: Fine-grained permission claims do not exist yet.
+- Validation: `pnpm --filter @pos/api type-check`, `pnpm --filter @pos/api test`
+
+#### Security/Tenant Isolation Workstream
+- Scope: active cancel permission source and route audit
+- Files inspected: `apps/api/src/http/middleware/rbac.ts`, `apps/api/src/http/middleware/tenant.ts`, `apps/api/src/http/routes/orders.ts`
+- Findings: Role context exists; permission claims do not. No refund/void/delete order routes are exposed.
+- Tasks: Map owner/manager/platform-admin to `orders:cancel_active`; reject cashier active cancel at policy layer.
+- Risks: Future routes must not bypass the policy helper.
+- Validation: Direct-bypass tests for cashier vs manager active cancel.
+
+#### Tests/Validation Workstream
+- Scope: API/controller regression tests and required commands
+- Files inspected: `apps/api/src/__tests__/*`, package scripts
+- Findings: Existing tests use `node:test` + small Express apps.
+- Tasks: Add `order-action-direct-bypass.test.ts`.
+- Risks: Full Better Auth session HTTP integration remains future work.
+- Validation: Required P8.1 commands run.
+
+#### Documentation Workstream
+- Scope: P8.1 report, roadmap progress, plan tracking
+- Files inspected: `roadmap/business-flows/main.md`, P8 report/prompt, `PLANS.md`
+- Findings: P8 report explicitly recommended P8.1.
+- Tasks: Create P8.1 report and update plan/roadmap progress.
+- Risks: Keep report honest about role-only permission source.
+- Validation: Documentation updated.
+
+### Execution Order
+1. Audit existing P8 controller/policy/RBAC/test harness.
+2. Add active cancel role-permission mapping.
+3. Add deterministic controller-level direct-bypass tests.
+4. Audit refund/void/delete routes.
+5. Run validation commands and cleanup grep.
+6. Write P8.1 report and update roadmap/plan.
+
+### Progress
+
+#### Completed
+- [x] PATCH/update direct-bypass tests added.
+  - Files changed: `apps/api/src/__tests__/order-action-direct-bypass.test.ts`
+  - Validation: `pnpm --filter @pos/api test`
+  - Docs updated: P8.1 report
+- [x] recordPayment direct-bypass tests added.
+  - Files changed: `apps/api/src/__tests__/order-action-direct-bypass.test.ts`
+  - Validation: `pnpm --filter @pos/api test`
+  - Docs updated: P8.1 report
+- [x] cancelOrder direct-bypass tests and active reason test added.
+  - Files changed: `apps/api/src/__tests__/order-action-direct-bypass.test.ts`
+  - Validation: `pnpm --filter @pos/api test`
+  - Docs updated: P8.1 report
+- [x] Active cancel permission source audited and conservatively mapped.
+  - Files changed: `apps/api/src/http/controllers/OrdersController.ts`, `packages/application/business-flows/registry/businessFlowProfiles.ts`
+  - Validation: `pnpm --filter @pos/application type-check`, `pnpm --filter @pos/api type-check`, `pnpm --filter @pos/api test`
+  - Docs updated: P8.1 report
+- [x] Refund/void/delete routes audited.
+  - Files changed: `roadmap/business-flows/P8_1_api_direct_bypass_tests_rbac_report.md`
+  - Validation: route file inspection + report
+  - Docs updated: P8.1 report
+
+#### Partially Completed
+- [ ] Fine-grained permission claims.
+  - Completed: Conservative role-to-permission mapping for active cancel.
+  - Remaining: Persisted/session permission claim source shared with RBAC.
+  - Reason: Current RBAC exposes roles only.
+
+#### Blocked
+- [ ] Refund/void/delete direct-bypass tests.
+  - Blocker: Corresponding order routes are not exposed.
+  - Required next step: Add policy-guarded routes only in a future feature phase if product scope requires them.
+
+#### Not Attempted
+- [ ] Frontend error-copy mapping.
+  - Reason: No frontend behavior changed in this batch.
+
+### Validation Log
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: Application policy/profile changes type-check.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: Controller/test changes type-check.
+- Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Notes: Existing application policy tests pass.
+- Command: `pnpm --filter @pos/api test`
+- Result: pass
+- Notes: Includes new direct-bypass test suite.
+- Command: `pnpm type-check`
+- Result: pass
+- Notes: Turbo reported 10/10 successful package tasks.
+- Command: cleanup `rg ... || true`
+- Result: pass / no matches
+- Notes: No forbidden legacy patterns found.
+
+### Documentation Updates
+- File: `roadmap/business-flows/P8_1_api_direct_bypass_tests_rbac_report.md`
+- Change: Added full P8.1 implementation and validation report.
+- File: `roadmap/business-flows/main.md`
+- Change: Added P8.1 progress entry.
+- File: `PLANS.md`
+- Change: Added active P8.1 execution plan and validation log.
+
+### Checklist Updates
+- File: `roadmap/business-flows/replit_codex_P8_1_api_direct_bypass_tests_rbac_prompt.md`
+- Change: Completion checklist marked implemented/validated for completed P8.1 items; detailed results recorded in P8.1 report and PLANS.
+
+### Continuation Notes
+Next safest batch: P8.2 permission-claim registry/RBAC integration for explicit permissions, then future refund/void/delete policy tests if those routes are introduced.

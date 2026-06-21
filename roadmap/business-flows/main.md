@@ -723,3 +723,12 @@ Remaining follow-up:
 - wire fine-grained RBAC permission claims into active cancel/refund/void policy input;
 - run deferred browser/manual smoke during release gate.
 ```
+
+## P8.1 — API Direct-Bypass Tests + RBAC Permission Mapping (2026-06-21)
+
+Status: Implemented and validated.
+
+- Added controller-level direct-bypass tests for order update, payment, and cancellation policy guards.
+- Tightened active cancellation policy input so `orders:cancel_active` is derived from authenticated role context (`owner`, `manager`, `platform-admin`) instead of cancellation-reason presence.
+- Audited refund/void/delete/trash order routes; they are not exposed in the current orders router and were not invented in this phase.
+- Report: `roadmap/business-flows/P8_1_api_direct_bypass_tests_rbac_report.md`.

@@ -13,7 +13,28 @@ import { DEFAULT_SERVICE_CHARGE_RATE, DEFAULT_TAX_RATE } from '@pos/core/pricing
 import { withOrderLifecycleDtoFields } from '@pos/application/orders/mappers/orderLifecycleDtoMapper';
 import { assertCanPerformOrderAction, resolveBusinessProfileFromBusinessType, type OrderActionPolicyError } from '@pos/application/business-flows';
 
+type OrderActionPolicyBase = { businessProfile: ReturnType<typeof resolveBusinessProfileFromBusinessType> | 'core_standard'; entitlements: string[] };
+
+let orderActionPolicyBaseOverride: ((tenantId: string, options?: { requireEntitlements?: boolean }) => Promise<OrderActionPolicyBase> | OrderActionPolicyBase) | null = null;
+
+export function __setOrderActionPolicyBaseOverrideForTests(
+  override: ((tenantId: string, options?: { requireEntitlements?: boolean }) => Promise<OrderActionPolicyBase> | OrderActionPolicyBase) | null,
+): void {
+  orderActionPolicyBaseOverride = override;
+}
+
+function resolveOrderActionPermissions(req: Request): string[] {
+  const role = req.posRole ?? req.authTenantUser?.role;
+  if (role === 'owner' || role === 'manager' || role === 'platform-admin') {
+    return ['orders:cancel_active'];
+  }
+  return [];
+}
+
 async function getOrderActionPolicyBase(tenantId: string, options: { requireEntitlements?: boolean } = {}) {
+  if (orderActionPolicyBaseOverride) {
+    return orderActionPolicyBaseOverride(tenantId, options);
+  }
   if (!options.requireEntitlements) {
     return { businessProfile: 'core_standard' as const, entitlements: [] };
   }
@@ -51,6 +72,10 @@ async function assertOrderBelongsToOutlet(orderId: string, tenantId: string, out
 }
 
 async function requirePaymentEntitlement(tenantId: string, entitlementCode: string): Promise<void> {
+  if (orderActionPolicyBaseOverride) {
+    const policyBase = await orderActionPolicyBaseOverride(tenantId, { requireEntitlements: true });
+    if (policyBase.entitlements.includes(entitlementCode)) return;
+  }
   const entitlements = await getEffectiveEntitlementMap(tenantId);
   if (entitlements[entitlementCode] === true) return;
 
@@ -692,7 +717,7 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
       orderOperationalStatus: order.status,
       paymentStatus: order.paymentStatus ?? order.payment_status,
       fulfillmentStatus: order.status,
-      actorPermissions: parsed.data.cancellation_reason?.trim() ? ['orders:cancel_active'] : [],
+      actorPermissions: resolveOrderActionPermissions(req),
     });
   } catch (error) {
     if (error instanceof Error && error.name === 'OrderActionPolicyError') throwPolicyHttpError(error as OrderActionPolicyError);
