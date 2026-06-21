@@ -10662,3 +10662,105 @@ Enforce backend-selected split bill invariants before any split/payment/order mu
 
 ### Continuation Notes
 Next recommended batch: add full DB-backed repository/integration tests for rejected SPLIT_BILL overpay/underpay proving no payment/split/order rows mutate on failure.
+
+## Plan: P9.4 Payment UX Finalization + Final PAID Data Contract
+
+### Source
+- Tasklist: roadmap/business-flows/replit_codex_P9_4_v2_payment_ux_and_paid_data_contract_prompt.md
+- User request: Analisa mendalam, pahami dan pelajari, tambahkan report jika ada yang tidak sesuai, eksekusi roadmap P9.4.
+- Date started: 2026-06-21
+- Current status: Partially implemented; UI/order-type guard/report done, DOM and live DB row-shape tests remain follow-up.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs (`docs/ORDER_LIFECYCLE.md`)
+- [x] Relevant source files listed by P9.4 prompt
+
+### Workstreams
+
+#### Frontend/UI Workstream
+- Scope: Payment dialog method ownership, responsive modal layout, split scroll area.
+- Files inspected: `apps/pos-terminal-web/src/components/pos/PaymentMethodDialog.tsx`
+- Findings: Multi displayed a global selector plus line selector; split list used fixed max-height; split request pre-filled selected bill amountPaid.
+- Tasks: Remove duplicated selector, bind Multi selector to `multiMethod`, make split list flex-scrollable, emit split metadata with DB-authoritative `amountPaid: 0`.
+- Risks: Browser-level layout still needs manual/DOM verification.
+- Validation: `pnpm --filter @pos/terminal-web type-check` passed.
+
+#### Backend/API Workstream
+- Scope: Order type protection and user-safe errors.
+- Files inspected: `apps/api/src/http/controllers/POSPaymentController.ts`, `apps/api/src/http/controllers/OrdersController.ts`, `packages/application/payments/SubmitPOSPayment.ts`, `packages/infrastructure/repositories/payments/DrizzlePOSPaymentOrderTypeRepository.ts`.
+- Findings: SubmitPOSPayment and order controllers already route order_type_id through tenant-aware validation; POSPaymentController maps technical errors to user-safe messages.
+- Tasks: No backend code change needed in this batch.
+- Risks: CreateOrder still wraps repository errors with `Failed to create order:` internally, but controller-level order type resolution prevents stale order_type_id FK insert on normal paths.
+- Validation: POS terminal validation only in this batch.
+
+#### Tests/Validation Workstream
+- Scope: Closest practical automated coverage.
+- Files inspected: `apps/pos-terminal-web/package.json`, existing POS service tests.
+- Findings: POS web test stack is script-level `tsx`, not React DOM rendering.
+- Tasks: Add pure order type guard test for stale/no-active cases.
+- Risks: DOM selector count and scroll reachability need React DOM test runner/manual verification later.
+- Validation: `pnpm --filter @pos/terminal-web type-check` and `pnpm --filter @pos/terminal-web test` passed.
+
+#### Documentation Workstream
+- Scope: Final PAID contract and P9.4 findings.
+- Files inspected: `roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md`.
+- Findings: P9.3 report did not yet include the final P9.4 PAID shape examples.
+- Tasks: Append P9.4 section with analysis, implemented changes, final PAID data contract, and validation limitations.
+- Risks: Full DB integration proof remains follow-up.
+- Validation: Documentation updated.
+
+### Progress
+
+#### Completed
+- [x] Remove duplicated Multi method selector and keep Multi line method state authoritative.
+  - Files changed: `apps/pos-terminal-web/src/components/pos/PaymentMethodDialog.tsx`
+  - Validation: `pnpm --filter @pos/terminal-web type-check`
+  - Docs updated: `roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md`
+- [x] Improve payment dialog responsive layout and split item scroll area.
+  - Files changed: `apps/pos-terminal-web/src/components/pos/PaymentMethodDialog.tsx`
+  - Validation: `pnpm --filter @pos/terminal-web type-check`
+  - Docs updated: `roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md`
+- [x] Guard stale/no-active order type before frontend order actions.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-flows/shared/orderTypeGuard.ts`, retail/restaurant flow hooks
+  - Validation: `pnpm --filter @pos/terminal-web type-check`
+  - Docs updated: `roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md`
+- [x] Document final PAID DB contract.
+  - Files changed: `roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md`
+  - Validation: documentation only
+  - Docs updated: same report file
+
+#### Partially Completed
+- [ ] P9.4 tests required.
+  - Completed: pure stale order type replacement/no-active blocker test added.
+  - Remaining: React DOM tests for method selector counts and split scroll reachability; live DB integration tests for exact final row shapes.
+  - Reason: Existing POS test setup is script-level `tsx`; adding a DOM runner/live DB harness is larger than this focused batch.
+
+#### Blocked
+- [ ] None.
+
+#### Not Attempted
+- [ ] Full live DB row-shape integration tests.
+  - Reason: Requires a DB integration harness and deterministic fixtures beyond current batch.
+
+### Validation Log
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: passed
+- Notes: Validates changed POS web TypeScript.
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: passed
+- Notes: Includes new order type guard tests.
+
+### Documentation Updates
+- File: `roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md`
+- Change: Added P9.4 analysis, implementation details, final PAID DB contract, and validation limitations.
+
+### Checklist Updates
+- File: `roadmap/business-flows/replit_codex_P9_4_v2_payment_ux_and_paid_data_contract_prompt.md`
+- Change: Source prompt left intact because it is not a checkbox checklist; execution status recorded in this plan and report.
+
+### Continuation Notes
+Next safest continuation: add React DOM test tooling or a lightweight component test harness for `PaymentMethodDialog`, then add DB integration fixtures asserting the final FULL/DP/MULTI/SPLIT row contracts.

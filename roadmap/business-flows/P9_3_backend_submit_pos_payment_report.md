@@ -246,3 +246,107 @@ Limitation: the new test directly covers the extracted invariant helper and API 
 ### 11. Final user-readable Split Bill flow
 
 Cashier chooses Split, selects Bill A, and pays exactly Bill A's remaining amount. Backend resolves Bill A, validates that the payment equals the selected bill remaining, records the payment once, marks Bill A paid, and keeps the parent order partial if other bills remain unpaid. Retrying the same request returns safely without double-counting. Overpaying, underpaying, selecting an invalid bill, or paying an already-paid bill with a new request returns a cashier-readable error.
+
+## P9.4 Payment UX Finalization + Final PAID Data Contract
+
+Date: 2026-06-21
+
+### 1. Deep analysis findings
+
+- Payment dialog still rendered a global method selector for `MULTI_PAYMENT`, while multi-line storage used `multiMethod`. This meant the cashier saw duplicated method controls and could confuse the global `method` state with per-line multi method state.
+- Split bill rows used a fixed `maxHeight` scroll area rather than a flex `min-h-0` layout, making item assignment prone to clipping on smaller portrait and landscape screens.
+- Split bill payload sent the selected bill amount as `amountPaid` in the `splits` metadata. The backend already treats persisted split payment as DB truth, so new split payloads must send request split metadata with `amountPaid: 0` and let payment rows update DB state.
+- Retail/restaurant POS flows only filled `selectedOrderTypeId` when it was empty. A stale ID left in cart state could still be submitted after tenant order types changed.
+
+### 2. Implemented changes
+
+- `PaymentMethodDialog` now keeps method selectors scoped to the active flow:
+  - `FULL` and `DOWN_PAYMENT` use the normal `method` / `setMethod` selector.
+  - `MULTI_PAYMENT` has no global selector and uses only `multiMethod` / `setMultiMethod` for the next line.
+  - `SPLIT_BILL` has no global selector and uses only the selected bill payment selector.
+- Multi add button remains tied to the selected `multiMethod`, and emitted multi lines come only from `multiEntries`.
+- Split assignment list is a flex child with `min-h-0` and `overflow-y-auto`, and the modal uses `92dvh` plus a mobile-friendly width cap.
+- Split payload now includes `clientBillId` on the payment line, includes all bill metadata, and sends new split `amountPaid` as `0` / `UNPAID` so DB persistence remains authoritative.
+- Retail and restaurant flows now run a shared order type guard before draft save, kitchen submission, charge, and fresh payment submit. A stale selected order type is replaced with the first active type, while no active type blocks with the readable Indonesian message.
+
+### 3. Final PAID data contract
+
+Common invariant for final paid orders:
+
+```txt
+orders.total = total bill
+orders.paid_amount = orders.total
+orders.payment_status = paid
+successful order_payments rows have status = succeeded
+orders.paid_amount must never exceed orders.total
+```
+
+#### FULL final PAID
+
+```txt
+orders:
+- total: 190900
+- paid_amount: 190900
+- payment_status: paid
+
+order_payments:
+- payment_flow: FULL
+- payment_kind: FULL_PAYMENT
+- payment_method: CASH
+- amount: 190900
+- received_amount: 200000
+- change_amount: 9100
+- sequence: 1
+- split_id: null
+- status: succeeded
+```
+
+#### DP final PAID
+
+```txt
+orders:
+- total: 190900
+- paid_amount: 190900
+- payment_status: paid
+
+order_payments:
+- row 1 payment_flow: DOWN_PAYMENT, payment_kind: DOWN_PAYMENT, amount: 50000, split_id: null, status: succeeded
+- row 2 payment_flow: DOWN_PAYMENT, payment_kind: REMAINING_PAYMENT, amount: 140900, split_id: null, status: succeeded
+```
+
+#### MULTI_PAYMENT final PAID
+
+```txt
+orders:
+- total: 190900
+- paid_amount: 190900
+- payment_status: paid
+
+order_payments:
+- row 1 payment_flow: MULTI_PAYMENT, payment_kind: MULTI_PAYMENT_LINE, payment_method: CASH, amount: 100000, sequence: 1, split_id: null, status: succeeded
+- row 2 payment_flow: MULTI_PAYMENT, payment_kind: MULTI_PAYMENT_LINE, payment_method: MANUAL_QRIS, amount: 90900, sequence: 2, split_id: null, status: succeeded
+```
+
+#### SPLIT_BILL final PAID
+
+```txt
+orders:
+- total: 190900
+- paid_amount: 190900
+- payment_status: paid
+
+order_bill_splits:
+- Bill A amount_due: 90000, amount_paid: 90000, status: paid
+- Bill B amount_due: 100900, amount_paid: 100900, status: paid
+
+order_payments:
+- row 1 payment_flow: SPLIT_BILL, payment_kind: SPLIT_BILL_LINE, payment_method: CASH, amount: 90000, split_id: real Bill A split id, status: succeeded
+- row 2 payment_flow: SPLIT_BILL, payment_kind: SPLIT_BILL_LINE, payment_method: MANUAL_QRIS, amount: 100900, split_id: real Bill B split id, status: succeeded
+```
+
+### 4. P9.4 validation status
+
+- UI and order-type guard implementation was validated by POS terminal type-check.
+- POS terminal tests passed, including a pure unit test covering stale selected order type replacement and the no-active-order-type readable blocker.
+- Full browser rendering tests for duplicated selector count and scroll reachability are still not present because this workspace currently uses script-level `tsx` tests rather than a React DOM test runner. The code exposes specific `data-testid` hooks (`multi-method-selector`, `split-method-selector`, `split-item-assignment-list`) so future DOM tests can cover this directly.
+- Full live DB integration tests for the final row shapes remain a follow-up; this report documents the mandatory PAID contract and existing backend P9.3/P9.3.2 tests cover canonical submission, split selected-bill invariants, idempotency, and safe errors.

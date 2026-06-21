@@ -14,8 +14,9 @@ type PaymentDetails = {
     amount: number;
     receivedAmount?: number;
     splitId?: string;
+    clientBillId?: string;
   }>;
-  splits?: Array<{ id: string; label: string; splitNo: number; amountDue: number; amountPaid: number }>;
+  splits?: Array<{ id: string; label: string; splitNo: number; amountDue: number; amountPaid: number; status?: "UNPAID" | "PARTIAL" | "PAID" }>;
 };
 
 type Props = {
@@ -190,8 +191,8 @@ export function PaymentMethodDialog({
           flow: "SPLIT_BILL",
           paymentKind: "SPLIT_BILL_LINE",
           targetBillId: activeBill,
-          lines: [{ method, amount: activeBillTotal, splitId: activeBill }],
-          splits: splitBills.map((bill, index) => ({ id: bill, label: `Bill ${bill}`, splitNo: index + 1, amountDue: getBillTotal(bill), amountPaid: bill === activeBill ? activeBillTotal : 0 })),
+          lines: [{ method, amount: activeBillTotal, splitId: activeBill, clientBillId: activeBill }],
+          splits: splitBills.map((bill, index) => ({ id: bill, label: `Bill ${bill}`, splitNo: index + 1, amountDue: getBillTotal(bill), amountPaid: 0, status: "UNPAID" })),
         });
         return;
       }
@@ -211,14 +212,14 @@ export function PaymentMethodDialog({
     onClose();
   };
 
-  const MethodButtons = () => (
-    <div className={`grid gap-2 ${isLandscape ? "grid-cols-1" : "grid-cols-3"}`}>
+  const MethodButtons = ({ selected = method, onSelect = selectMethod, testIdPrefix = "payment" }: { selected?: PaymentMethod; onSelect?: (value: PaymentMethod) => void; testIdPrefix?: string }) => (
+    <div className={`grid gap-2 ${isLandscape ? "grid-cols-1" : "grid-cols-3"}`} data-testid={`${testIdPrefix}-method-selector`}>
       {METHODS.map(({ id, label, Icon }) => (
         <button
           key={id}
-          onClick={() => selectMethod(id)}
-          className={`flex items-center gap-2 py-2.5 px-3 rounded-xl border-2 transition-all font-bold text-xs ${isLandscape ? "justify-start" : "flex-col justify-center"} ${method === id ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200" : "bg-white border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600"}`}
-          data-testid={`sidebar-payment-${id}`}
+          onClick={() => onSelect(id)}
+          className={`flex items-center gap-2 py-2.5 px-3 rounded-xl border-2 transition-all font-bold text-xs ${isLandscape ? "justify-start" : "flex-col justify-center"} ${selected === id ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200" : "bg-white border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600"}`}
+          data-testid={`${testIdPrefix}-payment-${id}`}
         >
           <Icon size={18} />
           {label}
@@ -240,12 +241,12 @@ export function PaymentMethodDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
       <DialogTitle className="sr-only">Pembayaran</DialogTitle>
-      <DialogContent className="p-0 gap-0 w-full rounded-2xl overflow-hidden" hideCloseButton style={{ maxWidth: isLandscape ? 680 : 420, maxHeight: isLandscape ? "95vh" : "92vh" }} data-testid="dialog-payment-method">
+      <DialogContent className="p-0 gap-0 w-full rounded-2xl overflow-hidden" hideCloseButton style={{ width: "min(94vw, 520px)", maxWidth: isLandscape ? 760 : 520, maxHeight: "92dvh" }} data-testid="dialog-payment-method">
         <button onClick={close} disabled={loading} className="absolute right-3 top-3 z-10 w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors">
           <X size={14} className="text-slate-500" />
         </button>
 
-        <div className={`flex overflow-hidden ${isLandscape ? "flex-row" : "flex-col overflow-y-auto"}`} style={{ maxHeight: isLandscape ? "95vh" : "92vh" }}>
+        <div className={`flex overflow-hidden ${isLandscape ? "flex-row" : "flex-col overflow-y-auto"}`} style={{ maxHeight: "92dvh" }}>
           <div className={`flex flex-col ${isLandscape ? "w-[190px] border-r border-slate-100 flex-shrink-0" : "w-full"}`}>
             <div className="px-4 pt-4 pb-3">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Pembayaran</p>
@@ -263,7 +264,7 @@ export function PaymentMethodDialog({
                 ))}
               </div>
             )}
-            {flow !== "SPLIT_BILL" && <div className="px-4 mb-3"><MethodButtons /></div>}
+            {(flow === "FULL" || flow === "DOWN_PAYMENT") && <div className="px-4 mb-3"><MethodButtons testIdPrefix="global" /></div>}
           </div>
 
           <div className={`flex flex-col flex-1 min-h-0 ${isLandscape ? "overflow-y-auto" : ""}`}>
@@ -289,7 +290,6 @@ export function PaymentMethodDialog({
 
             {flow === "DOWN_PAYMENT" && (
               <div className="p-4 space-y-3">
-                <MethodButtons />
                 <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl px-4 py-2.5 flex items-center gap-2 min-h-[50px]"><span className="text-sm font-bold text-amber-400">Rp</span><span className="flex-1 text-xl font-black text-slate-800 tabular-nums">{partialRaw === "" ? <span className="text-slate-300">0</span> : fmtNum(partialAmount)}</span></div>
                 <div className="grid grid-cols-4 gap-1.5">{[{ l: "25%", v: Math.round(cartTotal * 0.25) }, { l: "50%", v: Math.round(cartTotal * 0.5) }, { l: "75%", v: Math.round(cartTotal * 0.75) }, { l: "Reset", v: 0 }].map((p) => <button key={p.l} onClick={() => setPartialRaw(p.v > 0 ? String(p.v) : "")} className="py-1.5 text-xs font-bold rounded-lg bg-slate-100 text-slate-500">{p.l}</button>)}</div>
                 <Numpad raw={partialRaw} setRaw={setPartialRaw} />
@@ -302,17 +302,17 @@ export function PaymentMethodDialog({
               <div className="p-4 space-y-3">
                 <div className="bg-teal-50 border border-teal-200 rounded-xl px-3 py-2 text-sm font-bold text-teal-700">Terbayar {fmt(multiPaid)} · Sisa {fmt(multiRemaining)}</div>
                 {multiEntries.map((entry) => <div key={entry.id} className="flex items-center gap-2 rounded-xl px-3 py-2 bg-slate-50 border border-slate-200"><span className="text-xs font-bold flex-1">{METHODS.find((item) => item.id === entry.method)?.label}</span><span className="text-sm font-black">{fmt(entry.amount)}</span><button onClick={() => setMultiEntries((prev) => prev.filter((item) => item.id !== entry.id))} className="text-red-400"><Trash2 size={14} /></button></div>)}
-                {!multiComplete && <><MethodButtons /><div className="bg-slate-50 border-2 border-teal-400 rounded-2xl px-4 py-2 flex items-center gap-2"><span className="text-xs font-bold text-slate-400">Rp</span><span className="flex-1 text-lg font-black text-slate-800 tabular-nums">{multiRaw === "" ? <span className="text-slate-300">0</span> : fmtNum(multiInputAmount)}</span><button onClick={() => setMultiRaw(String(multiRemaining))} className="text-[10px] font-bold text-teal-600 bg-teal-50 border border-teal-200 px-2 py-1 rounded-lg">Sisa</button></div><Numpad raw={multiRaw} setRaw={setMultiRaw} /><button onClick={() => { if (!multiCanAdd) return; setMultiEntries((prev) => [...prev, { id: Date.now(), method: multiMethod, amount: multiInputAmount }]); setMultiRaw(""); }} disabled={!multiCanAdd} className="w-full py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 disabled:bg-slate-100 disabled:text-slate-400 text-white font-bold flex items-center justify-center gap-1.5"><Plus size={14} />Tambah {METHODS.find((item) => item.id === multiMethod)?.label}</button></>}
+                {!multiComplete && <><MethodButtons selected={multiMethod} onSelect={setMultiMethod} testIdPrefix="multi" /><div className="bg-slate-50 border-2 border-teal-400 rounded-2xl px-4 py-2 flex items-center gap-2"><span className="text-xs font-bold text-slate-400">Rp</span><span className="flex-1 text-lg font-black text-slate-800 tabular-nums">{multiRaw === "" ? <span className="text-slate-300">0</span> : fmtNum(multiInputAmount)}</span><button onClick={() => setMultiRaw(String(multiRemaining))} className="text-[10px] font-bold text-teal-600 bg-teal-50 border border-teal-200 px-2 py-1 rounded-lg">Sisa</button></div><Numpad raw={multiRaw} setRaw={setMultiRaw} /><button onClick={() => { if (!multiCanAdd) return; setMultiEntries((prev) => [...prev, { id: Date.now(), method: multiMethod, amount: multiInputAmount }]); setMultiRaw(""); }} disabled={!multiCanAdd} className="w-full py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 disabled:bg-slate-100 disabled:text-slate-400 text-white font-bold flex items-center justify-center gap-1.5"><Plus size={14} />Tambah {METHODS.find((item) => item.id === multiMethod)?.label}</button></>}
                 {multiComplete && <><div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-3 py-2"><CheckCircle2 size={14} className="text-green-500" /><p className="text-xs font-bold text-green-700">Semua pembayaran terpenuhi</p></div><button onClick={process} disabled={loading} className="w-full py-3 bg-green-500 hover:bg-green-600 disabled:bg-slate-200 text-white font-bold rounded-xl">{loading ? "Memproses…" : "Selesaikan Pembayaran"}</button></>}
               </div>
             )}
 
             {flow === "SPLIT_BILL" && (
-              <div className="flex flex-col min-h-0">
+              <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
                 <div className="px-4 pt-3 pb-2 border-b border-slate-100"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">1 · Pilih Bill Aktif</p><div className="flex gap-2 items-center">{splitBills.map((bill, idx) => { const colors = BILL_COLORS[idx % BILL_COLORS.length]; const isActive = activeBill === bill; const billTotal = getBillTotal(bill); return <button key={bill} onClick={() => setActiveBill(bill)} className={`flex-1 flex flex-col items-center py-2 px-1 rounded-xl border-2 transition-all font-black text-sm ${isActive ? `${colors.active} shadow-lg ${colors.shadow}` : colors.inactive}`}><span>Bill {bill}</span><span className="text-[10px] font-semibold mt-0.5 tabular-nums">{fmt(billTotal)}</span></button>; })}{splitBills.length < 4 && <button onClick={addBill} className="w-10 h-14 rounded-xl border-2 border-dashed border-slate-300 text-slate-400 flex items-center justify-center"><Plus size={18} /></button>}</div></div>
                 <div className="px-4 pt-2 pb-1"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">2 · Ketuk Item → Masuk ke Bill {activeBill}</p></div>
-                <div className="overflow-y-auto px-4 pb-2 space-y-1.5" style={{ maxHeight: "38vh" }}>{cartItems.map((item) => { const assignedBill = getBillForItem(item.id); const assignedIdx = assignedBill ? splitBills.indexOf(assignedBill) : -1; const assignedColors = assignedIdx >= 0 ? BILL_COLORS[assignedIdx % BILL_COLORS.length] : null; const isOnActiveBill = assignedBill === activeBill; return <button key={item.id} onClick={() => handleItemTap(item.id)} className={`w-full flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition-all ${isOnActiveBill ? "border-blue-300 bg-blue-50" : assignedBill ? "border-slate-200 bg-white opacity-60" : "border-slate-200 bg-white hover:border-slate-300"}`}><div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black ${assignedColors ? assignedColors.item : "bg-slate-100 text-slate-300 border-2 border-dashed border-slate-200"}`}>{assignedBill || "?"}</div><div className="flex-1 min-w-0"><p className="text-xs font-bold text-slate-800 truncate">{getItemLabel(item)}</p><p className="text-[10px] text-slate-400 mt-0.5">{item.quantity}× · {fmt(getItemEffectiveTotal(item))}</p></div>{isOnActiveBill && <CheckCircle2 size={16} className="text-blue-500" />}</button>; })}</div>
-                <div className="px-4 pb-4 pt-2 border-t border-slate-100 mt-auto"><div className="flex gap-2 mb-3">{splitBills.map((bill, idx) => { const colors = BILL_COLORS[idx % BILL_COLORS.length]; const total = getBillTotal(bill); const isActive = bill === activeBill; return <div key={bill} className={`flex-1 flex flex-col items-center py-1.5 rounded-lg border ${isActive ? `${colors.total} border-current font-black` : "bg-slate-50 border-slate-100 text-slate-500"}`}><span className="text-[10px] font-bold">Bill {bill}</span><span className="text-xs font-black tabular-nums">{fmt(total)}</span></div>; })}</div>{unassignedCount > 0 && <div className="flex items-center gap-1.5 bg-slate-50 rounded-lg px-2.5 py-1.5 mb-2"><AlertCircle size={11} className="text-slate-400" /><p className="text-[10px] text-slate-400">{unassignedCount} item belum di-assign — akan tersisa untuk bill lain</p></div>}<MethodButtons /><button onClick={process} disabled={loading || !canPayActiveBill} className="w-full mt-3 py-3 font-bold rounded-xl shadow-lg shadow-indigo-200 bg-indigo-500 hover:bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400 text-white" data-testid="button-confirm-payment">{loading ? "Memproses…" : !canPayActiveBill ? `Pilih item untuk Bill ${activeBill} dulu` : `Bayar Bill ${activeBill} · ${fmt(activeBillTotal)}`}</button></div>
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-2 space-y-1.5" data-testid="split-item-assignment-list">{cartItems.map((item) => { const assignedBill = getBillForItem(item.id); const assignedIdx = assignedBill ? splitBills.indexOf(assignedBill) : -1; const assignedColors = assignedIdx >= 0 ? BILL_COLORS[assignedIdx % BILL_COLORS.length] : null; const isOnActiveBill = assignedBill === activeBill; return <button key={item.id} onClick={() => handleItemTap(item.id)} className={`w-full flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition-all ${isOnActiveBill ? "border-blue-300 bg-blue-50" : assignedBill ? "border-slate-200 bg-white opacity-60" : "border-slate-200 bg-white hover:border-slate-300"}`}><div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black ${assignedColors ? assignedColors.item : "bg-slate-100 text-slate-300 border-2 border-dashed border-slate-200"}`}>{assignedBill || "?"}</div><div className="flex-1 min-w-0"><p className="text-xs font-bold text-slate-800 truncate">{getItemLabel(item)}</p><p className="text-[10px] text-slate-400 mt-0.5">{item.quantity}× · {fmt(getItemEffectiveTotal(item))}</p></div>{isOnActiveBill && <CheckCircle2 size={16} className="text-blue-500" />}</button>; })}</div>
+                <div className="px-4 pb-4 pt-2 border-t border-slate-100 mt-auto"><div className="flex gap-2 mb-3">{splitBills.map((bill, idx) => { const colors = BILL_COLORS[idx % BILL_COLORS.length]; const total = getBillTotal(bill); const isActive = bill === activeBill; return <div key={bill} className={`flex-1 flex flex-col items-center py-1.5 rounded-lg border ${isActive ? `${colors.total} border-current font-black` : "bg-slate-50 border-slate-100 text-slate-500"}`}><span className="text-[10px] font-bold">Bill {bill}</span><span className="text-xs font-black tabular-nums">{fmt(total)}</span></div>; })}</div>{unassignedCount > 0 && <div className="flex items-center gap-1.5 bg-slate-50 rounded-lg px-2.5 py-1.5 mb-2"><AlertCircle size={11} className="text-slate-400" /><p className="text-[10px] text-slate-400">{unassignedCount} item belum di-assign — akan tersisa untuk bill lain</p></div>}<MethodButtons testIdPrefix="split" /><button onClick={process} disabled={loading || !canPayActiveBill} className="w-full mt-3 py-3 font-bold rounded-xl shadow-lg shadow-indigo-200 bg-indigo-500 hover:bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400 text-white" data-testid="button-confirm-payment">{loading ? "Memproses…" : !canPayActiveBill ? `Pilih item untuk Bill ${activeBill} dulu` : `Bayar Bill ${activeBill} · ${fmt(activeBillTotal)}`}</button></div>
               </div>
             )}
           </div>

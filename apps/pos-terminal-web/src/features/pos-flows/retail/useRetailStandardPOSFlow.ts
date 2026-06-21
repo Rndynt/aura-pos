@@ -30,6 +30,7 @@ import {
   createClientPaymentSessionId,
 } from "@/features/pos-core";
 import { RETAIL_STANDARD_FLOW_POLICY } from "./retailStandardFlowPolicy";
+import { ORDER_TYPE_UNAVAILABLE_MESSAGE, resolveValidOrderTypeSelection } from "../shared/orderTypeGuard";
 
 export function useRetailStandardPOSFlow() {
   const searchParams = useSearch();
@@ -112,11 +113,25 @@ export function useRetailStandardPOSFlow() {
     return true;
   };
 
+
+  const ensureValidOrderType = () => {
+    const result = resolveValidOrderTypeSelection(activeOrderTypes, cart.selectedOrderTypeId);
+    if (!result.ok) {
+      toast({ title: "Tipe pesanan diperlukan", description: ORDER_TYPE_UNAVAILABLE_MESSAGE, variant: "destructive" });
+      return null;
+    }
+    if (result.wasReplaced) {
+      cart.setSelectedOrderTypeId(result.orderTypeId);
+      cart.setOrderType(result.orderTypeCode);
+    }
+    return result.orderTypeId;
+  };
+
   const buildOrderPayload = () => cartToOrderPayload({
     items: cart.toBackendOrderItems(),
     taxRate: cart.taxRate,
     serviceChargeRate: cart.serviceChargeRate,
-    selectedOrderTypeId: cart.selectedOrderTypeId,
+    selectedOrderTypeId: ensureValidOrderType(),
     customerName: cart.customerName,
     tableNumber: undefined,
     orderDiscount: cart.orderDiscount,
@@ -150,8 +165,8 @@ export function useRetailStandardPOSFlow() {
 
   const handleSaveDraft = async () => {
     if (!ensureCartHasItems()) return;
-    if (!cart.selectedOrderTypeId && activeOrderTypes.length > 0) cart.setSelectedOrderTypeId(activeOrderTypes[0].id);
-    if (!cart.selectedOrderTypeId) return toast({ title: "Tipe pesanan diperlukan", description: "Tidak ada tipe pesanan tersedia.", variant: "destructive" });
+    const validOrderTypeId = ensureValidOrderType();
+    if (!validOrderTypeId) return;
     setIsDraftSaving(true);
     try {
       const orderResult = continueOrderId
@@ -178,7 +193,8 @@ export function useRetailStandardPOSFlow() {
 
   const handleCharge = () => {
     if (!ensureCartHasItems()) return;
-    if (!cart.selectedOrderTypeId && activeOrderTypes.length > 0) cart.setSelectedOrderTypeId(activeOrderTypes[0].id);
+    const validOrderTypeId = ensureValidOrderType();
+    if (!validOrderTypeId) return;
     setPaymentMethodDialogOpen(true);
     setMobileCartOpen(false);
   };
@@ -218,7 +234,8 @@ export function useRetailStandardPOSFlow() {
       }
 
       if (!ensureCartHasItems()) return;
-      if (!cart.selectedOrderTypeId) return;
+      const validOrderTypeId = ensureValidOrderType();
+      if (!validOrderTypeId) return;
 
       const cfdItems = cart.items.map(toCFDItem);
       const snapshot = { subtotal: cart.subtotal, tax: cart.tax, serviceCharge: cart.serviceCharge, total: cart.total, customerName: cart.customerName || undefined, orderNumber: cart.orderNumber };
@@ -259,7 +276,7 @@ export function useRetailStandardPOSFlow() {
           items: cart.toBackendOrderItems(),
           tax_rate: cart.taxRate,
           service_charge_rate: cart.serviceChargeRate,
-          order_type_id: cart.selectedOrderTypeId,
+          order_type_id: validOrderTypeId,
           customer_name: snapshot.customerName,
         },
         paymentMethod,

@@ -35,6 +35,7 @@ import {
 } from "@/features/pos-core";
 import { getSendToKitchenEligibility } from "./restaurantTableServiceFlowPolicy";
 import { RESTAURANT_TABLE_SERVICE_FLOW_POLICY } from "./restaurantTableServiceFlowPolicy";
+import { ORDER_TYPE_UNAVAILABLE_MESSAGE, resolveValidOrderTypeSelection } from "../shared/orderTypeGuard";
 
 export function useRestaurantTableServicePOSFlow() {
   const searchParams = useSearch();
@@ -121,11 +122,25 @@ export function useRestaurantTableServicePOSFlow() {
     return true;
   };
 
+
+  const ensureValidOrderType = () => {
+    const result = resolveValidOrderTypeSelection(activeOrderTypes, cart.selectedOrderTypeId);
+    if (!result.ok) {
+      toast({ title: "Tipe pesanan diperlukan", description: ORDER_TYPE_UNAVAILABLE_MESSAGE, variant: "destructive" });
+      return null;
+    }
+    if (result.wasReplaced) {
+      cart.setSelectedOrderTypeId(result.orderTypeId);
+      cart.setOrderType(result.orderTypeCode);
+    }
+    return result.orderTypeId;
+  };
+
   const buildOrderPayload = () => cartToOrderPayload({
     items: cart.toBackendOrderItems(),
     taxRate: cart.taxRate,
     serviceChargeRate: cart.serviceChargeRate,
-    selectedOrderTypeId: cart.selectedOrderTypeId,
+    selectedOrderTypeId: ensureValidOrderType(),
     customerName: cart.customerName,
     tableNumber: cart.tableNumber || undefined,
     orderDiscount: cart.orderDiscount,
@@ -159,8 +174,8 @@ export function useRestaurantTableServicePOSFlow() {
 
   const handleSaveDraft = async () => {
     if (!ensureCartHasItems()) return;
-    if (!cart.selectedOrderTypeId && activeOrderTypes.length > 0) cart.setSelectedOrderTypeId(activeOrderTypes[0].id);
-    if (!cart.selectedOrderTypeId) return toast({ title: "Tipe pesanan diperlukan", description: "Tidak ada tipe pesanan tersedia.", variant: "destructive" });
+    const validOrderTypeId = ensureValidOrderType();
+    if (!validOrderTypeId) return;
     setIsDraftSaving(true);
     try {
       const orderResult = continueOrderId
@@ -198,8 +213,8 @@ export function useRestaurantTableServicePOSFlow() {
       toast({ title: "Tidak bisa kirim ke dapur", description: message, variant: "destructive" });
       return;
     }
-    if (!cart.selectedOrderTypeId && activeOrderTypes.length > 0) cart.setSelectedOrderTypeId(activeOrderTypes[0].id);
-    if (!cart.selectedOrderTypeId) return toast({ title: "Tipe pesanan diperlukan", description: "Tidak ada tipe pesanan tersedia.", variant: "destructive" });
+    const validOrderTypeId = ensureValidOrderType();
+    if (!validOrderTypeId) return;
     setIsDraftSaving(true);
     try {
       const payload = buildOrderPayload();
@@ -228,7 +243,8 @@ export function useRestaurantTableServicePOSFlow() {
 
   const handleCharge = () => {
     if (!ensureCartHasItems()) return;
-    if (!cart.selectedOrderTypeId && activeOrderTypes.length > 0) cart.setSelectedOrderTypeId(activeOrderTypes[0].id);
+    const validOrderTypeId = ensureValidOrderType();
+    if (!validOrderTypeId) return;
     setPaymentMethodDialogOpen(true);
     setMobileCartOpen(false);
   };
