@@ -663,25 +663,25 @@ PLANS.md
 
 Completion Checklist
 
-- [ ] Shared POS payment submission layer added in pos-core.
-- [ ] Payment flow normalization centralized.
-- [ ] Payment line normalization centralized.
-- [ ] Payment row recording loop centralized.
-- [ ] Retail hook delegates payment submission to shared handler.
-- [ ] Restaurant hook delegates payment submission to shared handler.
-- [ ] Food Beverage uses same shared payment path.
-- [ ] Service uses same shared payment path.
-- [ ] Fresh cart Multi uses createOrder -> recordPayment rows.
-- [ ] Fresh cart Split uses createOrder -> recordPayment rows.
-- [ ] create-and-pay is not called with payment_flow=multi.
-- [ ] create-and-pay is not called with payment_flow=split.
-- [ ] Non-UUID split session ids go to metadata only.
-- [ ] Runtime UI contains no P9/P9.1/roadmap/internal dev copy.
-- [ ] Raw enum/Zod validation is not shown directly to cashier.
-- [ ] Tests added/updated.
-- [ ] Validation commands run and documented.
-- [ ] Grep checks documented.
-- [ ] P9.1 report created.
+- [x] Shared POS payment submission layer added in pos-core.
+- [x] Payment flow normalization centralized.
+- [x] Payment line normalization centralized.
+- [x] Payment row recording loop centralized.
+- [x] Retail hook delegates payment submission to shared handler.
+- [x] Restaurant hook delegates payment submission to shared handler.
+- [x] Food Beverage uses same shared payment path.
+- [x] Service uses same shared payment path.
+- [x] Fresh cart Multi uses createOrder -> recordPayment rows.
+- [x] Fresh cart Split uses createOrder -> recordPayment rows.
+- [x] create-and-pay is not called with payment_flow=multi.
+- [x] create-and-pay is not called with payment_flow=split.
+- [x] Non-UUID split session ids go to metadata only.
+- [x] Runtime UI contains no P9/P9.1/roadmap/internal dev copy.
+- [x] Raw enum/Zod validation is not shown directly to cashier.
+- [x] Tests added/updated.
+- [x] Validation commands run and documented.
+- [x] Grep checks documented.
+- [x] P9.1 report created.
 
 Commit
 

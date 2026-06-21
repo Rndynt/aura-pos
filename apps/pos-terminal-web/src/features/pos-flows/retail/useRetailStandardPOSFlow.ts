@@ -26,6 +26,8 @@ import {
   usePOSOfflineSubmit,
   usePOSReceiptController,
   usePOSStockGuard,
+  submitPOSPayment,
+  toUserSafePaymentError,
 } from "@/features/pos-core";
 import { RETAIL_STANDARD_FLOW_POLICY } from "./retailStandardFlowPolicy";
 
@@ -58,6 +60,7 @@ export function useRetailStandardPOSFlow() {
   const createOrderMutation = useCreateOrder();
   const updateOrderMutation = useUpdateOrder();
   const recordPaymentMutation = useRecordPayment();
+  const submitPaymentRow = recordPaymentMutation.mutateAsync;
   const { submitOrder } = usePOSOfflineSubmit();
   const { buildReceiptPayload, enqueueReceiptPrintJob, markReceiptPrintFailed, printReceiptNow, shouldAutoPrintReceipt } = usePOSReceiptController();
   const { sendToCFD } = usePOSCustomerDisplayController({ cart, tenantName, inPaymentFlowRef, enabled: can("customer_display") });
@@ -187,125 +190,94 @@ export function useRetailStandardPOSFlow() {
     sendToCFD(buildPaymentCFDPayload({ tenantName, orderNumber: pendingOrderForPayment?.orderNumber || cart.orderNumber || "", total: pendingOrderForPayment?.totalAmount || cart.total, items: cart.items.map(toCFDItem), subtotal: cart.subtotal, tax: cart.tax, serviceCharge: cart.serviceCharge, customerName: cart.customerName || undefined }, method));
   };
 
-  const normalizePaymentDetails = (paymentMethod: PaymentMethod, totalAmount: number, cashReceived?: number, partialAmount?: number, paymentDetails?: any) => {
-    const details = paymentDetails ?? {
-      flow: partialAmount ? "dp" : "full",
-      paymentKind: partialAmount ? "down_payment" : "full_payment",
-      lines: [{ method: paymentMethod, amount: partialAmount ?? totalAmount, receivedAmount: cashReceived }],
-    };
-    const isMultiOrSplit = details.flow === "multi" || details.flow === "split";
-    const lines = isMultiOrSplit
-      ? (details.lines ?? [])
-      : [{ method: paymentMethod, amount: partialAmount ?? totalAmount, receivedAmount: cashReceived, splitId: details.lines?.[0]?.splitId }];
-    const lineTotal = lines.reduce((sum: number, line: any) => sum + Number(line.amount ?? 0), 0);
-    return { details, lines, lineTotal, isMultiOrSplit };
-  };
-
-  const recordPaymentLines = async (orderId: string, totalAmount: number, paymentMethod: PaymentMethod, cashReceived: number | undefined, partialAmount: number | undefined, paymentDetails: any) => {
-    const { details, lines, lineTotal } = normalizePaymentDetails(paymentMethod, totalAmount, cashReceived, partialAmount, paymentDetails);
-    for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index];
-      await recordPaymentMutation.mutateAsync({
-        orderId,
-        amount: line.amount,
-        payment_method: line.method,
-        payment_flow: details.flow,
-        payment_kind: details.flow === "dp" ? (line.amount >= totalAmount - 0.001 ? "remaining_payment" : "down_payment") : details.paymentKind,
-        received_amount: line.receivedAmount,
-        change_amount: line.method === "cash" && line.receivedAmount ? Math.max(0, line.receivedAmount - line.amount) : undefined,
-        split_id: line.splitId && /^[0-9a-f-]{36}$/i.test(line.splitId) ? line.splitId : undefined,
-        sequence: index + 1,
-        metadata: details.flow === "split" ? { session_split_id: line.splitId, splits: details.splits } : undefined,
-      });
-    }
-    return { details, lineTotal };
-  };
-
   const handlePaymentMethodConfirm = async (paymentMethod: PaymentMethod, cashReceived?: number, partialAmount?: number, paymentDetails?: any) => {
-    if (pendingOrderForPayment) {
-      setIsProcessingQuickCharge(true);
-      try {
-        const { details, lineTotal } = await recordPaymentLines(pendingOrderForPayment.orderId, pendingOrderForPayment.totalAmount, paymentMethod, cashReceived, partialAmount, paymentDetails);
-        const isPartialResult = details.flow !== "full" && lineTotal < pendingOrderForPayment.totalAmount - 0.001;
-        toast({
-          title: isPartialResult ? "Pembayaran sebagian tersimpan" : "Pembayaran berhasil",
-          description: isPartialResult ? `Order #${pendingOrderForPayment.orderNumber} tersisa untuk pelunasan.` : `Order #${pendingOrderForPayment.orderNumber} dilunasi.`,
-        });
+    setIsProcessingQuickCharge(true);
+    const dependencies = {
+      createOrder: (payload: Record<string, unknown>) => createOrderMutation.mutateAsync(payload as any),
+      updateOrder: (payload: { orderId: string } & Record<string, unknown>) => updateOrderMutation.mutateAsync(payload as any),
+      recordPayment: (payload: any) => submitPaymentRow(payload),
+      createAndPay: (payload: Record<string, unknown>) => submitOrder(payload as any),
+    };
+
+    try {
+      if (pendingOrderForPayment) {
+        const result = await submitPOSPayment({
+          mode: "active_order",
+          orderId: pendingOrderForPayment.orderId,
+          orderNumber: pendingOrderForPayment.orderNumber,
+          totalAmount: pendingOrderForPayment.totalAmount,
+          paymentMethod,
+          cashReceived,
+          partialAmount,
+          paymentDetails,
+        }, dependencies);
+        toast({ title: result.messageTitle, description: result.messageDescription });
         setPendingOrderForPayment(null);
         setPaymentMethodDialogOpen(false);
-      } catch (error) {
-        toast({ title: "Pembayaran gagal", description: error instanceof Error ? error.message : "Gagal mencatat pembayaran", variant: "destructive" });
-      } finally {
-        setIsProcessingQuickCharge(false);
+        return;
       }
-      return;
-    }
 
-    if (!ensureCartHasItems()) return;
-    if (!cart.selectedOrderTypeId) return;
-    setIsProcessingQuickCharge(true);
-    const cfdItems = cart.items.map(toCFDItem);
-    const snapshot = { subtotal: cart.subtotal, tax: cart.tax, serviceCharge: cart.serviceCharge, total: cart.total, customerName: cart.customerName || undefined, orderNumber: cart.orderNumber };
-    try {
-      let orderNumber: string | undefined;
-      const { details, lineTotal, isMultiOrSplit } = normalizePaymentDetails(paymentMethod, snapshot.total, cashReceived, partialAmount, paymentDetails);
+      if (!ensureCartHasItems()) return;
+      if (!cart.selectedOrderTypeId) return;
+
+      const cfdItems = cart.items.map(toCFDItem);
+      const snapshot = { subtotal: cart.subtotal, tax: cart.tax, serviceCharge: cart.serviceCharge, total: cart.total, customerName: cart.customerName || undefined, orderNumber: cart.orderNumber };
+      inPaymentFlowRef.current = true;
+      sendToCFD(buildPaymentCFDPayload({ tenantName, orderNumber: snapshot.orderNumber || "", total: snapshot.total, items: cfdItems, subtotal: snapshot.subtotal, tax: snapshot.tax, serviceCharge: snapshot.serviceCharge, customerName: snapshot.customerName }, paymentMethod));
+
+      const mode = continueOrderId ? "saved_order" : "fresh_cart";
       if (continueOrderId) {
         const updateResult = await updateOrderMutation.mutateAsync({ orderId: continueOrderId, ...buildOrderPayload() });
         const totalAmount = Number((updateResult.order as any)?.total ?? (updateResult.pricing as any)?.total_amount ?? cart.total);
-        const recorded = await recordPaymentLines(continueOrderId, totalAmount, paymentMethod, cashReceived, partialAmount, paymentDetails);
-        orderNumber = (updateResult.order as any)?.order_number ?? continueOrderId;
-        if (recorded.details.flow !== "full" && recorded.lineTotal < totalAmount - 0.001) {
-          toast({ title: "Pembayaran sebagian tersimpan", description: `Order #${orderNumber} tersisa untuk pelunasan.` });
-          cart.clearCart();
-          setPaymentMethodDialogOpen(false);
-          setLocation("/pos");
-          return;
-        }
-      } else if (isMultiOrSplit) {
-        inPaymentFlowRef.current = true;
-        sendToCFD(buildPaymentCFDPayload({ tenantName, orderNumber: snapshot.orderNumber || "", total: snapshot.total, items: cfdItems, subtotal: snapshot.subtotal, tax: snapshot.tax, serviceCharge: snapshot.serviceCharge, customerName: snapshot.customerName }, paymentMethod));
-        const orderResult = await createOrderMutation.mutateAsync(buildOrderPayload());
-        const orderId = String((orderResult.order as any)?.id ?? "");
-        orderNumber = String((orderResult.order as any)?.order_number ?? (orderResult.order as any)?.orderNumber ?? orderId);
-        if (!orderId) throw new Error("Order berhasil dibuat, tetapi ID order tidak ditemukan untuk mencatat pembayaran.");
-        const recorded = await recordPaymentLines(orderId, snapshot.total, paymentMethod, cashReceived, partialAmount, paymentDetails);
-        toast({
-          title: recorded.lineTotal >= snapshot.total - 0.001 ? "Pembayaran berhasil" : "Pembayaran sebagian tersimpan",
-          description: recorded.lineTotal >= snapshot.total - 0.001
-            ? `Order #${orderNumber} dilunasi.`
-            : `Order #${orderNumber} tersimpan. Pembayaran yang dipilih sudah dicatat, sisa tagihan dapat dilunasi dari order aktif.`,
-        });
+        const result = await submitPOSPayment({
+          mode,
+          orderId: continueOrderId,
+          orderNumber: (updateResult.order as any)?.order_number ?? continueOrderId,
+          totalAmount,
+          paymentMethod,
+          cashReceived,
+          partialAmount,
+          paymentDetails,
+        }, dependencies);
+        toast({ title: result.messageTitle, description: result.messageDescription });
         cart.clearCart();
         setPaymentMethodDialogOpen(false);
         setMobileCartOpen(false);
         setLocation("/pos");
         return;
-      } else {
-        inPaymentFlowRef.current = true;
-        sendToCFD(buildPaymentCFDPayload({ tenantName, orderNumber: snapshot.orderNumber || "", total: snapshot.total, items: cfdItems, subtotal: snapshot.subtotal, tax: snapshot.tax, serviceCharge: snapshot.serviceCharge, customerName: snapshot.customerName }, paymentMethod));
-        const paidAmount = partialAmount ?? snapshot.total;
-        const orderResult = await submitOrder({ items: cart.toBackendOrderItems(), tax_rate: cart.taxRate, service_charge_rate: cart.serviceChargeRate, order_type_id: cart.selectedOrderTypeId, customer_name: snapshot.customerName, amount: paidAmount, payment_method: paymentMethod, payment_flow: details.flow, payment_kind: details.paymentKind, received_amount: cashReceived, change_amount: paymentMethod === "cash" && cashReceived ? Math.max(0, cashReceived - paidAmount) : undefined });
-        orderNumber = (orderResult.order as any)?.order_number || orderResult.order?.id;
-        if (details.flow === "dp") {
-          toast({ title: "DP berhasil dicatat", description: `Order #${orderNumber} tersisa Rp ${(snapshot.total - paidAmount).toLocaleString("id-ID")}` });
-          cart.clearCart();
-          setPaymentMethodDialogOpen(false);
-          setMobileCartOpen(false);
-          setLocation("/pos");
-          return;
+      }
+
+      const result = await submitPOSPayment({
+        mode,
+        totalAmount: snapshot.total,
+        cartPayload: {
+          items: cart.toBackendOrderItems(),
+          tax_rate: cart.taxRate,
+          service_charge_rate: cart.serviceChargeRate,
+          order_type_id: cart.selectedOrderTypeId,
+          customer_name: snapshot.customerName,
+          amount: partialAmount ?? snapshot.total,
+          payment_method: paymentMethod,
+        },
+        paymentMethod,
+        cashReceived,
+        partialAmount,
+        paymentDetails,
+      }, dependencies);
+
+      if (result.status === "paid") {
+        sendToCFD(buildCompletedCFDPayload({ tenantName, orderNumber: result.orderNumber, total: snapshot.total, items: cfdItems, subtotal: snapshot.subtotal, tax: snapshot.tax, serviceCharge: snapshot.serviceCharge, customerName: snapshot.customerName }, snapshot.total, 0));
+        const receiptPayload = buildReceiptPayload({ orderNumber: result.orderNumber, tenantName, customerName: snapshot.customerName, paymentMethod, subtotal: snapshot.subtotal, tax: snapshot.tax, serviceCharge: snapshot.serviceCharge, total: snapshot.total, items: cfdItems });
+        let printJobId: string | null = null;
+        try {
+          const queued = await enqueueReceiptPrintJob({ orderNumber: result.orderNumber, payload: receiptPayload });
+          printJobId = queued.jobId;
+        } catch {}
+        if (shouldAutoPrintReceipt) {
+          try { await printReceiptNow(printJobId, receiptPayload); } catch (printError) { await markReceiptPrintFailed(printJobId, printError); }
         }
       }
-      sendToCFD(buildCompletedCFDPayload({ tenantName, orderNumber: String(orderNumber ?? snapshot.orderNumber), total: snapshot.total, items: cfdItems, subtotal: snapshot.subtotal, tax: snapshot.tax, serviceCharge: snapshot.serviceCharge, customerName: snapshot.customerName }, snapshot.total, 0));
-      toast({ title: "Pesanan berhasil dibuat & dibayar", description: `Order #${orderNumber} - Total: Rp ${snapshot.total.toLocaleString("id-ID")}` });
-      const receiptPayload = buildReceiptPayload({ orderNumber: String(orderNumber ?? snapshot.orderNumber), tenantName, customerName: snapshot.customerName, paymentMethod, subtotal: snapshot.subtotal, tax: snapshot.tax, serviceCharge: snapshot.serviceCharge, total: snapshot.total, items: cfdItems });
-      let printJobId: string | null = null;
-      try {
-        const queued = await enqueueReceiptPrintJob({ orderNumber: String(orderNumber ?? snapshot.orderNumber), payload: receiptPayload });
-        printJobId = queued.jobId;
-      } catch {}
-      if (shouldAutoPrintReceipt) {
-        try { await printReceiptNow(printJobId, receiptPayload); } catch (printError) { await markReceiptPrintFailed(printJobId, printError); }
-      }
+      toast({ title: result.status === "paid" ? "Pesanan berhasil dibuat & dibayar" : result.messageTitle, description: result.status === "paid" ? `Order #${result.orderNumber} - Total: Rp ${snapshot.total.toLocaleString("id-ID")}` : result.messageDescription });
       cart.clearCart();
       setPaymentMethodDialogOpen(false);
       setMobileCartOpen(false);
@@ -313,7 +285,7 @@ export function useRetailStandardPOSFlow() {
       setTimeout(() => { inPaymentFlowRef.current = false; sendToCFD({ type: "idle", tenantName }); }, 7000);
     } catch (error) {
       inPaymentFlowRef.current = false;
-      toast({ title: "Pembayaran gagal", description: error instanceof Error ? error.message : "Gagal membuat pesanan dan mencatat pembayaran", variant: "destructive" });
+      toast({ title: "Pembayaran gagal", description: toUserSafePaymentError(error), variant: "destructive" });
     } finally {
       setIsProcessingQuickCharge(false);
     }

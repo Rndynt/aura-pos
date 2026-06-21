@@ -919,6 +919,9 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
   const idempotencyKey = getIdempotencyKey(req, parsed.data.idempotency_key);
   const estimatedTotal = estimateCreateAndPayTotal(parsed.data);
   const normalizedCreatePaymentFlow = parsed.data.payment_flow === 'partial_payment_dp' ? 'dp' : parsed.data.payment_flow === 'full_payment' ? 'full' : parsed.data.payment_flow ?? (parsed.data.amount < estimatedTotal - 0.01 ? 'dp' : 'full');
+  if (normalizedCreatePaymentFlow === 'multi' || normalizedCreatePaymentFlow === 'split') {
+    throw createError('Multi payment dan split bill harus dicatat melalui order aktif.', 400, 'UNSUPPORTED_CREATE_AND_PAY_FLOW');
+  }
   const isDpPayment = normalizedCreatePaymentFlow === 'dp' || parsed.data.amount < estimatedTotal - 0.01;
   if (isDpPayment) {
     await requirePaymentEntitlement(tenantId, 'payments_partial_payment');

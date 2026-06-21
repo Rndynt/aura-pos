@@ -10000,3 +10000,130 @@ Separate payment methods from payment flow modes, prevent DP/multi/split from be
 
 ### Continuation Notes
 Continue with P9.1: atomic create-order-with-multiple-payments, split context API backed by `order_bill_splits`, API-level row-count tests for full/DP/multi/split, and frontend integration for persisted split UUIDs.
+
+## Plan: P9.1 Centralized POS Payment Submission
+
+### Source
+- Tasklist: `roadmap/business-flows/P9.1 — Centralized POS Payment Submission`
+- User request: Analisa mendalam, pahami dan pelajari, tambahkan report jika ada yang tidak sesuai, lalu eksekusi P9.1.
+- Date started: 2026-06-21
+- Current status: Implemented and validated
+
+### Goal
+Centralize POS cashier payment submission in `pos-core` so business-flow hooks only prepare context and delegate payment persistence for Full, DP, Multi, and Split flows.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active P9.1 tasklist/checklist
+- [x] P9 report and prompt
+- [x] Relevant POS flow hooks, pos-core services, API hooks, OrdersController, and payment application/repository contracts
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: `OrdersController` create-and-pay guard and payment endpoint compatibility.
+- Files inspected: `apps/api/src/http/controllers/OrdersController.ts`, application order payment use cases, repositories, schema.
+- Findings: create-and-pay accepted `multi`/`split` despite being a one-payment-row use case.
+- Tasks: Added defensive API rejection for `multi`/`split` create-and-pay.
+- Risks: Multi/split fresh-cart still spans multiple API calls until a backend atomic use case exists.
+- Validation: API type-check/test and root type-check passed.
+
+#### Frontend/UI Workstream
+- Scope: POS flow payment handlers and shared pos-core submission service.
+- Files inspected: Retail, Restaurant, Food Beverage, Service flow hooks and payment dialog path.
+- Findings: Retail and Restaurant duplicated normalization and payment-row loops; F&B/Service inherit Retail.
+- Tasks: Added shared service and refactored Retail/Restaurant to delegate.
+- Risks: Payment dialog callback remains loosely typed due `// @ts-nocheck`.
+- Validation: terminal-web type-check/test passed.
+
+#### Tests/Validation Workstream
+- Scope: Shared payment submission behavior plus existing regression suites.
+- Tasks: Added shared service tests and ran required validation commands and grep checks.
+- Validation: all required commands passed.
+
+#### Documentation Workstream
+- Scope: P9.1 report, source checklist, roadmap main, PLANS.
+- Tasks: Created P9.1 report and synchronized tracking.
+- Validation: Report reflects actual code and command results.
+
+#### Security/Tenant Isolation Workstream
+- Scope: payment writes remain server tenant/order scoped.
+- Findings: New frontend service does not add tenant authority; server record-payment still validates tenant/order ownership. API guard reduces invalid create-and-pay misuse.
+- Risks: Future split context API must remain tenant/order scoped.
+- Validation: API tests, including tenant auth guard suite, passed.
+
+### Progress
+#### Completed
+- [x] Shared POS payment submission layer added in pos-core.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-core/services/posPaymentSubmissionService.ts`, `apps/pos-terminal-web/src/features/pos-core/index.ts`
+  - Validation: terminal-web type-check/test, root type-check
+  - Docs updated: P9.1 report, source checklist, roadmap main, PLANS
+- [x] Payment flow and payment line normalization centralized.
+  - Files changed: shared service and tests
+  - Validation: terminal-web tests
+  - Docs updated: P9.1 report
+- [x] Retail and Restaurant hooks delegate payment submission.
+  - Files changed: retail and restaurant flow hooks
+  - Validation: grep cleanup, terminal-web type-check/test
+  - Docs updated: P9.1 report
+- [x] F&B and Service confirmed through shared Retail path.
+  - Files changed: no direct F&B/Service changes required
+  - Validation: existing flow tests passed
+  - Docs updated: P9.1 report
+- [x] create-and-pay is not used for multi/split and backend rejects those flows defensively.
+  - Files changed: `apps/api/src/http/controllers/OrdersController.ts`
+  - Validation: API type-check/test, root type-check
+  - Docs updated: P9.1 report
+
+#### Partially Completed
+- [ ] Backend-atomic fresh-cart multi/split transaction.
+  - Completed: centralized frontend createOrder -> recordPayment rows and backend create-and-pay guard.
+  - Remaining: single backend use case/endpoint that creates order and many payment rows atomically.
+  - Reason: P9.1 allowed shared frontend layer; atomic backend multi-row use case is the next phase.
+- [ ] Durable split context lifecycle.
+  - Completed: UUID split id filtering and session split metadata handling.
+  - Remaining: tenant-aware split setup/list/pay APIs updating `order_bill_splits`.
+  - Reason: split context API did not exist yet.
+
+#### Blocked
+- [ ] None.
+
+#### Not Attempted
+- [ ] PaymentMethodDialog prop typing cleanup.
+  - Reason: Not required for P9.1 completion; documented as next cleanup because the dialog is currently `// @ts-nocheck`.
+
+### Validation Log
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: pass
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/api test`
+- Result: pass, 181 tests
+- Command: `pnpm type-check`
+- Result: pass, 10/10 Turbo tasks
+- Command: required grep checks
+- Result: pass with documented expected handler/type/test matches only
+
+### Documentation Updates
+- File: `roadmap/business-flows/P9_1_centralized_pos_payment_submission_report.md`
+- Change: Created P9.1 implementation report.
+- File: `roadmap/business-flows/P9.1 — Centralized POS Payment Submission`
+- Change: Completion checklist marked implemented/validated.
+- File: `roadmap/business-flows/main.md`
+- Change: Added P9.1 completion summary.
+- File: `PLANS.md`
+- Change: Added this active plan entry.
+
+### Checklist Updates
+- File: `roadmap/business-flows/P9.1 — Centralized POS Payment Submission`
+- Change: Completion checklist items checked after implementation and validation.
+
+### Continuation Notes
+Next safest phase: P9.2 atomic backend create-order-with-many-payments and durable split context APIs; then type `PaymentMethodDialog` submit payload to remove `// @ts-nocheck`.

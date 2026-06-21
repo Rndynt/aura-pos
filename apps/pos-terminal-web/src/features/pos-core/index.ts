@@ -18,3 +18,4 @@ export * from "./services/posLifecycleService";
 export * from "./services/posOrderApiService";
 export * from "./services/posPaymentAmountService";
 export * from "./services/posPrinterService";
+export * from "./services/posPaymentSubmissionService";

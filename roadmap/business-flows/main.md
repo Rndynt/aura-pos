@@ -767,3 +767,11 @@ Limitations:
 - Split bill still needs a dedicated split-context API to persist `order_bill_splits` before split payments.
 
 Report: `roadmap/business-flows/P9_pos_payment_usability_completion_report.md`.
+
+## P9.1 — Centralized POS Payment Submission (Completed 2026-06-21)
+
+Status: Implemented and validated.
+
+Summary: Added shared `pos-core` POS payment submission service, refactored Retail/Restaurant payment persistence to delegate to it, confirmed Food Beverage and Service inherit the shared Retail path, blocked `multi`/`split` from create-and-pay defensively, added shared submission tests, and documented remaining backend-atomic multi/split and split-context limitations.
+
+Report: `roadmap/business-flows/P9_1_centralized_pos_payment_submission_report.md`

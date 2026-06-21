@@ -29,6 +29,8 @@ import {
   usePOSCustomerDisplayController,
   usePOSReceiptController,
   usePOSStockGuard,
+  submitPOSPayment,
+  toUserSafePaymentError,
 } from "@/features/pos-core";
 import { getSendToKitchenEligibility } from "./restaurantTableServiceFlowPolicy";
 import { RESTAURANT_TABLE_SERVICE_FLOW_POLICY } from "./restaurantTableServiceFlowPolicy";
@@ -62,6 +64,7 @@ export function useRestaurantTableServicePOSFlow() {
   const createOrderMutation = useCreateOrder();
   const updateOrderMutation = useUpdateOrder();
   const recordPaymentMutation = useRecordPayment();
+  const submitPaymentRow = recordPaymentMutation.mutateAsync;
   const createKitchenTicketMutation = useCreateKitchenTicket();
   const queryClient = useQueryClient();
   const { sendToKDS } = useKitchenChannelSender(can("restaurant_kitchen_ops"));
@@ -236,40 +239,35 @@ export function useRestaurantTableServicePOSFlow() {
   };
 
   const handlePaymentMethodConfirm = async (paymentMethod: PaymentMethod, cashReceived?: number, partialAmount?: number, paymentDetails?: any) => {
-    if (pendingOrderForPayment) {
-      setIsProcessingQuickCharge(true);
-      try {
-        const details = paymentDetails ?? { flow: partialAmount ? "dp" : "full", paymentKind: partialAmount ? "down_payment" : "full_payment", lines: [{ method: paymentMethod, amount: partialAmount ?? pendingOrderForPayment.totalAmount, receivedAmount: cashReceived }] };
-        const lines = details.flow === "multi" ? details.lines : [{ method: paymentMethod, amount: partialAmount ?? pendingOrderForPayment.totalAmount, receivedAmount: cashReceived, splitId: details.lines?.[0]?.splitId }];
-        for (let index = 0; index < lines.length; index += 1) {
-          const line = lines[index];
-          await recordPaymentMutation.mutateAsync({
-            orderId: pendingOrderForPayment.orderId,
-            amount: line.amount,
-            payment_method: line.method,
-            payment_flow: details.flow,
-            payment_kind: details.flow === "dp" ? (line.amount >= pendingOrderForPayment.totalAmount - 0.001 ? "remaining_payment" : "down_payment") : details.paymentKind,
-            received_amount: line.receivedAmount,
-            change_amount: line.method === "cash" && line.receivedAmount ? Math.max(0, line.receivedAmount - line.amount) : undefined,
-            split_id: line.splitId && /^[0-9a-f-]{36}$/i.test(line.splitId) ? line.splitId : undefined,
-            sequence: index + 1,
-            metadata: details.flow === "split" ? { p9_session_split_id: line.splitId, splits: details.splits } : undefined,
-          });
-        }
-        await refetchOpenOrders();
-        const isPartialResult = details.flow !== "full" && (partialAmount ?? pendingOrderForPayment.totalAmount) < pendingOrderForPayment.totalAmount;
-        toast({ title: isPartialResult ? "Pembayaran sebagian tersimpan" : "Pembayaran berhasil", description: isPartialResult ? `Order #${pendingOrderForPayment.orderNumber} tersisa untuk pelunasan.` : `Order #${pendingOrderForPayment.orderNumber} dilunasi.` });
-        setPendingOrderForPayment(null);
-        setPaymentMethodDialogOpen(false);
-      } catch (error) {
-        toast({ title: "Pembayaran gagal", description: error instanceof Error ? error.message : "Gagal mencatat pembayaran", variant: "destructive" });
-      } finally {
-        setIsProcessingQuickCharge(false);
-      }
+    if (!pendingOrderForPayment) {
+      toast({ title: "Gunakan Kirim ke Dapur", description: "Flow restoran tidak membuat pembayaran fresh retail. Bayar dari pesanan aktif setelah service.", variant: "destructive" });
       return;
     }
 
-    toast({ title: "Gunakan Kirim ke Dapur", description: "Flow restoran tidak membuat pembayaran fresh retail. Bayar dari pesanan aktif setelah service.", variant: "destructive" });
+    setIsProcessingQuickCharge(true);
+    try {
+      const result = await submitPOSPayment({
+        mode: "active_order",
+        orderId: pendingOrderForPayment.orderId,
+        orderNumber: pendingOrderForPayment.orderNumber,
+        totalAmount: pendingOrderForPayment.totalAmount,
+        paymentMethod,
+        cashReceived,
+        partialAmount,
+        paymentDetails,
+      }, {
+        createOrder: (payload: Record<string, unknown>) => createOrderMutation.mutateAsync(payload as any),
+        recordPayment: (payload: any) => submitPaymentRow(payload),
+      });
+      await refetchOpenOrders();
+      toast({ title: result.messageTitle, description: result.messageDescription });
+      setPendingOrderForPayment(null);
+      setPaymentMethodDialogOpen(false);
+    } catch (error) {
+      toast({ title: "Pembayaran gagal", description: toUserSafePaymentError(error), variant: "destructive" });
+    } finally {
+      setIsProcessingQuickCharge(false);
+    }
   };
 
   const handleResumeLocalDraft = (draft: any) => {
