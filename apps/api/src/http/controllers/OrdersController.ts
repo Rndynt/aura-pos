@@ -8,10 +8,29 @@ import { z } from 'zod';
 import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { emitOrderQueueChanged, subscribeOrderQueue } from '../services/orderQueueEvents';
-import { getEffectiveEntitlementMap } from '../../services/tenantEntitlements';
+import { getEffectiveEntitlementMap, loadTenantEntitlementContext } from '../../services/tenantEntitlements';
 import { DEFAULT_SERVICE_CHARGE_RATE, DEFAULT_TAX_RATE } from '@pos/core/pricing';
 import { withOrderLifecycleDtoFields } from '@pos/application/orders/mappers/orderLifecycleDtoMapper';
+import { assertCanPerformOrderAction, resolveBusinessProfileFromBusinessType, type OrderActionPolicyError } from '@pos/application/business-flows';
 
+async function getOrderActionPolicyBase(tenantId: string, options: { requireEntitlements?: boolean } = {}) {
+  if (!options.requireEntitlements) {
+    return { businessProfile: 'core_standard' as const, entitlements: [] };
+  }
+  const context = await loadTenantEntitlementContext(tenantId);
+  const entitlementMap = await getEffectiveEntitlementMap(tenantId);
+  const businessType = context?.businessType ?? null;
+  return {
+    businessProfile: resolveBusinessProfileFromBusinessType({ businessType, businessTypeCode: businessType }),
+    entitlements: Object.entries(entitlementMap)
+      .filter(([, enabled]) => enabled)
+      .map(([code]) => code),
+  };
+}
+
+function throwPolicyHttpError(error: OrderActionPolicyError): never {
+  throw createError(error.message, error.statusCode ?? 409, error.code);
+}
 
 function getIdempotencyKey(req: Request, bodyValue?: string): string | undefined {
   const bodyKey = bodyValue?.trim();
@@ -20,11 +39,7 @@ function getIdempotencyKey(req: Request, bodyValue?: string): string | undefined
 }
 
 
-async function assertOrderBelongsToOutlet(orderId: string, tenantId: string, outletId?: string | null): Promise<any | null> {
-  if (!outletId) {
-    return null;
-  }
-
+async function assertOrderBelongsToOutlet(orderId: string, tenantId: string, outletId?: string | null): Promise<any> {
   const order = await container.orderRepository.findById(orderId, tenantId);
   if (!order) {
     throw createError('Order not found', 404, 'ORDER_NOT_FOUND');
@@ -211,7 +226,22 @@ export const recordPayment = asyncHandler(async (req: Request, res: Response) =>
   const idempotencyKey = parsed.data.idempotency_key?.trim();
   const transactionRef = parsed.data.transaction_ref?.trim();
 
-  await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
+  const order = await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
+
+  const paymentAction = parsed.data.payment_flow === 'partial_payment_dp' ? 'PARTIAL_PAYMENT' : 'PAY_ACTIVE_ORDER';
+  const policyBase = await getOrderActionPolicyBase(tenantId, { requireEntitlements: paymentAction === 'PARTIAL_PAYMENT' });
+  try {
+    assertCanPerformOrderAction({
+      ...policyBase,
+      action: paymentAction,
+      orderOperationalStatus: order.status,
+      paymentStatus: order.paymentStatus ?? order.payment_status,
+      fulfillmentStatus: order.status,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'OrderActionPolicyError') throwPolicyHttpError(error as OrderActionPolicyError);
+    throw error;
+  }
 
   if (parsed.data.payment_flow === 'partial_payment_dp') {
     await requirePaymentEntitlement(tenantId, 'payments_partial_payment');
@@ -457,7 +487,7 @@ export const updateOrder = asyncHandler(async (req: Request, res: Response) => {
     });
   } catch (error) {
     const code = error instanceof Error ? (error as any).code : undefined;
-    if (code === 'ORDER_NOT_EDITABLE' || code === 'KITCHEN_ORDER_LOCKED' || code === 'FIRED_ITEMS_LOCKED') {
+    if (code === 'ORDER_NOT_EDITABLE' || code === 'KITCHEN_ORDER_LOCKED' || code === 'FIRED_ITEMS_LOCKED' || code === 'ORDER_ACTION_NOT_ALLOWED') {
       throw createError(
         error instanceof Error ? error.message : 'Pesanan sudah aktif atau sudah dikirim ke dapur dan tidak bisa diedit dari keranjang.',
         409,
@@ -647,6 +677,26 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+  }
+
+  const order = await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
+  if (order.status !== 'draft' && !parsed.data.cancellation_reason?.trim()) {
+    throw createError('Alasan pembatalan wajib diisi untuk membatalkan pesanan aktif.', 400, 'ORDER_CANCEL_REASON_REQUIRED');
+  }
+
+  const policyBase = await getOrderActionPolicyBase(tenantId);
+  try {
+    assertCanPerformOrderAction({
+      ...policyBase,
+      action: order.status === 'draft' ? 'CANCEL_DRAFT' : 'CANCEL_ACTIVE_ORDER',
+      orderOperationalStatus: order.status,
+      paymentStatus: order.paymentStatus ?? order.payment_status,
+      fulfillmentStatus: order.status,
+      actorPermissions: parsed.data.cancellation_reason?.trim() ? ['orders:cancel_active'] : [],
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'OrderActionPolicyError') throwPolicyHttpError(error as OrderActionPolicyError);
+    throw error;
   }
 
   // Execute cancellation and strict stock reversal inside one transaction when required.

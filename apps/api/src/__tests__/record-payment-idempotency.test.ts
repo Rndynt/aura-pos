@@ -139,6 +139,10 @@ describe('POST /api/orders/:id/payments idempotency retry', async () => {
 
   function buildApp(store: PaymentStore) {
     (container as any).recordPayment = new RecordPayment(new DrizzleRecordPaymentRepository(new FakePaymentDb(store) as any));
+    (container as any).orderRepository = {
+      findById: async (orderId: string, tenantId: string) =>
+        store.order.id === orderId && store.order.tenant_id === tenantId ? store.order : null,
+    };
 
     const app = express();
     app.use(express.json());

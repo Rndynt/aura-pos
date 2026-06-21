@@ -9349,3 +9349,147 @@ Verify business-flow routing, baseline checkout invariants, entitlement separati
 
 ### Continuation Notes
 Next agent should run the P6.2 matrix in a browser-capable environment with seeded tenants, capture screenshots/manual notes, and update the P6.2 report from terminal-only verification to browser-smoke evidence.
+
+## Plan: P8 Backend Action Policy Guard
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P8_backend_action_policy_guard_prompt.md`
+- User request: Analisa mendalam, pahami dan pelajari, tambahkan report jika ada yang tidak sesuai, eksekusi P8 backend action policy guard.
+- Date started: 2026-06-20
+- Current status: Implemented core backend guards; validation attempted.
+
+### Goal
+Harden backend POS/order mutation endpoints with the existing business-flow policy layer so direct API calls cannot bypass lifecycle, kitchen lock, entitlement, and cancellation-reason rules.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs (`roadmap/business-flows/main.md` plus prior P-phase reports referenced by tasklist)
+- [x] Relevant source files (`CanPerformOrderAction`, business-flow resolvers, order use cases, OrdersController/routes, entitlement context service)
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: `apps/api/src/http/controllers/OrdersController.ts`
+- Files inspected: orders controller/routes, tenant entitlement service, container.
+- Findings: update endpoint already had lifecycle locks in use case; payment endpoint only checked partial entitlement and lacked unified action policy; cancel endpoint accepted active cancellations without requiring a reason before use case.
+- Tasks: add policy context resolution, guard recordPayment and cancelOrder, map readable policy errors.
+- Risks: actor permission integration is currently represented by policy input only; real RBAC permission mapping can be tightened in a future phase.
+- Validation: `pnpm --filter @pos/api type-check` passed.
+
+#### Database/Schema Workstream
+- Scope: none.
+- Files inspected: tenant entitlement context loading.
+- Findings: no migration required; profile/capability context can be resolved from existing tenant business type and effective entitlements.
+- Tasks: none.
+- Risks: none for schema.
+- Validation: not applicable.
+
+#### Frontend/UI Workstream
+- Scope: none.
+- Files inspected: not modified.
+- Findings: P8 is backend-only; browser smoke remains deferred.
+- Tasks: none.
+- Risks: frontend may need copy alignment for new backend error codes.
+- Validation: not applicable.
+
+#### Tests/Validation Workstream
+- Scope: application policy/use-case tests plus type checks.
+- Files inspected: existing application tests.
+- Findings: order policy tests existed but were not included in package test script.
+- Tasks: include policy tests in `@pos/application` test script and run required validation commands.
+- Risks: full root type-check may include unrelated workspace failures.
+- Validation: pending final command log.
+
+#### Documentation Workstream
+- Scope: P8 report, roadmap main status, tasklist checklist, PLANS.
+- Files inspected: roadmap main and P8 prompt.
+- Findings: no existing P8 report.
+- Tasks: create report and update roadmap progress.
+- Risks: report must keep browser smoke deferred honestly.
+- Validation: docs-only review.
+
+#### Security/Tenant Isolation Workstream
+- Scope: tenant/profile/capability context for policy checks.
+- Files inspected: tenant middleware/repository/entitlement service.
+- Findings: tenant ID comes from request context; order lookup remains tenant-scoped; outlet ownership is checked when outlet context exists.
+- Tasks: keep tenant-scoped order lookup before mutation guards and fallback profile resolution via `core_standard` behavior when tenant context is absent.
+- Risks: cancel active permission currently checked at route role + reason level, not fine-grained `orders:cancel_active` RBAC claim source.
+- Validation: type-check and policy tests.
+
+### Execution Order
+1. Implement reusable `assertCanPerformOrderAction` helper and typed policy error.
+2. Wire `UpdateOrder` lifecycle validation through the policy helper.
+3. Add API policy context adapter and guards for payment and cancel paths.
+4. Add/update tests and scripts.
+5. Update roadmap/report/checklist docs.
+6. Run validation and cleanup grep.
+
+### Progress
+#### Completed
+- [x] Task: Order update/edit bypass guarded through application policy helper.
+  - Files changed: `packages/application/business-flows/policies/AssertCanPerformOrderAction.ts`, `packages/application/orders/UpdateOrder.ts`
+  - Validation: `pnpm --filter @pos/application type-check`
+  - Docs updated: P8 report.
+- [x] Task: Payment action guarded by lifecycle/policy and full payment remains independent from `orders_queue`.
+  - Files changed: `apps/api/src/http/controllers/OrdersController.ts`
+  - Validation: `pnpm --filter @pos/api type-check`
+  - Docs updated: P8 report.
+- [x] Task: Cancel active order requires explicit reason and policy action.
+  - Files changed: `apps/api/src/http/controllers/OrdersController.ts`, `packages/application/business-flows/policies/CanPerformOrderAction.ts`
+  - Validation: `pnpm --filter @pos/api type-check`
+  - Docs updated: P8 report.
+- [x] Task: Policy tests included in application test script.
+  - Files changed: `packages/application/package.json`
+  - Validation: `pnpm --filter @pos/application test` pass.
+  - Docs updated: P8 report.
+
+#### Partially Completed
+- [ ] Task: API/controller tests for direct endpoint bypass.
+  - Completed: Guard code exists in controller and use case, with application/policy coverage.
+  - Remaining: Add Express-level mocks for PATCH/payment/cancel bypass scenarios.
+  - Reason: Existing API test harness is integration-heavy; not completed in this batch.
+
+#### Blocked
+- [ ] Task: Browser/manual smoke.
+  - Blocker: P8 prompt explicitly allows browser smoke to remain deferred release gate.
+  - Required next step: Run manual/browser smoke in release-gate phase.
+
+#### Not Attempted
+- [ ] Task: Void/refund engine implementation.
+  - Reason: Prompt forbids inventing full refund/void engine; exposed orders routes only include cancel/payment/status/kitchen-ticket in this area.
+
+### Validation Log
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: Application package compiled after helper addition.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: API controller guard changes compile.
+- Command: `pnpm --filter @pos/domain type-check`
+- Result: pass
+- Notes: Domain package unaffected by P8 implementation.
+- Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Notes: Includes lifecycle and policy tests.
+- Command: `pnpm --filter @pos/api test`
+- Result: pass
+- Notes: Existing API tests pass after idempotency test mock includes guarded order lookup.
+- Command: `pnpm type-check`
+- Result: pass
+- Notes: Turbo reported 10 successful package type-check tasks.
+- Command: cleanup grep from P8 prompt
+- Result: pass/no matches
+- Notes: No `orders_queue` full-payment dependency or old frontend shim matches found.
+
+### Documentation Updates
+- File: `roadmap/business-flows/P8_backend_action_policy_guard_report.md`
+- Change: New P8 implementation report.
+
+### Checklist Updates
+- File: `roadmap/business-flows/replit_codex_P8_backend_action_policy_guard_prompt.md`
+- Change: Completion checklist updated with implemented/partial/deferred status.
+
+### Continuation Notes
+Next agent should add API/controller-level bypass tests for OrdersController with mocked tenant entitlement context and order repository, then tighten active-cancel permissions against the real RBAC permission model if available.

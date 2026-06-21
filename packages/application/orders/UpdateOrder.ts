@@ -7,6 +7,7 @@ import type { Order, OrderItem, SelectedOption } from '@pos/domain/orders/types'
 import type { PriceCalculation } from '@pos/domain/pricing/types';
 import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE } from '@pos/core/pricing';
 import { calculateSelectedOptionsDelta, flattenSelectedOptions } from '../catalog';
+import { assertCanPerformOrderAction } from '../business-flows';
 
 export interface UpdateOrderItemInput {
   product_id: string;
@@ -93,27 +94,19 @@ export class UpdateOrder {
             ['preparing', 'ready', 'delivered'].includes(String(item.status ?? '').toLowerCase())
           ));
 
-      if ((order as any).status !== 'draft') {
-        const error = new Error('Pesanan sudah aktif atau sudah dikirim ke dapur dan tidak bisa diedit dari keranjang.');
-        (error as any).code = 'ORDER_NOT_EDITABLE';
-        throw error;
-      }
+      assertCanPerformOrderAction({
+        businessProfile: 'core_standard',
+        entitlements: [],
+        action: 'UPDATE_DRAFT_ITEMS',
+        orderOperationalStatus: (order as any).status,
+        paymentStatus: (order as any).paymentStatus ?? (order as any).payment_status,
+        hasKitchenTicket,
+        hasFiredKitchenItems,
+      });
 
       if (['paid', 'refunded', 'voided'].includes(String((order as any).paymentStatus ?? (order as any).payment_status ?? '').toLowerCase())) {
         const error = new Error('Pesanan sudah aktif atau sudah dikirim ke dapur dan tidak bisa diedit dari keranjang.');
         (error as any).code = 'ORDER_NOT_EDITABLE';
-        throw error;
-      }
-
-      if (hasKitchenTicket) {
-        const error = new Error('Pesanan sudah aktif atau sudah dikirim ke dapur dan tidak bisa diedit dari keranjang.');
-        (error as any).code = 'KITCHEN_ORDER_LOCKED';
-        throw error;
-      }
-
-      if (hasFiredKitchenItems) {
-        const error = new Error('Pesanan sudah aktif atau sudah dikirim ke dapur dan tidak bisa diedit dari keranjang.');
-        (error as any).code = 'FIRED_ITEMS_LOCKED';
         throw error;
       }
 

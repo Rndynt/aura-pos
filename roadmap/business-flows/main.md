@@ -695,3 +695,31 @@ Not completed in this environment:
 Next recommended phase:
 
 - Run the P6.2 browser matrix against seeded tenants in a browser-capable environment and update the report with screenshots or detailed manual notes.
+
+### P8 — Backend Action Policy Guard
+
+Status: Implemented in backend/application core guard layer on 2026-06-20; API/controller bypass tests remain recommended for P8.1.
+
+Deliverable:
+
+```txt
+roadmap/business-flows/P8_backend_action_policy_guard_report.md
+```
+
+Implemented:
+
+```txt
+- application-level assertCanPerformOrderAction helper with readable policy errors;
+- UpdateOrder guarded through business-flow policy while preserving kitchen/fired item locks;
+- recordPayment backend guard for PAY_ACTIVE_ORDER and PARTIAL_PAYMENT;
+- active cancel backend guard requiring explicit reason and policy action;
+- policy/use-case tests included in @pos/application test script.
+```
+
+Remaining follow-up:
+
+```txt
+- add Express/controller direct bypass tests;
+- wire fine-grained RBAC permission claims into active cancel/refund/void policy input;
+- run deferred browser/manual smoke during release gate.
+```

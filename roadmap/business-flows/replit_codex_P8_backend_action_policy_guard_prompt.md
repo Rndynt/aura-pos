@@ -321,17 +321,17 @@ if those files track phase progress.
 
 ## Completion checklist
 
-- [ ] Order update/edit bypass guarded.
-- [ ] Active/kitchen/fired order mutation rejected with readable errors.
-- [ ] Payment action guarded by lifecycle/policy.
-- [ ] Full payment/cash does not require orders_queue.
-- [ ] Partial/multi/split remain entitlement-gated if exposed.
-- [ ] Cancel/delete/void/refund exposed paths audited and guarded or documented.
-- [ ] Tenant businessProfile/capability context resolved safely.
-- [ ] Tests added/updated.
-- [ ] Validation commands run and documented.
-- [ ] Cleanup grep documented.
-- [ ] P8 report created.
+- [x] Order update/edit bypass guarded.
+- [x] Active/kitchen/fired order mutation rejected with readable errors.
+- [x] Payment action guarded by lifecycle/policy.
+- [x] Full payment/cash does not require orders_queue.
+- [x] Partial/multi/split remain entitlement-gated if exposed.
+- [x] Cancel/delete/void/refund exposed paths audited and guarded or documented.
+- [x] Tenant businessProfile/capability context resolved safely.
+- [x] Tests added/updated. Application policy/use-case coverage is included; record-payment controller test mock was updated for the new guard. API bypass matrix expansion remains recommended follow-up.
+- [x] Validation commands run and documented.
+- [x] Cleanup grep documented.
+- [x] P8 report created.
 
 ## Commit
 

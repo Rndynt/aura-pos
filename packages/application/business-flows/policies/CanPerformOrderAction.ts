@@ -55,7 +55,7 @@ export function CanPerformOrderAction(input: CanPerformOrderActionInput): OrderA
 
   const supportedActions = [...profile.defaultActions, ...profile.optionalActions];
   if (!supportedActions.includes(input.action)) {
-    if (!(input.action === "REFUND_PAYMENT" || input.action === "VOID_PAYMENT")) {
+    if (!(input.action === "REFUND_PAYMENT" || input.action === "VOID_PAYMENT" || input.action === "PAY_ACTIVE_ORDER")) {
       return denied("ACTION_NOT_SUPPORTED_BY_PROFILE", "Action is not supported by this business profile.");
     }
   }
@@ -99,6 +99,7 @@ export function CanPerformOrderAction(input: CanPerformOrderActionInput): OrderA
       if (input.isLocalDraft || input.orderOperationalStatus === "draft") return allowed();
       return denied("ORDER_NOT_DRAFT", "Only draft orders can be cancelled with the draft action.");
     case "CANCEL_ACTIVE_ORDER":
+      if ((action.requiresPermission ?? []).every((permission) => (input.actorPermissions ?? []).includes(permission))) return allowed();
       return denied("ACTIVE_ORDER_REQUIRES_REASON", "Cancelling an active order requires reason and permission policy.", { requiredPermissions: action.requiresPermission });
     case "DELETE_LOCAL_DRAFT":
       if (input.isLocalDraft) return allowed();
