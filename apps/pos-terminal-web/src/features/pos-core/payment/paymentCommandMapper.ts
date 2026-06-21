@@ -1,13 +1,11 @@
 import type { POSPaymentMethod } from "@pos/domain/payments";
+import { isPOSPaymentMethod } from "@pos/domain/payments";
 
-export type LegacyCartPaymentMethod = "cash" | "card" | "ewallet" | "other" | POSPaymentMethod;
-
-export function toCanonicalPaymentMethod(method: LegacyCartPaymentMethod): POSPaymentMethod {
-  if (method === "CASH" || method === "MANUAL_TRANSFER" || method === "MANUAL_QRIS") return method;
-  if (method === "cash") return "CASH";
-  if (method === "card") return "MANUAL_TRANSFER";
-  if (method === "ewallet") return "MANUAL_QRIS";
-  return "CASH";
+export function assertPOSPaymentMethod(method: POSPaymentMethod): POSPaymentMethod {
+  if (!isPOSPaymentMethod(method)) {
+    throw new Error("Metode pembayaran tidak valid.");
+  }
+  return method;
 }
 
 export function createClientPaymentSessionId(prefix = "pospay"): string {
