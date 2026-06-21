@@ -19,3 +19,4 @@ export * from "./services/posOrderApiService";
 export * from "./services/posPaymentAmountService";
 export * from "./services/posPrinterService";
 export * from "./services/posPaymentSubmissionService";
+export * from "./payment/paymentCommandMapper";

@@ -140,7 +140,7 @@ describe('Partial payment lifecycle', async () => {
       order_id: 'ord-1',
       tenant_id: 't1',
       amount: 40,
-      payment_method: 'cash',
+      payment_method: 'CASH',
     });
 
     assert.equal(store.order.status, 'confirmed', 'draft order must be promoted to confirmed on first payment');
@@ -166,7 +166,7 @@ describe('Partial payment lifecycle', async () => {
       order_id: 'ord-2',
       tenant_id: 't1',
       amount: 50,
-      payment_method: 'card',
+      payment_method: 'MANUAL_TRANSFER',
     });
 
     assert.equal(store.order.status, 'confirmed');
@@ -191,7 +191,7 @@ describe('Partial payment lifecycle', async () => {
       order_id: 'ord-3',
       tenant_id: 't1',
       amount: 100,
-      payment_method: 'cash',
+      payment_method: 'CASH',
     });
 
     assert.equal(store.order.status, 'confirmed', 'confirmed order must stay confirmed');
@@ -215,7 +215,7 @@ describe('Partial payment lifecycle', async () => {
       order_id: 'ord-4',
       tenant_id: 't1',
       amount: 40,
-      payment_method: 'cash',
+      payment_method: 'CASH',
     });
 
     assert.equal(store.order.status, 'confirmed', 'status must not revert to draft');
@@ -242,7 +242,7 @@ describe('Partial payment lifecycle', async () => {
           order_id: 'ord-5',
           tenant_id: 't1',
           amount: 50,
-          payment_method: 'cash',
+          payment_method: 'CASH',
         }),
       /cancelled/i,
     );

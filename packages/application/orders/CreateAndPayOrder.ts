@@ -33,13 +33,14 @@ export interface CreateAndPayOrderInput {
   tax_rate?: number;
   service_charge_rate?: number;
   amount: number;
-  payment_method: 'cash' | 'card' | 'ewallet' | 'other';
-  payment_flow?: 'full' | 'dp' | 'multi' | 'split';
-  payment_kind?: 'full_payment' | 'down_payment' | 'remaining_payment' | 'multi_line' | 'split_line';
+  payment_method: 'CASH' | 'MANUAL_TRANSFER' | 'MANUAL_QRIS';
+  payment_flow?: 'FULL' | 'DOWN_PAYMENT' | 'MULTI_PAYMENT' | 'SPLIT_BILL';
+  payment_kind?: 'FULL_PAYMENT' | 'DOWN_PAYMENT' | 'REMAINING_PAYMENT' | 'MULTI_PAYMENT_LINE' | 'SPLIT_BILL_LINE';
   received_amount?: number;
   change_amount?: number;
   reference_note?: string;
   metadata?: Record<string, unknown>;
+  client_payment_session_id?: string;
   transaction_ref?: string;
   payment_notes?: string;
   idempotency_key?: string;

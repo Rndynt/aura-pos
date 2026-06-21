@@ -173,7 +173,7 @@ describe('POST /api/orders/:id/payments idempotency retry', async () => {
 
     const body = {
       amount: 40,
-      payment_method: 'card',
+      payment_method: 'MANUAL_TRANSFER',
       transaction_ref: 'CARD-AUTH-123',
       idempotency_key: 'retry-key-12345',
     };

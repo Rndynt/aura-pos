@@ -1,4 +1,4 @@
-import type { PaymentMethod } from "@/hooks/useCart";
+type PaymentMethod = "cash" | "card" | "ewallet" | "other";
 
 export interface ReceiptPrintItem {
   name: string;

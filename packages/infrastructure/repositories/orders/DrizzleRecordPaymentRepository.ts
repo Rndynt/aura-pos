@@ -100,21 +100,21 @@ export class DrizzleRecordPaymentRepository {
         .where(and(eq(orderPayments.orderId, input.order_id), eq(orderPayments.status, 'succeeded')))
         .for('update');
 
-      const flow = input.payment_flow ?? 'full';
-      const kind = input.payment_kind ?? (flow === 'dp' ? (existingSucceededPayments.length > 0 ? 'remaining_payment' : 'down_payment') : flow === 'multi' ? 'multi_line' : flow === 'split' ? 'split_line' : 'full_payment');
+      const flow = input.payment_flow ?? 'FULL';
+      const kind = input.payment_kind ?? (flow === 'DOWN_PAYMENT' ? (existingSucceededPayments.length > 0 ? 'REMAINING_PAYMENT' : 'DOWN_PAYMENT') : flow === 'MULTI_PAYMENT' ? 'MULTI_PAYMENT_LINE' : flow === 'SPLIT_BILL' ? 'SPLIT_BILL_LINE' : 'FULL_PAYMENT');
 
-      if (flow === 'dp') {
-        const dpRows = existingSucceededPayments.filter((payment: any) => payment.paymentFlow === 'dp');
+      if (flow === 'DOWN_PAYMENT') {
+        const dpRows = existingSucceededPayments.filter((payment: any) => payment.paymentFlow === 'DOWN_PAYMENT');
         if (dpRows.length >= 2) {
           throw new Error('P9 DP flow allows a maximum of two succeeded payment rows');
         }
-        if (kind === 'down_payment' && input.amount >= remaining - 0.001) {
+        if (kind === 'DOWN_PAYMENT' && input.amount >= remaining - 0.001) {
           throw new Error('Down payment amount must be less than remaining balance');
         }
       }
 
-      if (flow === 'multi') {
-        const multiRows = existingSucceededPayments.filter((payment: any) => payment.paymentFlow === 'multi');
+      if (flow === 'MULTI_PAYMENT') {
+        const multiRows = existingSucceededPayments.filter((payment: any) => payment.paymentFlow === 'MULTI_PAYMENT');
         if (multiRows.length >= 2) {
           throw new Error('P9 multi payment allows a maximum of two payment rows');
         }

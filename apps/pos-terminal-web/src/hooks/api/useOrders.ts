@@ -89,7 +89,7 @@ type CreateOrderInput = {
   idempotency_key?: string;
   initial_payment?: {
     amount: number;
-    payment_method: "cash" | "card" | "ewallet" | "other";
+    payment_method: "CASH" | "MANUAL_TRANSFER" | "MANUAL_QRIS";
   };
 };
 
@@ -123,22 +123,17 @@ export function useCreateOrder() {
 
 type RecordPaymentInput = {
   amount: number;
-  payment_method: "cash" | "card" | "ewallet" | "other";
+  payment_method: "CASH" | "MANUAL_TRANSFER" | "MANUAL_QRIS";
   notes?: string;
-  payment_flow?:
-    | "full_payment"
-    | "partial_payment_dp"
-    | "full"
-    | "dp"
-    | "multi"
-    | "split";
-  payment_kind?: "full_payment" | "down_payment" | "remaining_payment" | "multi_line" | "split_line";
+  payment_flow?: "FULL" | "DOWN_PAYMENT" | "MULTI_PAYMENT" | "SPLIT_BILL";
+  payment_kind?: "FULL_PAYMENT" | "DOWN_PAYMENT" | "REMAINING_PAYMENT" | "MULTI_PAYMENT_LINE" | "SPLIT_BILL_LINE";
   received_amount?: number;
   change_amount?: number;
   split_id?: string;
   sequence?: number;
   reference_note?: string;
   metadata?: Record<string, unknown>;
+  client_payment_session_id?: string;
 };
 
 export function useRecordPayment(orderId: string) {

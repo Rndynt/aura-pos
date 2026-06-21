@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import type { PaymentMethod, CartItem } from "@/hooks/useCart";
 import { getItemEffectiveTotal } from "@/hooks/useCart";
+import { toCanonicalPaymentMethod } from "@/features/pos-core";
 
 type Props = {
   open: boolean;
@@ -27,8 +28,10 @@ const fmt = (n: number) =>
 const fmtNum = (n: number) =>
   new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0 }).format(n);
 
+const canonical = (method: PaymentMethod) => toCanonicalPaymentMethod(method);
+
 const NUMPAD = ["7", "8", "9", "4", "5", "6", "1", "2", "3", "000", "0", "⌫"] as const;
-type PaymentFlow = "full" | "dp" | "multi" | "split";
+type PaymentFlow = "FULL" | "DOWN_PAYMENT" | "MULTI_PAYMENT" | "SPLIT_BILL";
 
 const METHODS = [
   { id: "cash" as PaymentMethod, label: "Tunai", Icon: Banknote },
@@ -102,7 +105,7 @@ export function PaymentMethodDialog({
   const [method, setMethod] = useState<PaymentMethod>(defaultPaymentMethod);
   const [cashRaw, setCashRaw] = useState("");
   const [partialRaw, setPartialRaw] = useState("");
-  const [flow, setFlow] = useState<PaymentFlow>(initialPartialMode ? "dp" : "full");
+  const [flow, setFlow] = useState<PaymentFlow>(initialPartialMode ? "DOWN_PAYMENT" : "FULL");
   const [isProcessing, setIsProcessing] = useState(false);
   const isLandscape = useIsLandscape();
 
@@ -122,7 +125,7 @@ export function PaymentMethodDialog({
     setMethod(defaultPaymentMethod);
     setCashRaw("");
     setPartialRaw("");
-    setFlow(initialPartialMode ? "dp" : "full");
+    setFlow(initialPartialMode ? "DOWN_PAYMENT" : "FULL");
     setIsProcessing(false);
     setMultiEntries([]);
     setMultiRaw("");
@@ -190,8 +193,8 @@ export function PaymentMethodDialog({
   };
 
   const handleKey = (key: string) => {
-    const current = flow === "dp" ? partialRaw : cashRaw;
-    const setRaw = flow === "dp" ? setPartialRaw : setCashRaw;
+    const current = flow === "DOWN_PAYMENT" ? partialRaw : cashRaw;
+    const setRaw = flow === "DOWN_PAYMENT" ? setPartialRaw : setCashRaw;
     if (key === "⌫") { setRaw(current.slice(0, -1)); return; }
     const next = key === "000" ? (current === "" ? "" : current + "000") : current + key;
     if (parseInt(next || "0") <= 99_999_999) setRaw(next);
@@ -199,27 +202,27 @@ export function PaymentMethodDialog({
 
   const handleProcess = () => {
     if (loading) return;
-    if (flow === "dp") {
+    if (flow === "DOWN_PAYMENT") {
       if (!isValidPartial) return;
       setIsProcessing(true);
-      setTimeout(() => { setIsProcessing(false); onConfirm(method, undefined, partialAmount, { flow: "dp", paymentKind: "down_payment", lines: [{ method, amount: partialAmount }] }); }, 400);
+      setTimeout(() => { setIsProcessing(false); onConfirm(method, undefined, partialAmount, { flow: "DOWN_PAYMENT", paymentKind: "DOWN_PAYMENT", lines: [{ method: canonical(method), amount: partialAmount }] }); }, 400);
       return;
     }
-    if (flow === "multi") {
+    if (flow === "MULTI_PAYMENT") {
       if (!multiComplete) return;
       setIsProcessing(true);
-      setTimeout(() => { setIsProcessing(false); onConfirm(multiEntries[0]?.method || method, undefined, undefined, { flow: "multi", paymentKind: "multi_line", lines: multiEntries }); }, 400);
+      setTimeout(() => { setIsProcessing(false); onConfirm(multiEntries[0]?.method || method, undefined, undefined, { flow: "MULTI_PAYMENT", paymentKind: "MULTI_PAYMENT_LINE", lines: multiEntries.map((entry) => ({ ...entry, method: canonical(entry.method) })) }); }, 400);
       return;
     }
-    if (flow === "split") {
+    if (flow === "SPLIT_BILL") {
       if (!canPayActiveBill) return;
       setIsProcessing(true);
       setTimeout(() => {
         setIsProcessing(false);
         onConfirm(method, undefined, activeBillTotal, {
-          flow: "split",
-          paymentKind: "split_line",
-          lines: [{ method, amount: activeBillTotal, splitId: activeBill }],
+          flow: "SPLIT_BILL",
+          paymentKind: "SPLIT_BILL_LINE",
+          lines: [{ method: canonical(method), amount: activeBillTotal, splitId: activeBill }],
           splits: splitBills.map((bill, index) => ({ id: bill, label: `Bill ${bill}`, splitNo: index + 1, amountDue: getBillTotal(bill), amountPaid: bill === activeBill ? activeBillTotal : 0 })),
         });
       }, 400);
@@ -230,7 +233,7 @@ export function PaymentMethodDialog({
     setIsProcessing(true);
     setTimeout(() => {
       setIsProcessing(false);
-      onConfirm(method, method === "cash" ? cashAmount || cartTotal : undefined, undefined, { flow: "full", paymentKind: "full_payment", lines: [{ method, amount: cartTotal, receivedAmount: method === "cash" ? cashAmount || cartTotal : undefined }] });
+      onConfirm(method, method === "cash" ? cashAmount || cartTotal : undefined, undefined, { flow: "FULL", paymentKind: "FULL_PAYMENT", lines: [{ method: canonical(method), amount: cartTotal, receivedAmount: method === "cash" ? cashAmount || cartTotal : undefined }] });
     }, 400);
   };
 
@@ -251,10 +254,10 @@ export function PaymentMethodDialog({
       {hasExtraFlows && (
         <div className="px-4 mb-3 flex gap-1.5 flex-wrap">
           {([
-            ["full", "Bayar Penuh"],
-            ...(allowPartial ? [["dp", "DP"]] : []),
-            ...(allowMultiPayment ? [["multi", "Multi"]] : []),
-            ...(allowSplitBill ? [["split", "Split"]] : []),
+            ["FULL", "Bayar Penuh"],
+            ...(allowPartial ? [["DOWN_PAYMENT", "DP"]] : []),
+            ...(allowMultiPayment ? [["MULTI_PAYMENT", "Multi"]] : []),
+            ...(allowSplitBill ? [["SPLIT_BILL", "Split"]] : []),
           ] as [PaymentFlow, string][]).map(([id, label]) => (
             <button
               key={id}
@@ -271,7 +274,7 @@ export function PaymentMethodDialog({
       )}
 
       {/* Method selector — hidden in split (irrelevant to split display) */}
-      {flow !== "split" && (
+      {flow !== "SPLIT_BILL" && (
         <div className="px-4 mb-3">
           <div className={`grid gap-2 ${isLandscape ? "grid-cols-1" : "grid-cols-3"}`}>
             {METHODS.map(({ id, label, Icon }) => (
@@ -302,7 +305,7 @@ export function PaymentMethodDialog({
     <div className={`flex flex-col flex-1 min-h-0 ${isLandscape ? "overflow-y-auto" : ""}`}>
 
       {/* ── DP ── */}
-      {flow === "dp" && (
+      {flow === "DOWN_PAYMENT" && (
         <>
           <div className="px-4 mb-2">
             <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1.5">Jumlah DP</p>
@@ -348,7 +351,7 @@ export function PaymentMethodDialog({
       )}
 
       {/* ── FULL CASH ── */}
-      {flow === "full" && method === "cash" && (
+      {flow === "FULL" && method === "cash" && (
         <>
           <div className="px-4 mb-2">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Uang Diterima</p>
@@ -394,7 +397,7 @@ export function PaymentMethodDialog({
       )}
 
       {/* ── QRIS ── */}
-      {flow === "full" && method === "ewallet" && (
+      {flow === "FULL" && method === "ewallet" && (
         <div className="flex flex-col items-center justify-center gap-3 px-6 pb-6">
           <div className="bg-white p-4 rounded-2xl border-2 border-slate-800 shadow-sm">
             <QrCode size={isLandscape ? 80 : 100} className="text-slate-800" />
@@ -412,7 +415,7 @@ export function PaymentMethodDialog({
       )}
 
       {/* ── KARTU ── */}
-      {flow === "full" && method === "card" && (
+      {flow === "FULL" && method === "card" && (
         <div className="flex flex-col items-center justify-center gap-3 px-6 pb-6">
           <div className="bg-blue-50 p-6 rounded-full">
             <CreditCard size={isLandscape ? 36 : 44} className="text-blue-600" />
@@ -430,7 +433,7 @@ export function PaymentMethodDialog({
       )}
 
       {/* ── MULTI PAYMENT ── */}
-      {flow === "multi" && (
+      {flow === "MULTI_PAYMENT" && (
         <div className="flex flex-col flex-1 min-h-0">
           {/* Progress header */}
           <div className="bg-gradient-to-r from-teal-500 to-teal-600 px-4 py-3">
@@ -538,7 +541,7 @@ export function PaymentMethodDialog({
       )}
 
       {/* ── SPLIT BILL ── */}
-      {flow === "split" && (
+      {flow === "SPLIT_BILL" && (
         <div className="flex flex-col" style={{ minHeight: 0 }}>
 
           {/* Step 1: Bill selector */}

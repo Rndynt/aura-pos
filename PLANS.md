@@ -10127,3 +10127,116 @@ Centralize POS cashier payment submission in `pos-core` so business-flow hooks o
 
 ### Continuation Notes
 Next safest phase: P9.2 atomic backend create-order-with-many-payments and durable split context APIs; then type `PaymentMethodDialog` submit payload to remove `// @ts-nocheck`.
+
+## Plan: P9.2 Clean POS Payment Refactor
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P9_2_clean_pos_payment_refactor_prompt.md`
+- User request: Analisa mendalam, tambahkan hal tidak sesuai di report, dan eksekusi P9.2 clean POS payment refactor.
+- Date started: 2026-06-21
+- Current status: Implemented and validated, with backend multi-row atomic endpoint documented as next phase.
+
+### Goal
+Replace mixed legacy POS payment aliases with one canonical payment language across domain/application/API/POS core, decouple payment from business type, and make fresh-cart multi/split retry session-safe.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active P9.2 tasklist/checklist
+- [x] Relevant P9/P9.1 reports and source files
+- [x] Relevant POS, API, application, infrastructure, and schema files
+
+### Workstreams
+#### Frontend/UI Workstream
+- Scope: POS payment dialog, flow hooks, POS core submission service.
+- Files inspected: Payment dialog, retail/restaurant hooks, pos-core services/mappers.
+- Findings: UI emitted lowercase flow aliases and POS core normalized them.
+- Tasks: Switched dialog details to canonical flow/kind values, added payment method mapper, stable session IDs, result-based cart clearing, and retry order cache.
+- Risks: Dialog still has `// @ts-nocheck`.
+- Validation: terminal-web type-check/test passed.
+
+#### Backend/API Workstream
+- Scope: OrdersController payment DTOs and application payment use case contracts.
+- Findings: API accepted legacy aliases and normalized them in controller.
+- Tasks: API now accepts canonical methods/flows/kinds and application use case inputs use canonical values.
+- Risks: Existing DB columns are varchar and can hold canonical values; historical lowercase rows may still exist.
+- Validation: API type-check/test passed.
+
+#### Domain/Application Workstream
+- Scope: payment domain package and application payment helper exports.
+- Findings: Payment concepts lived in application/POS services with lowercase names.
+- Tasks: Added `packages/domain/payments` canonical types/calculations and re-exported through application.
+- Validation: domain/application type-check and application tests passed.
+
+#### Tests/Validation Workstream
+- Scope: canonical contract tests and API regression tests.
+- Tasks: Updated POS/application/API tests to canonical values; added old-alias rejection assertion.
+- Validation: required commands passed.
+
+#### Documentation Workstream
+- Scope: P9.2 report, source prompt checklist, PLANS.
+- Tasks: Created report and marked checklist after validation.
+
+### Progress
+#### Completed
+- [x] Canonical payment domain types added.
+  - Files changed: `packages/domain/payments/*`, `packages/domain/package.json`
+  - Validation: `pnpm --filter @pos/domain type-check`
+  - Docs updated: P9.2 report
+- [x] POS core payment submission rebuilt around canonical commands.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-core/services/posPaymentSubmissionService.ts`, payment mapper
+  - Validation: terminal-web type-check/test
+  - Docs updated: P9.2 report
+- [x] API/application payment contracts switched to canonical DTO values.
+  - Files changed: OrdersController, application order payment use cases, infrastructure payment repositories
+  - Validation: api/application type-check/test
+  - Docs updated: P9.2 report
+- [x] Fresh-cart retry parent order session guard added.
+  - Files changed: POS flow hooks and submission service
+  - Validation: terminal-web tests/type-check
+  - Docs updated: P9.2 report
+
+#### Partially Completed
+- [ ] Backend-atomic multi-row SubmitPOSPayment endpoint.
+  - Completed: canonical command boundary and session-safe parent order reuse.
+  - Remaining: one backend transaction for parent order + multiple payment rows and deterministic line idempotency.
+  - Reason: Existing create-and-pay use case remains single payment row; P9.2 accepted temporary if no duplicate parent order remains possible.
+
+#### Blocked
+- [ ] None.
+
+#### Not Attempted
+- [ ] Type `PaymentMethodDialog` and remove `// @ts-nocheck`.
+  - Reason: Not required to complete canonical contract; documented as next cleanup.
+
+### Validation Log
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: pass
+- Command: `pnpm --filter @pos/domain type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/api test`
+- Result: pass after canonicalizing old test request payloads
+
+### Documentation Updates
+- File: `roadmap/business-flows/P9_2_clean_pos_payment_refactor_report.md`
+- Change: Created implementation report, cleanup notes, grep findings, limitations, and next phase.
+- File: `roadmap/business-flows/replit_codex_P9_2_clean_pos_payment_refactor_prompt.md`
+- Change: Completion checklist marked after implementation/validation.
+- File: `PLANS.md`
+- Change: Added P9.2 execution plan entry.
+
+### Checklist Updates
+- File: `roadmap/business-flows/replit_codex_P9_2_clean_pos_payment_refactor_prompt.md`
+- Change: Completion checklist checked after code and validation.
+
+### Continuation Notes
+Next safest phase: backend `SubmitPOSPayment` endpoint/use case with transactionally persisted multi/split rows, deterministic line idempotency, and typed `PaymentMethodDialog` payloads.

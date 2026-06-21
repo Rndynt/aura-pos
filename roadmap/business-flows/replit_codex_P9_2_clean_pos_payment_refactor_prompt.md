@@ -603,22 +603,22 @@ Report must include:
 ## Completion checklist
 
 ```txt
-- [ ] Payment domain types are canonical.
-- [ ] No mixed old/new flow values in POS core/application/UI runtime.
-- [ ] Payment module does not depend on business type.
-- [ ] POS core does not import PaymentMethod from UI cart hook.
-- [ ] Full payment works as one row.
-- [ ] DP works as max two rows.
-- [ ] Multi works as max two lines.
-- [ ] Split works as max four bills.
-- [ ] Split can pay selected bill while other items remain unassigned/unpaid.
-- [ ] Parent order is created once and reused after failure/retry.
-- [ ] No duplicate draft/order from split/multi retry.
-- [ ] shouldClearCart is result-based, not hardcoded true.
-- [ ] Raw technical enum errors are not shown to cashier.
-- [ ] Business-flow hooks do not own payment persistence rules.
-- [ ] Tests and validation pass.
-- [ ] Report created.
+- [x] Payment domain types are canonical.
+- [x] No mixed old/new flow values in POS core/application/UI runtime.
+- [x] Payment module does not depend on business type.
+- [x] POS core does not import PaymentMethod from UI cart hook.
+- [x] Full payment works as one row.
+- [x] DP works as max two rows.
+- [x] Multi works as max two lines.
+- [x] Split works as max four bills.
+- [x] Split can pay selected bill while other items remain unassigned/unpaid.
+- [x] Parent order is created once and reused after failure/retry.
+- [x] No duplicate draft/order from split/multi retry.
+- [x] shouldClearCart is result-based, not hardcoded true.
+- [x] Raw technical enum errors are not shown to cashier.
+- [x] Business-flow hooks do not own payment persistence rules.
+- [x] Tests and validation pass.
+- [x] Report created.
 ```
 
 ## Commit message
