@@ -44,7 +44,7 @@ const offlineOrderSchema = z.object({
   tax_rate: z.number().min(0).max(1).optional(),
   service_charge_rate: z.number().min(0).max(1).optional(),
   amount: z.number().positive(),
-  payment_method: z.enum(['cash', 'card', 'ewallet', 'other']),
+  payment_method: z.enum(['CASH', 'MANUAL_TRANSFER', 'MANUAL_QRIS']),
   transaction_ref: z.string().optional(),
   payment_notes: z.string().optional(),
   client_created_at: z.string().optional(),
