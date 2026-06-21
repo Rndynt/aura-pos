@@ -1,5 +1,5 @@
 /**
- * POSPaymentController — P9.3
+ * POSPaymentController
  *
  * Handles POST /api/pos/payments/submit
  *
@@ -28,7 +28,7 @@ import { getEffectiveEntitlementMap } from '../../services/tenantEntitlements';
 import { POSPaymentValidationError } from '@pos/application/payments';
 
 // ---------------------------------------------------------------------------
-// Zod schemas — canonical values only, old aliases rejected at parse time
+// Zod schemas — canonical values only
 // ---------------------------------------------------------------------------
 
 const selectedOptionSchema = z.object({
@@ -130,11 +130,15 @@ export const submitPOSPayment = asyncHandler(async (req: Request, res: Response)
   if (!parsed.success) {
     const firstError = parsed.error.errors[0];
     const fieldPath = firstError?.path?.join('.') ?? '';
-    const oldAlias = /full_payment|partial_payment_dp|normalizePOS|full\b|dp\b|multi\b|split\b/i.test(String(firstError?.message ?? '') + fieldPath);
-    if (oldAlias || firstError?.code === 'invalid_enum_value') {
-      throw createError('Tipe pembayaran tidak valid.', 400, 'PAYMENT_FLOW_INVALID');
+    if (firstError?.code === 'invalid_enum_value') {
+      const isPaymentMethodPath = fieldPath.includes('method');
+      throw createError(
+        isPaymentMethodPath ? 'Metode pembayaran tidak valid.' : 'Tipe pembayaran tidak valid.',
+        400,
+        isPaymentMethodPath ? 'PAYMENT_METHOD_INVALID' : 'PAYMENT_FLOW_INVALID',
+      );
     }
-    throw createError('Request tidak valid: ' + (firstError?.message ?? parsed.error.message), 400, 'VALIDATION_ERROR');
+    throw createError('Data pembayaran tidak valid. Periksa input lalu coba lagi.', 400, 'VALIDATION_ERROR');
   }
 
   const data = parsed.data;

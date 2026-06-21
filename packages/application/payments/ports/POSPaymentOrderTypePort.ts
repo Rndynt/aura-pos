@@ -1,5 +1,5 @@
 /**
- * POSPaymentOrderTypePort — P9.3
+ * POSPaymentOrderTypePort
  *
  * Port for validating order_type_id before any order insert.
  * Returns user-safe errors — never exposes FK or DB error messages.

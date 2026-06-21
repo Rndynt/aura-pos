@@ -7,7 +7,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useTenant } from "@/context/TenantContext";
 import { useTenantProfile } from "@/hooks/api/useTenantProfile";
-import { useProducts, useCreateOrder, useUpdateOrder, useOrderTypes, useRecordPayment } from "@/lib/api/hooks";
+import { useProducts, useCreateOrder, useUpdateOrder, useOrderTypes, useSubmitPOSPayment } from "@/lib/api/hooks";
 import type { Product, ProductVariant } from "@pos/domain/catalog/types";
 import type { SelectedOption } from "@pos/domain/orders/types";
 import { saveLocalDraftOrder } from "@pos/offline";
@@ -23,7 +23,6 @@ import {
   type POSLifecycleOrder,
   usePOSActiveOrderPayment,
   usePOSCustomerDisplayController,
-  usePOSOfflineSubmit,
   usePOSReceiptController,
   usePOSStockGuard,
   submitPOSPayment,
@@ -61,9 +60,7 @@ export function useRetailStandardPOSFlow() {
   const activeOrderTypes = useMemo(() => orderTypes?.filter((ot) => ot.isActive === true) || [], [orderTypes]);
   const createOrderMutation = useCreateOrder();
   const updateOrderMutation = useUpdateOrder();
-  const recordPaymentMutation = useRecordPayment();
-  const submitPaymentRow = recordPaymentMutation.mutateAsync;
-  const { submitOrder } = usePOSOfflineSubmit();
+  const submitPOSPaymentMutation = useSubmitPOSPayment();
   const { buildReceiptPayload, enqueueReceiptPrintJob, markReceiptPrintFailed, printReceiptNow, shouldAutoPrintReceipt } = usePOSReceiptController();
   const { sendToCFD } = usePOSCustomerDisplayController({ cart, tenantName, inPaymentFlowRef, enabled: can("customer_display") });
   const { payActiveOrder } = usePOSActiveOrderPayment({ setPendingOrderForPayment, openPaymentDialog: () => setPaymentMethodDialogOpen(true) });
@@ -195,10 +192,7 @@ export function useRetailStandardPOSFlow() {
   const handlePaymentMethodConfirm = async (paymentMethod: PaymentMethod, cashReceived?: number, partialAmount?: number, paymentDetails?: any) => {
     setIsProcessingQuickCharge(true);
     const dependencies = {
-      createOrder: (payload: Record<string, unknown>) => createOrderMutation.mutateAsync(payload as any),
-      updateOrder: (payload: { orderId: string } & Record<string, unknown>) => updateOrderMutation.mutateAsync(payload as any),
-      recordPayment: (payload: any) => submitPaymentRow(payload),
-      createAndPay: (payload: Record<string, unknown>) => submitOrder(payload as any),
+      submitCanonicalPayment: (payload: any) => submitPOSPaymentMutation.mutateAsync(payload),
     };
 
     try {

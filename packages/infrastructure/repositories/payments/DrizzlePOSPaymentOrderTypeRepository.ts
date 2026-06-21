@@ -1,5 +1,5 @@
 /**
- * DrizzlePOSPaymentOrderTypeRepository — P9.3
+ * DrizzlePOSPaymentOrderTypeRepository
  *
  * Validates order_type_id before any order insert.
  * Returns user-safe results — never exposes FK or DB constraint names.

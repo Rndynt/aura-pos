@@ -1,5 +1,5 @@
 /**
- * SubmitPOSPaymentResult — P9.3
+ * SubmitPOSPaymentResult
  *
  * Canonical result returned by the SubmitPOSPayment use case.
  */

@@ -7,7 +7,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useTenant } from "@/context/TenantContext";
 import { useTenantProfile } from "@/hooks/api/useTenantProfile";
-import { useProducts, useCreateOrder, useUpdateOrder, useOrderTypes, useRecordPayment, useCreateKitchenTicket } from "@/lib/api/hooks";
+import { useProducts, useCreateOrder, useUpdateOrder, useOrderTypes, useSubmitPOSPayment, useCreateKitchenTicket } from "@/lib/api/hooks";
 import type { Product, ProductVariant } from "@pos/domain/catalog/types";
 import type { SelectedOption } from "@pos/domain/orders/types";
 import { saveLocalDraftOrder, enqueueLocalKitchenTicket, getOrCreateTerminalIdentity } from "@pos/offline";
@@ -65,8 +65,7 @@ export function useRestaurantTableServicePOSFlow() {
   const activeOrderTypes = useMemo(() => orderTypes?.filter((ot) => ot.isActive === true) || [], [orderTypes]);
   const createOrderMutation = useCreateOrder();
   const updateOrderMutation = useUpdateOrder();
-  const recordPaymentMutation = useRecordPayment();
-  const submitPaymentRow = recordPaymentMutation.mutateAsync;
+  const submitPOSPaymentMutation = useSubmitPOSPayment();
   const createKitchenTicketMutation = useCreateKitchenTicket();
   const queryClient = useQueryClient();
   const { sendToKDS } = useKitchenChannelSender(can("restaurant_kitchen_ops"));
@@ -259,8 +258,7 @@ export function useRestaurantTableServicePOSFlow() {
         partialAmount,
         paymentDetails,
       }, {
-        createOrder: (payload: Record<string, unknown>) => createOrderMutation.mutateAsync(payload as any),
-        recordPayment: (payload: any) => submitPaymentRow(payload),
+        submitCanonicalPayment: (payload: any) => submitPOSPaymentMutation.mutateAsync(payload),
       });
       await refetchOpenOrders();
       toast({ title: result.messageTitle, description: result.messageDescription });

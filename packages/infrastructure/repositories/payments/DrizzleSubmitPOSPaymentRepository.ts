@@ -1,5 +1,5 @@
 /**
- * DrizzleSubmitPOSPaymentRepository — P9.3
+ * DrizzleSubmitPOSPaymentRepository
  *
  * Unified repository for the SubmitPOSPayment use case.
  * Executes ALL critical operations (create order, persist splits, insert payment rows,
@@ -415,7 +415,7 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
         paymentStatus: newPaymentStatus,
         updatedAt: new Date(),
       };
-      if (shouldConfirmOrder || source === "FRESH_CART") {
+      if (shouldConfirmOrder) {
         statusUpdates.status = "confirmed";
       }
       if (newPaymentStatus === "paid" && fulfillmentMode === "instant") {

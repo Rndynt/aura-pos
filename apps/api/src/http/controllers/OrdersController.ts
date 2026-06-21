@@ -79,6 +79,19 @@ async function requirePaymentEntitlement(tenantId: string, entitlementCode: stri
   );
 }
 
+async function resolveOrderTypeForTenant(
+  tenantId: string,
+  orderTypeId: string | null | undefined,
+): Promise<string | null> {
+  const result = await container.posPaymentOrderTypeRepository.validateOrderTypeForTenant(
+    tenantId,
+    orderTypeId,
+  );
+  if (!result.valid) {
+    throw createError(result.message, 400, result.errorCode);
+  }
+  return result.orderTypeId;
+}
 
 async function attachLifecycleFields(orders: any[], tenantId: string): Promise<any[]> {
   if (orders.length === 0) return orders;
@@ -189,16 +202,18 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
 
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+    throw createError('Data pesanan tidak valid. Periksa input lalu coba lagi.', 400, 'VALIDATION_ERROR');
   }
 
   const idempotencyKey = getIdempotencyKey(req, parsed.data.idempotency_key);
+  const orderTypeId = await resolveOrderTypeForTenant(tenantId, parsed.data.order_type_id);
 
   // Execute use case
   const result = await container.createOrder.execute({
     tenant_id: tenantId,
     outlet_id: req.outletId,
     ...parsed.data,
+    order_type_id: orderTypeId ?? undefined,
     idempotency_key: idempotencyKey,
   });
 
@@ -246,7 +261,7 @@ export const recordPayment = asyncHandler(async (req: Request, res: Response) =>
 
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+    throw createError('Data pesanan tidak valid. Periksa input lalu coba lagi.', 400, 'VALIDATION_ERROR');
   }
 
   const idempotencyKey = parsed.data.idempotency_key?.trim();
@@ -336,7 +351,7 @@ export const createKitchenTicket = asyncHandler(async (req: Request, res: Respon
 
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+    throw createError('Data pesanan tidak valid. Periksa input lalu coba lagi.', 400, 'VALIDATION_ERROR');
   }
 
   await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
@@ -405,7 +420,7 @@ export const listOrders = asyncHandler(async (req: Request, res: Response) => {
 
   const parsed = querySchema.safeParse(req.query);
   if (!parsed.success) {
-    throw createError('Invalid query parameters: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+    throw createError('Parameter pencarian pesanan tidak valid.', 400, 'VALIDATION_ERROR');
   }
 
   const { status, payment_status, startDate, endDate, page, limit } = parsed.data;
@@ -514,10 +529,13 @@ export const updateOrder = asyncHandler(async (req: Request, res: Response) => {
 
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+    throw createError('Data pesanan tidak valid. Periksa input lalu coba lagi.', 400, 'VALIDATION_ERROR');
   }
 
   await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
+  const orderTypeId = parsed.data.order_type_id !== undefined
+    ? await resolveOrderTypeForTenant(tenantId, parsed.data.order_type_id)
+    : undefined;
 
   // Execute use case - update existing order
   let result;
@@ -526,6 +544,7 @@ export const updateOrder = asyncHandler(async (req: Request, res: Response) => {
       order_id: id,
       tenant_id: tenantId,
       ...parsed.data,
+      order_type_id: orderTypeId ?? undefined,
     });
   } catch (error) {
     const code = error instanceof Error ? (error as any).code : undefined;
@@ -643,7 +662,7 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
     const parsed = bodySchema.safeParse(req.body);
     if (!parsed.success) {
       throw createError(
-        'Invalid request body: ' + parsed.error.message + '. Kitchen mode allows: ' + KITCHEN_STATUSES.join(', '),
+        'Status dapur tidak valid.',
         400,
         'VALIDATION_ERROR'
       );
@@ -677,7 +696,7 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
 
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+    throw createError('Data pesanan tidak valid. Periksa input lalu coba lagi.', 400, 'VALIDATION_ERROR');
   }
 
   await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
@@ -718,7 +737,7 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
 
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+    throw createError('Data pesanan tidak valid. Periksa input lalu coba lagi.', 400, 'VALIDATION_ERROR');
   }
 
   const order = await assertOrderBelongsToOutlet(id, tenantId, req.outletId);
@@ -788,7 +807,7 @@ export const listOpenOrders = asyncHandler(async (req: Request, res: Response) =
 
   const parsed = querySchema.safeParse(req.query);
   if (!parsed.success) {
-    throw createError('Invalid query parameters: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+    throw createError('Parameter pencarian pesanan tidak valid.', 400, 'VALIDATION_ERROR');
   }
 
   // Execute use case
@@ -838,7 +857,7 @@ export const listOrderHistory = asyncHandler(async (req: Request, res: Response)
 
   const parsed = querySchema.safeParse(req.query);
   if (!parsed.success) {
-    throw createError('Invalid query parameters: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+    throw createError('Parameter pencarian pesanan tidak valid.', 400, 'VALIDATION_ERROR');
   }
 
   // Execute use case
@@ -916,10 +935,11 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
 
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+    throw createError('Data pesanan tidak valid. Periksa input lalu coba lagi.', 400, 'VALIDATION_ERROR');
   }
 
   const idempotencyKey = getIdempotencyKey(req, parsed.data.idempotency_key);
+  const orderTypeId = await resolveOrderTypeForTenant(tenantId, parsed.data.order_type_id);
   const estimatedTotal = estimateCreateAndPayTotal(parsed.data);
   const normalizedCreatePaymentFlow = parsed.data.payment_flow ?? (parsed.data.amount < estimatedTotal - 0.01 ? 'DOWN_PAYMENT' : 'FULL');
   if (normalizedCreatePaymentFlow === 'MULTI_PAYMENT' || normalizedCreatePaymentFlow === 'SPLIT_BILL') {
@@ -940,7 +960,7 @@ export const createAndPay = asyncHandler(async (req: Request, res: Response) => 
       tenant_id: tenantId,
       outlet_id: req.outletId ?? null,
       items: parsed.data.items,
-      order_type_id: parsed.data.order_type_id,
+      order_type_id: orderTypeId ?? undefined,
       customer_name: parsed.data.customer_name,
       table_number: parsed.data.table_number,
       tax_rate: parsed.data.tax_rate,

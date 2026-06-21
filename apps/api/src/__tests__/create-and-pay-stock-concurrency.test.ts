@@ -569,7 +569,7 @@ describe('CreateAndPayOrder stock concurrency', () => {
           tax_rate: 0,
           service_charge_rate: 0,
           amount: 20,
-          payment_method: 'cash',
+          payment_method: 'CASH',
           source_terminal_id: 'terminal-sync-1',
         },
       ],

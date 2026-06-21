@@ -1,5 +1,5 @@
 /**
- * SubmitPOSPayment Use Case — P9.3
+ * SubmitPOSPayment Use Case
  *
  * Orchestrates POS payment submission for ALL flows:
  *   FULL, DOWN_PAYMENT, MULTI_PAYMENT, SPLIT_BILL
@@ -8,7 +8,7 @@
  * - Does not know businessProfile.
  * - Does not import React, frontend hooks, or business-flow UI.
  * - Does not import Drizzle directly.
- * - Validates canonical values and rejects old aliases.
+ * - Validates canonical values and rejects non-canonical input.
  * - Delegates all DB work to the repository port.
  * - Returns SubmitPOSPaymentResult so callers can decide UI behaviour.
  */
@@ -29,23 +29,14 @@ export class POSPaymentValidationError extends Error {
   }
 }
 
-const LEGACY_ALIASES = new Set([
-  "full",
-  "full_payment",
-  "partial",
-  "partial_payment_dp",
-  "dp",
-  "multi",
-  "split",
-  "full_payment_legacy",
-]);
-
-function rejectLegacyAlias(value: string | undefined, field: string): void {
+function rejectNonCanonicalValue(value: string | undefined, allowedValues: readonly string[], code: string): void {
   if (!value) return;
-  if (LEGACY_ALIASES.has(value.toLowerCase())) {
+  const normalizedValue = value.toUpperCase();
+  const canonicalValues = new Set(allowedValues);
+  if (!canonicalValues.has(normalizedValue)) {
     throw new POSPaymentValidationError(
-      "PAYMENT_FLOW_INVALID",
-      `Tipe pembayaran tidak valid: "${value}". Gunakan nilai canonical (FULL, DOWN_PAYMENT, MULTI_PAYMENT, SPLIT_BILL).`,
+      code,
+      code === "PAYMENT_METHOD_INVALID" ? "Metode pembayaran tidak valid." : "Tipe pembayaran tidak valid.",
     );
   }
 }
@@ -92,7 +83,7 @@ export class SubmitPOSPayment {
 
     const flow = command.payment.flow;
 
-    rejectLegacyAlias(flow, "payment.flow");
+    rejectNonCanonicalValue(flow, ["FULL", "DOWN_PAYMENT", "MULTI_PAYMENT", "SPLIT_BILL"], "PAYMENT_FLOW_INVALID");
 
     if (!isPOSPaymentFlow(flow)) {
       throw new POSPaymentValidationError(
@@ -139,7 +130,7 @@ export class SubmitPOSPayment {
     }
 
     for (const line of lines) {
-      rejectLegacyAlias(line.method, "payment.lines[].method");
+      rejectNonCanonicalValue(line.method, ["CASH", "MANUAL_TRANSFER", "MANUAL_QRIS"], "PAYMENT_METHOD_INVALID");
       if (!isPOSPaymentMethod(line.method)) {
         throw new POSPaymentValidationError(
           "PAYMENT_METHOD_INVALID",

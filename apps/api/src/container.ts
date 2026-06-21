@@ -55,7 +55,7 @@ import { ConfirmOrderWorkflow } from '@pos/application/orders/services/ConfirmOr
 import { CancelOrderWorkflow } from '@pos/application/orders/services/CancelOrderWorkflow';
 import { SyncOfflineOrder } from '@pos/application/sync/SyncOfflineOrder';
 
-// Use Cases - Payments (P9.3)
+// Use Cases - Payments
 import { SubmitPOSPayment } from '@pos/application/payments';
 import { DrizzleSubmitPOSPaymentRepository } from '@pos/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository';
 import { DrizzlePOSPaymentOrderTypeRepository } from '@pos/infrastructure/repositories/payments/DrizzlePOSPaymentOrderTypeRepository';
@@ -115,8 +115,9 @@ class Container {
   public readonly transitionOrderFulfillmentStatus: TransitionOrderFulfillmentStatus;
   /** Sprint 4: batch offline order sync */
   public readonly syncOfflineOrder: SyncOfflineOrder;
-  /** P9.3: unified POS payment submission (FULL/DP/MULTI/SPLIT in one transaction) */
+  /** unified POS payment submission (FULL/DP/MULTI/SPLIT in one transaction) */
   public readonly submitPOSPayment: SubmitPOSPayment;
+  public readonly posPaymentOrderTypeRepository: DrizzlePOSPaymentOrderTypeRepository;
 
   constructor() {
     // Initialize Repositories
@@ -216,10 +217,11 @@ class Container {
       this.tenantRepository as any
     );
 
-    // P9.3: Unified POS payment use case
+    // Unified POS payment use case
+    this.posPaymentOrderTypeRepository = new DrizzlePOSPaymentOrderTypeRepository(db);
     this.submitPOSPayment = new SubmitPOSPayment(
       new DrizzleSubmitPOSPaymentRepository(db, this.unitOfWork),
-      new DrizzlePOSPaymentOrderTypeRepository(db),
+      this.posPaymentOrderTypeRepository,
     );
   }
 }

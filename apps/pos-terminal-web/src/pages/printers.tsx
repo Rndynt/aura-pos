@@ -20,7 +20,7 @@ import { PrintQueuePanel } from "@/components/offline/PrintQueuePanel";
 const TEST_PAYLOAD = {
   orderNumber: "TEST-PRINT",
   tenantName: "AuraPoS Printer Hub",
-  paymentMethod: "cash" as const,
+  paymentMethod: "CASH" as const,
   createdAt: new Date(),
   subtotal: 10_000,
   tax: 1_000,

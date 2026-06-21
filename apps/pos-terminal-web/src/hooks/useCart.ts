@@ -286,6 +286,56 @@ export function useCart() {
     });
   };
 
+  const loadOrder = (order: {
+    customerName?: string;
+    customer_name?: string;
+    tableNumber?: string;
+    table_number?: string;
+    orderTypeId?: string | null;
+    order_type_id?: string | null;
+    orderType?: OrderType;
+    order_type?: OrderType;
+    items?: Array<Record<string, any>>;
+    orderItems?: Array<Record<string, any>>;
+  }) => {
+    const sourceItems = order.items ?? order.orderItems ?? [];
+    setItems(sourceItems.map((item) => {
+      const selectedOptions = (item.selectedOptions ?? item.selected_options ?? []) as SelectedOption[];
+      const product: Product = {
+        id: String(item.productId ?? item.product_id ?? item.product?.id ?? ""),
+        tenant_id: String(item.tenantId ?? item.tenant_id ?? item.product?.tenant_id ?? ""),
+        name: String(item.productName ?? item.product_name ?? item.product?.name ?? "Produk"),
+        sku: item.sku ?? item.product?.sku,
+        category: item.category ?? item.product?.category ?? "",
+        base_price: Number(item.unitPrice ?? item.base_price ?? item.product?.base_price ?? 0),
+        cost_price: Number(item.costPrice ?? item.cost_price ?? item.product?.cost_price ?? 0),
+        stock_qty: Number(item.stockQty ?? item.stock_qty ?? item.product?.stock_qty ?? 0),
+        min_stock: Number(item.minStock ?? item.min_stock ?? item.product?.min_stock ?? 0),
+        has_variants: Boolean(item.hasVariants ?? item.has_variants ?? item.product?.has_variants ?? false),
+        stock_tracking_enabled: Boolean(item.stockTrackingEnabled ?? item.stock_tracking_enabled ?? item.product?.stock_tracking_enabled ?? false),
+        is_active: item.isActive ?? item.is_active ?? item.product?.is_active ?? true,
+        created_at: item.createdAt ? new Date(item.createdAt) : new Date(),
+        updated_at: item.updatedAt ? new Date(item.updatedAt) : new Date(),
+        image_url: item.imageUrl ?? item.image_url ?? item.product?.image_url,
+      } as Product;
+      const quantity = Number(item.quantity ?? 1);
+      return {
+        id: String(item.id ?? nanoid()),
+        product,
+        variant: item.variant,
+        selectedOptions,
+        quantity,
+        itemTotal: Number(item.itemSubtotal ?? item.item_subtotal ?? item.total ?? product.base_price * quantity),
+        note: item.notes ?? item.note ?? "",
+        discount: item.discount,
+      };
+    }));
+    setCustomerName(order.customerName ?? order.customer_name ?? "");
+    setTableNumber(order.tableNumber ?? order.table_number ?? "");
+    setSelectedOrderTypeId(order.orderTypeId ?? order.order_type_id ?? null);
+    if (order.orderType ?? order.order_type) setOrderType((order.orderType ?? order.order_type) as OrderType);
+  };
+
   const toBackendOrderItems = (): BackendOrderItem[] =>
     items.map((item) => {
       const discountAmount = getItemDiscountAmount(item);
@@ -341,6 +391,7 @@ export function useCart() {
     setItemDiscount,
     clearCart,
     addItemsFromOrder,
+    loadOrder,
     toBackendOrderItems,
     subtotal,
     itemsDiscountTotal,

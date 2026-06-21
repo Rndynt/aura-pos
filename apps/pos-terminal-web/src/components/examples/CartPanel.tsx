@@ -76,7 +76,7 @@ export default function CartPanelExample() {
         orderNumber="#123456"
         tableNumber=""
         setTableNumber={() => undefined}
-        paymentMethod="cash"
+        paymentMethod="CASH"
         setPaymentMethod={() => undefined}
         orderType="dine-in"
         setOrderType={() => undefined}

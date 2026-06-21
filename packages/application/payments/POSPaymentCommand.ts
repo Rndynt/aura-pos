@@ -1,8 +1,8 @@
 /**
- * SubmitPOSPaymentCommand — P9.3
+ * SubmitPOSPaymentCommand
  *
  * Canonical backend command for the SubmitPOSPayment use case.
- * All enum values must be canonical — no legacy aliases accepted.
+ * All enum values must be canonical.
  */
 
 import type { POSPaymentFlow } from "@pos/domain/payments";

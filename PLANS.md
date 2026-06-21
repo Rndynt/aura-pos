@@ -7490,7 +7490,7 @@ Memisahkan DP/Bayar Sebagian, Multi Payment, dan Split Bill sebagai entitlement,
 
 ### Documentation Updates
 - File: docs/billing-entitlement.md
-- Change: payment entitlement list now describes DP, Multi Payment, and canonical Split Bill/legacy alias semantics.
+- Change: payment entitlement list now describes DP, Multi Payment, and canonical Split Bill/old alias semantics.
 - File: roadmap/orders/payment_flow_entitlement_separation_report.md
 - Change: required report created with implemented, partial, and blocker status.
 
@@ -10158,7 +10158,7 @@ Replace mixed legacy POS payment aliases with one canonical payment language acr
 
 #### Backend/API Workstream
 - Scope: OrdersController payment DTOs and application payment use case contracts.
-- Findings: API accepted legacy aliases and normalized them in controller.
+- Findings: API accepted old aliases and normalized them in controller.
 - Tasks: API now accepts canonical methods/flows/kinds and application use case inputs use canonical values.
 - Risks: Existing DB columns are varchar and can hold canonical values; historical lowercase rows may still exist.
 - Validation: API type-check/test passed.
@@ -10240,3 +10240,170 @@ Replace mixed legacy POS payment aliases with one canonical payment language acr
 
 ### Continuation Notes
 Next safest phase: backend `SubmitPOSPayment` endpoint/use case with transactionally persisted multi/split rows, deterministic line idempotency, and typed `PaymentMethodDialog` payloads.
+
+## Plan: Backend SubmitPOSPayment + Order Type Guard + Persisted Split Lifecycle
+
+### Source
+
+- Tasklist: `roadmap/business-flows/replit_codex_P9_3_backend_submit_pos_payment_prompt.md`
+- User request: Analisa mendalam, lanjutkan pekerjaan Replit yang terhenti, hapus old alias, koreksi migration naming, dan jangan expose error teknis ke end user.
+- Date started: 2026-06-21
+- Current status: Implemented and fully validated
+
+### Goal
+
+Move POS payment submission to a backend-owned canonical SubmitPOSPayment flow, prevent stale `order_type_id` FK crashes, persist split lifecycle, remove old alias handling, and make frontend payment flows consume backend aggregate results.
+
+### Context Read
+
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs and roadmap files
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+
+- Scope: SubmitPOSPayment use case, controller, route, container wiring, user-safe validation.
+- Files inspected: `packages/application/payments/*`, `packages/infrastructure/repositories/payments/*`, `apps/api/src/http/controllers/POSPaymentController.ts`, `apps/api/src/http/routes/pos.ts`, `apps/api/src/container.ts`.
+- Findings: Backend SubmitPOSPayment existed but still had a hardcoded old alias set and P9-labelled comments; frontend was not yet using the endpoint.
+- Tasks: Remove old alias set, keep canonical validation, route frontend to endpoint, map invalid enum errors safely.
+- Risks: Resolved in follow-up; older order/create-and-pay controller paths now use the same order type guard before use-case execution.
+- Validation: application/API/root type-check and tests pass.
+
+#### Database/Schema Workstream
+
+- Scope: Migration naming and split bill client bill ID.
+- Files inspected: `migrations/0016_*`, `migrations/0017_*`, `packages/infrastructure/db/schema/orders.schema.ts`.
+- Findings: New migration filenames/comments included P-labels and payment metadata defaults had old lowercase values.
+- Tasks: Rename migrations to descriptive project-style names and set canonical defaults.
+- Risks: Drizzle journal does not currently list these root migrations; migration runner behavior should be verified in deployment environment.
+- Validation: Static inspection and type-check through API/application.
+
+#### Frontend/UI Workstream
+
+- Scope: POS payment submission service and retail/restaurant payment paths.
+- Files inspected: `apps/pos-terminal-web/src/features/pos-core/services/posPaymentSubmissionService.ts`, retail and restaurant flow hooks, API hooks.
+- Findings: Fresh-cart multi/split still used client orchestration by creating order then recording rows.
+- Tasks: Build one `SubmitPOSPaymentRequest`, add `useSubmitPOSPayment`, and use backend result for clear-cart behavior.
+- Risks: Resolved in follow-up; POS type-check now passes.
+- Validation: POS terminal type-check and tests pass.
+
+#### Tests/Validation Workstream
+
+- Scope: Application use-case and frontend command builder tests plus required command checks.
+- Files inspected: package scripts and existing tests.
+- Findings: `@pos/application test` referenced a missing SubmitPOSPayment test file.
+- Tasks: Add the missing test and update POS core payment submission tests.
+- Risks: Covered by current unit/API suites; optional repository integration harness can be added later if the project standardizes DB integration tests.
+- Validation: Application and POS terminal test suites pass.
+
+#### Documentation Workstream
+
+- Scope: Source roadmap checklist, implementation report, plan file.
+- Files inspected: roadmap prompt and report paths.
+- Findings: Report did not exist before this batch.
+- Tasks: Create report, update acceptance checklist, record validation caveats.
+- Risks: None.
+- Validation: File updates reviewed.
+
+#### Security/Tenant Isolation Workstream
+
+- Scope: Tenant-aware order/payment operations and endpoint authorization.
+- Files inspected: Submit repository, order type repository, POS route.
+- Findings: Endpoint uses cashier RBAC and tenant context; repository filters order/session lookup by tenant.
+- Tasks: Preserve tenant filters and order type tenant enablement checks.
+- Risks: Resolved in follow-up; older order/create-and-pay controller paths now resolve order type through the tenant-aware guard.
+- Validation: API test suite including tenant guard tests passes.
+
+### Execution Order
+
+1. Remove old alias set and P-labelled implementation comments.
+2. Rename migrations and canonicalize payment defaults.
+3. Route frontend SubmitPOSPayment service through backend endpoint.
+4. Add tests for application use case and frontend command builder.
+5. Run validation and grep cleanup checks.
+6. Update roadmap checklist, report, and PLANS.md.
+
+### Progress
+
+#### Completed
+
+- [x] Task: Backend SubmitPOSPayment use case cleaned and canonical validation enforced.
+  - Files changed: `packages/application/payments/SubmitPOSPayment.ts`, `packages/application/payments/__tests__/SubmitPOSPayment.test.ts`.
+  - Validation: application type-check/test pass.
+  - Docs updated: report and checklist.
+- [x] Task: Frontend payment submission now posts one backend command.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-core/services/posPaymentSubmissionService.ts`, retail/restaurant flow hooks, `apps/pos-terminal-web/src/lib/api/hooks.ts`.
+  - Validation: POS type-check/test pass.
+  - Docs updated: report and checklist.
+- [x] Task: Migration names corrected and canonical defaults used.
+  - Files changed: `migrations/0016_order_payment_flow_metadata.sql`, `migrations/0017_order_bill_splits_client_bill_id.sql`.
+  - Validation: root type-check/build pass.
+  - Docs updated: report.
+- [x] Task: Clear all previously documented validation blockers.
+  - Files changed: API/offline lowercase payment fixtures, POS example/printer payloads, `useCart.loadOrder`.
+  - Validation: `pnpm type-check` pass across all 10 workspace packages.
+  - Docs updated: report and this plan.
+- [x] Task: Apply order type guard beyond SubmitPOSPayment.
+  - Files changed: `apps/api/src/container.ts`, `apps/api/src/http/controllers/OrdersController.ts`.
+  - Validation: API type-check/test pass.
+  - Docs updated: report and this plan.
+- [x] Task: Remove raw technical validation messages from order controller paths touched by POS order/payment flows.
+  - Files changed: `apps/api/src/http/controllers/OrdersController.ts`.
+  - Validation: API type-check/test pass.
+  - Docs updated: report and this plan.
+
+### Validation Log
+
+- Command: `pnpm --filter @pos/domain type-check`
+- Result: pass
+- Notes: Domain canonical payment types compile.
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: Application payment use case compiles.
+- Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Notes: SubmitPOSPayment test runs.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: API type-check blocker fixed.
+- Command: `pnpm --filter @pos/api test`
+- Result: pass
+- Notes: API tenant/order/payment tests pass.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: POS type-check blockers fixed.
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: pass
+- Notes: POS core payment submission tests pass.
+- Command: `pnpm type-check`
+- Result: pass
+- Notes: Turbo type-check succeeded for all 10 workspace packages.
+- Command: `pnpm test`
+- Result: pass
+- Notes: Turbo test succeeded for all configured workspace test packages.
+- Command: `pnpm build`
+- Result: pass
+- Notes: Build succeeded; Vite emitted an existing large chunk warning.
+
+### Documentation Updates
+
+- File: `roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md`
+- Change: Added full implementation report.
+- File: `roadmap/business-flows/replit_codex_P9_3_backend_submit_pos_payment_prompt.md`
+- Change: Marked acceptance checklist complete with validation caveat note.
+- File: `PLANS.md`
+- Change: Added this active plan entry.
+
+### Checklist Updates
+
+- File: `roadmap/business-flows/replit_codex_P9_3_backend_submit_pos_payment_prompt.md`
+- Change: Acceptance checklist marked complete; caveats documented.
+
+### Continuation Notes
+
+No remaining blocker from this execution batch. Future work can add optional real-database integration coverage for the payment repository and tune POS bundle chunking if needed.

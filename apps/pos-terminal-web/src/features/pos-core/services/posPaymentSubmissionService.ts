@@ -1,5 +1,5 @@
 import type { POSPaymentFlow, POSPaymentKind, POSPaymentMethod, POSPaymentSession } from "@pos/domain/payments";
-import { calculateCashChange, calculateRemainingAmount, roundCurrency, isPOSPaymentFlow, isPOSPaymentMethod, isSelectedBillPayable } from "@pos/domain/payments";
+import { roundCurrency, isPOSPaymentFlow, isPOSPaymentMethod, isSelectedBillPayable } from "@pos/domain/payments";
 
 export type POSPaymentSubmissionMode = "FRESH_CART" | "SAVED_ORDER" | "ACTIVE_ORDER";
 
@@ -32,23 +32,7 @@ export type POSPaymentSubmissionInput = {
 };
 
 export type POSPaymentSubmissionDependencies = {
-  createOrder: (payload: Record<string, unknown>) => Promise<any>;
-  updateOrder?: (payload: { orderId: string } & Record<string, unknown>) => Promise<any>;
-  recordPayment: (payload: {
-    orderId: string;
-    amount: number;
-    payment_method: POSPaymentMethod;
-    payment_flow: POSPaymentFlow;
-    payment_kind: POSPaymentKind;
-    client_payment_session_id: string;
-    received_amount?: number;
-    change_amount?: number;
-    split_id?: string;
-    sequence?: number;
-    reference_note?: string;
-    metadata?: Record<string, unknown>;
-  }) => Promise<any>;
-  createAndPay?: (payload: Record<string, unknown>) => Promise<any>;
+  submitCanonicalPayment: (payload: SubmitPOSPaymentRequest) => Promise<SubmitPOSPaymentApiResult>;
 };
 
 export type POSPaymentSubmissionResult = {
@@ -64,23 +48,46 @@ export type POSPaymentSubmissionResult = {
   messageDescription: string;
 };
 
-const paymentSessionOrderCache = new Map<string, { orderId: string; orderNumber: string }>();
+export type SubmitPOSPaymentRequest = {
+  source: POSPaymentSubmissionMode;
+  clientPaymentSessionId: string;
+  orderId?: string;
+  orderNumber?: string;
+  order?: Record<string, unknown>;
+  payment: {
+    flow: POSPaymentFlow;
+    paymentKind?: POSPaymentKind;
+    targetBillId?: string;
+    lines: Array<{
+      method: POSPaymentMethod;
+      amount: number;
+      receivedAmount?: number;
+      referenceNote?: string;
+      clientBillId?: string;
+      orderBillSplitId?: string;
+    }>;
+    splits?: Array<{
+      clientBillId: string;
+      label: string;
+      splitNo: number;
+      amountDue: number;
+      amountPaid?: number;
+      status?: "UNPAID" | "PARTIAL" | "PAID";
+    }>;
+  };
+};
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export type SubmitPOSPaymentApiResult = POSPaymentSubmissionResult & {
+  order?: unknown;
+  payments?: unknown[];
+  splits?: unknown[];
+};
 
 export function toUserSafePaymentError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const technicalValidationPattern = new RegExp(["invalid_enum_value", "Invalid enum", "Expected.*FULL.*DOWN_PAYMENT", "\\[\\{.*code.*path"].join("|"), "i");
   if (technicalValidationPattern.test(message)) return "Pembayaran gagal dicatat. Silakan coba lagi.";
   return message || "Pembayaran gagal dicatat. Silakan coba lagi.";
-}
-
-function getOrderId(result: any, fallback?: string): string {
-  return String(result?.order?.id ?? result?.id ?? fallback ?? "");
-}
-
-function getOrderNumber(result: any, fallback?: string): string {
-  return String(result?.order?.order_number ?? result?.order?.orderNumber ?? result?.orderNumber ?? result?.order?.id ?? fallback ?? "");
 }
 
 function defaultKind(flow: POSPaymentFlow): POSPaymentKind {
@@ -113,70 +120,67 @@ export function buildCanonicalPaymentCommand(input: POSPaymentSubmissionInput): 
   return { flow, paymentKind: input.paymentDetails?.paymentKind ?? defaultKind(flow), targetBillId: input.paymentDetails?.targetBillId, lines, lineTotal };
 }
 
-function kindForLine(input: POSPaymentSubmissionInput, flow: POSPaymentFlow, paymentKind: POSPaymentKind, line: POSPaymentLineInput): POSPaymentKind {
-  if (flow === "DOWN_PAYMENT") return line.amount >= input.totalAmount - 0.001 ? "REMAINING_PAYMENT" : "DOWN_PAYMENT";
-  return paymentKind;
-}
-
-function buildPaymentPayload(input: POSPaymentSubmissionInput, flow: POSPaymentFlow, paymentKind: POSPaymentKind, line: POSPaymentLineInput, index: number) {
-  const isUuidSplitId = line.splitId ? UUID_RE.test(line.splitId) : false;
-  const metadata = flow === "SPLIT_BILL" && (!isUuidSplitId || input.paymentDetails?.splits)
-    ? { ...(isUuidSplitId ? {} : { session_split_id: line.splitId }), splits: input.paymentDetails?.splits }
-    : undefined;
+function buildBackendOrderPayload(cartPayload?: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!cartPayload) return undefined;
   return {
-    amount: line.amount,
-    payment_method: line.method,
-    payment_flow: flow,
-    payment_kind: kindForLine(input, flow, paymentKind, line),
-    client_payment_session_id: input.clientPaymentSessionId,
-    received_amount: line.receivedAmount,
-    change_amount: line.method === "CASH" ? calculateCashChange(line.amount, line.receivedAmount) : undefined,
-    split_id: isUuidSplitId ? line.splitId : undefined,
-    sequence: index + 1,
-    reference_note: line.referenceNote,
-    metadata,
+    items: cartPayload.items,
+    order_type_id: cartPayload.order_type_id,
+    customer_name: cartPayload.customer_name,
+    table_number: cartPayload.table_number,
+    notes: cartPayload.notes,
+    tax_rate: cartPayload.tax_rate,
+    service_charge_rate: cartPayload.service_charge_rate,
+    fulfillment_mode: cartPayload.fulfillment_mode,
   };
 }
 
-async function recordRows(orderId: string, input: POSPaymentSubmissionInput, deps: POSPaymentSubmissionDependencies, flow: POSPaymentFlow, paymentKind: POSPaymentKind, lines: POSPaymentLineInput[]) {
-  for (let index = 0; index < lines.length; index += 1) await deps.recordPayment({ orderId, ...buildPaymentPayload(input, flow, paymentKind, lines[index], index) });
+function buildSplitPayload(input: POSPaymentSubmissionInput): SubmitPOSPaymentRequest["payment"]["splits"] | undefined {
+  return input.paymentDetails?.splits?.map((split, index) => ({
+    clientBillId: split.id ?? `bill-${index + 1}`,
+    label: split.label ?? `Bill ${index + 1}`,
+    splitNo: index + 1,
+    amountDue: roundCurrency(split.amountDue),
+    amountPaid: roundCurrency(split.amountPaid ?? 0),
+    status: (split.amountPaid ?? 0) >= split.amountDue - 0.001 ? "PAID" : (split.amountPaid ?? 0) > 0 ? "PARTIAL" : "UNPAID",
+  }));
+}
+
+export function buildSubmitPOSPaymentRequest(input: POSPaymentSubmissionInput): SubmitPOSPaymentRequest {
+  const { flow, paymentKind, lines } = buildCanonicalPaymentCommand(input);
+  return {
+    source: input.mode,
+    clientPaymentSessionId: input.clientPaymentSessionId,
+    orderId: input.paymentSession?.orderId ?? input.orderId,
+    orderNumber: input.paymentSession?.orderNumber ?? input.orderNumber,
+    order: input.mode === "FRESH_CART" ? buildBackendOrderPayload(input.cartPayload) : undefined,
+    payment: {
+      flow,
+      paymentKind,
+      targetBillId: input.paymentDetails?.targetBillId ?? lines[0]?.splitId,
+      lines: lines.map((line) => ({
+        method: line.method,
+        amount: line.amount,
+        receivedAmount: line.receivedAmount,
+        referenceNote: line.referenceNote,
+        clientBillId: line.splitId,
+      })),
+      splits: buildSplitPayload(input),
+    },
+  };
 }
 
 export async function submitPOSPayment(input: POSPaymentSubmissionInput, deps: POSPaymentSubmissionDependencies): Promise<POSPaymentSubmissionResult> {
-  const { flow, paymentKind, lines, lineTotal } = buildCanonicalPaymentCommand(input);
-  if (!lines.length) throw new Error("Pembayaran gagal dicatat. Silakan coba lagi.");
-  const cachedSession = paymentSessionOrderCache.get(input.clientPaymentSessionId);
-  let orderId = input.paymentSession?.orderId ?? input.orderId ?? cachedSession?.orderId ?? "";
-  let orderNumber = input.paymentSession?.orderNumber ?? input.orderNumber ?? cachedSession?.orderNumber ?? "";
-  if (input.mode === "FRESH_CART" && !orderId && (flow === "FULL" || flow === "DOWN_PAYMENT") && deps.createAndPay) {
-    const result = await deps.createAndPay({ ...(input.cartPayload ?? {}), ...buildPaymentPayload(input, flow, paymentKind, lines[0], 0) });
-    orderId = getOrderId(result, orderId);
-    orderNumber = getOrderNumber(result, orderNumber || orderId);
-  } else {
-    if (input.mode === "FRESH_CART" && !orderId) {
-      const result = await deps.createOrder({ ...(input.cartPayload ?? {}), client_payment_session_id: input.clientPaymentSessionId });
-      orderId = getOrderId(result, orderId);
-      orderNumber = getOrderNumber(result, orderNumber || orderId);
-      if (orderId) paymentSessionOrderCache.set(input.clientPaymentSessionId, { orderId, orderNumber: orderNumber || orderId });
-    }
-    if (!orderId) throw new Error("Order berhasil dibuat, tetapi ID order tidak ditemukan untuk mencatat pembayaran.");
-    await recordRows(orderId, input, deps, flow, paymentKind, lines);
-  }
-  const paidAmount = roundCurrency((input.paymentSession?.paidAmount ?? 0) + lineTotal);
-  const remainingAmount = calculateRemainingAmount(input.totalAmount, paidAmount);
-  const status = remainingAmount <= 0.001 ? "PAID" : "PARTIAL";
+  const result = await deps.submitCanonicalPayment(buildSubmitPOSPaymentRequest(input));
   return {
-    orderId,
-    orderNumber: orderNumber || orderId,
-    paymentFlow: flow,
-    paidAmount,
-    remainingAmount,
-    status,
-    shouldClearCart: status === "PAID",
-    shouldPrintReceipt: status === "PAID",
-    messageTitle: status === "PARTIAL" ? "Pembayaran sebagian tersimpan" : "Pembayaran berhasil",
-    messageDescription: status === "PARTIAL"
-      ? `Order #${orderNumber || orderId} tersimpan. Pembayaran yang dipilih sudah dicatat, sisa tagihan dapat dilunasi dari order aktif.`
-      : `Order #${orderNumber || orderId} dilunasi.`,
+    orderId: result.orderId,
+    orderNumber: result.orderNumber,
+    paymentFlow: result.paymentFlow,
+    paidAmount: result.paidAmount,
+    remainingAmount: result.remainingAmount,
+    status: result.status,
+    shouldClearCart: result.shouldClearCart === true,
+    shouldPrintReceipt: result.shouldPrintReceipt === true,
+    messageTitle: result.messageTitle,
+    messageDescription: result.messageDescription,
   };
 }

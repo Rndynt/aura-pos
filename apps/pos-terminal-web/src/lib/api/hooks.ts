@@ -19,6 +19,7 @@ import {
   getOrCreateTerminalIdentity,
   generateIdempotencyKey,
 } from "@pos/offline";
+import type { SubmitPOSPaymentApiResult, SubmitPOSPaymentRequest } from "@/features/pos-core/services/posPaymentSubmissionService";
 
 /**
  * Map raw API order response (camelCase) → domain Order type (snake_case)
@@ -460,6 +461,17 @@ export function useCreateAndPay() {
       // P5: stock was deducted from inventory_balances — refresh catalog so
       // out-of-stock / low-stock states update immediately. Query key prefix
       // match invalidates every per-outlet variant of the catalog query.
+      queryClient.invalidateQueries({ queryKey: ["/api/catalog/products"] });
+    },
+  });
+}
+
+export function useSubmitPOSPayment() {
+  return useMutation<SubmitPOSPaymentApiResult, Error, SubmitPOSPaymentRequest>({
+    mutationFn: (payload) => mutateWithTenantHeader("POST", "/api/pos/payments/submit", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/orders/open"] });
       queryClient.invalidateQueries({ queryKey: ["/api/catalog/products"] });
     },
   });

@@ -1,7 +1,7 @@
 ALTER TABLE order_payments ADD COLUMN IF NOT EXISTS tenant_id uuid REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE order_payments ADD COLUMN IF NOT EXISTS outlet_id uuid REFERENCES outlets(id) ON DELETE SET NULL;
-ALTER TABLE order_payments ADD COLUMN IF NOT EXISTS payment_flow varchar(50) NOT NULL DEFAULT 'full';
-ALTER TABLE order_payments ADD COLUMN IF NOT EXISTS payment_kind varchar(50) NOT NULL DEFAULT 'full_payment';
+ALTER TABLE order_payments ADD COLUMN IF NOT EXISTS payment_flow varchar(50) NOT NULL DEFAULT 'FULL';
+ALTER TABLE order_payments ADD COLUMN IF NOT EXISTS payment_kind varchar(50) NOT NULL DEFAULT 'FULL_PAYMENT';
 ALTER TABLE order_payments ADD COLUMN IF NOT EXISTS received_amount numeric(10,2);
 ALTER TABLE order_payments ADD COLUMN IF NOT EXISTS change_amount numeric(10,2);
 ALTER TABLE order_payments ADD COLUMN IF NOT EXISTS status varchar(50) NOT NULL DEFAULT 'succeeded';

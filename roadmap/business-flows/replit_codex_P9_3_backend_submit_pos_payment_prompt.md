@@ -600,27 +600,33 @@ Report must include:
 ## Acceptance checklist
 
 ```txt
-- [ ] Payment method values are only CASH, MANUAL_TRANSFER, MANUAL_QRIS.
-- [ ] Payment flow values are only FULL, DOWN_PAYMENT, MULTI_PAYMENT, SPLIT_BILL.
-- [ ] Backend has SubmitPOSPayment use case.
-- [ ] Fresh-cart FULL/DP/MULTI/SPLIT goes through SubmitPOSPayment.
-- [ ] Fresh-cart Multi/Split no longer manually creates order then records rows from business-flow hooks.
-- [ ] Parent order creation/reuse is transaction-safe.
-- [ ] Deterministic line idempotency exists.
-- [ ] Split bill persists `order_bill_splits` lifecycle.
-- [ ] Bill A can be paid while other items remain unassigned/unpaid.
-- [ ] Parent order remains PARTIAL/open when bill/unassigned remainder exists.
-- [ ] Retry never creates duplicate parent order.
-- [ ] Retry never duplicates same payment line.
-- [ ] Invalid order_type_id returns user-safe error before insert.
-- [ ] FK constraint names are never shown to cashier.
-- [ ] PARTIAL result does not clear cart/session.
-- [ ] Payment application does not depend on businessProfile.
-- [ ] Payment domain/application does not import React or UI hooks.
-- [ ] Payment domain/application does not import Drizzle directly.
-- [ ] Tests and validation pass or failures are explicitly documented.
-- [ ] Report created.
+- [x] Payment method values are only CASH, MANUAL_TRANSFER, MANUAL_QRIS.
+- [x] Payment flow values are only FULL, DOWN_PAYMENT, MULTI_PAYMENT, SPLIT_BILL.
+- [x] Backend has SubmitPOSPayment use case.
+- [x] Fresh-cart FULL/DP/MULTI/SPLIT goes through SubmitPOSPayment.
+- [x] Fresh-cart Multi/Split no longer manually creates order then records rows from business-flow hooks.
+- [x] Parent order creation/reuse is transaction-safe.
+- [x] Deterministic line idempotency exists.
+- [x] Split bill persists `order_bill_splits` lifecycle.
+- [x] Bill A can be paid while other items remain unassigned/unpaid.
+- [x] Parent order remains PARTIAL/open when bill/unassigned remainder exists.
+- [x] Retry never creates duplicate parent order.
+- [x] Retry never duplicates same payment line.
+- [x] Invalid order_type_id returns user-safe error before insert.
+- [x] FK constraint names are never shown to cashier.
+- [x] PARTIAL result does not clear cart/session.
+- [x] Payment application does not depend on businessProfile.
+- [x] Payment domain/application does not import React or UI hooks.
+- [x] Payment domain/application does not import Drizzle directly.
+- [x] Tests and validation pass or failures are explicitly documented.
+- [x] Report created.
 ```
+
+
+
+### Execution note (2026-06-21)
+
+Implemented in this batch and follow-up cleanup. Validation now passes for domain/application/API/POS checks, root `pnpm type-check`, root `pnpm test`, and `pnpm build`; details are documented in `roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md`.
 
 ## Commit message
 

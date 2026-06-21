@@ -106,7 +106,7 @@ export class DrizzleRecordPaymentRepository {
       if (flow === 'DOWN_PAYMENT') {
         const dpRows = existingSucceededPayments.filter((payment: any) => payment.paymentFlow === 'DOWN_PAYMENT');
         if (dpRows.length >= 2) {
-          throw new Error('P9 DP flow allows a maximum of two succeeded payment rows');
+          throw new Error('DP flow allows a maximum of two succeeded payment rows');
         }
         if (kind === 'DOWN_PAYMENT' && input.amount >= remaining - 0.001) {
           throw new Error('Down payment amount must be less than remaining balance');
@@ -116,7 +116,7 @@ export class DrizzleRecordPaymentRepository {
       if (flow === 'MULTI_PAYMENT') {
         const multiRows = existingSucceededPayments.filter((payment: any) => payment.paymentFlow === 'MULTI_PAYMENT');
         if (multiRows.length >= 2) {
-          throw new Error('P9 multi payment allows a maximum of two payment rows');
+          throw new Error('Multi payment allows a maximum of two payment rows');
         }
       }
 

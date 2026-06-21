@@ -1,5 +1,5 @@
 /**
- * SubmitPOSPaymentRepositoryPort — P9.3
+ * SubmitPOSPaymentRepositoryPort
  *
  * Port for the SubmitPOSPayment infrastructure repository.
  * Implementation must run all critical operations in one DB transaction.

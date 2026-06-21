@@ -30,7 +30,7 @@ test("parallel browser local order creation allocates unique local order numbers
       },
     ],
     amount: 10_000,
-    payment_method: "cash" as const,
+    payment_method: "CASH" as const,
   }));
 
   const results = await Promise.all(orderInputs.map((input) => createLocalOrder(input)));
