@@ -469,9 +469,10 @@ export function useCreateAndPay() {
 export function useSubmitPOSPayment() {
   return useMutation<SubmitPOSPaymentApiResult, Error, SubmitPOSPaymentRequest>({
     mutationFn: (payload) => mutateWithTenantHeader("POST", "/api/pos/payments/submit", payload),
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders/open"] });
+      if (result?.orderId) queryClient.invalidateQueries({ queryKey: ["/api/orders", result.orderId] });
       queryClient.invalidateQueries({ queryKey: ["/api/catalog/products"] });
     },
   });

@@ -192,7 +192,7 @@ export function useRetailStandardPOSFlow() {
   const handlePaymentMethodConfirm = async (paymentMethod: PaymentMethod, cashReceived?: number, partialAmount?: number, paymentDetails?: any) => {
     setIsProcessingQuickCharge(true);
     const dependencies = {
-      submitCanonicalPayment: (payload: any) => submitPOSPaymentMutation.mutateAsync(payload),
+      submitPayment: (payload: any) => submitPOSPaymentMutation.mutateAsync(payload),
     };
 
     try {
@@ -209,9 +209,11 @@ export function useRetailStandardPOSFlow() {
           paymentDetails,
         }, dependencies);
         toast({ title: result.messageTitle, description: result.messageDescription });
-        if (result.shouldClearCart) paymentSessionIdRef.current = null;
-        setPendingOrderForPayment(null);
-        setPaymentMethodDialogOpen(false);
+        if (result.shouldClearCart) {
+          paymentSessionIdRef.current = null;
+          setPendingOrderForPayment(null);
+          setPaymentMethodDialogOpen(false);
+        }
         return;
       }
 
@@ -239,11 +241,13 @@ export function useRetailStandardPOSFlow() {
           paymentDetails,
         }, dependencies);
         toast({ title: result.messageTitle, description: result.messageDescription });
-        if (result.shouldClearCart) paymentSessionIdRef.current = null;
-        cart.clearCart();
-        setPaymentMethodDialogOpen(false);
-        setMobileCartOpen(false);
-        setLocation("/pos");
+        if (result.shouldClearCart) {
+          paymentSessionIdRef.current = null;
+          cart.clearCart();
+          setPaymentMethodDialogOpen(false);
+          setMobileCartOpen(false);
+          setLocation("/pos");
+        }
         return;
       }
 
@@ -257,8 +261,6 @@ export function useRetailStandardPOSFlow() {
           service_charge_rate: cart.serviceChargeRate,
           order_type_id: cart.selectedOrderTypeId,
           customer_name: snapshot.customerName,
-          amount: partialAmount ?? snapshot.total,
-          payment_method: paymentMethod,
         },
         paymentMethod,
         cashReceived,
@@ -279,11 +281,13 @@ export function useRetailStandardPOSFlow() {
         }
       }
       toast({ title: result.status === "PAID" ? "Pesanan berhasil dibuat & dibayar" : result.messageTitle, description: result.status === "PAID" ? `Order #${result.orderNumber} - Total: Rp ${snapshot.total.toLocaleString("id-ID")}` : result.messageDescription });
-      if (result.shouldClearCart) paymentSessionIdRef.current = null;
-      cart.clearCart();
-      setPaymentMethodDialogOpen(false);
-      setMobileCartOpen(false);
-      setLocation("/pos");
+      if (result.shouldClearCart) {
+        paymentSessionIdRef.current = null;
+        cart.clearCart();
+        setPaymentMethodDialogOpen(false);
+        setMobileCartOpen(false);
+        setLocation("/pos");
+      }
       setTimeout(() => { inPaymentFlowRef.current = false; sendToCFD({ type: "idle", tenantName }); }, 7000);
     } catch (error) {
       inPaymentFlowRef.current = false;

@@ -1,137 +1,164 @@
-# Backend SubmitPOSPayment Report
+# P9.3/P9.3.1 Backend Submit POS Payment Report
+
+Date: 2026-06-21
 
 ## 1. Summary
 
-Implemented the backend-owned POS payment submission path around `SubmitPOSPayment`, the Drizzle transactional repository, and `POST /api/pos/payments/submit`. This batch also completed the interrupted Replit work by removing the old alias set, correcting migration filenames to project-style descriptive names, routing POS payment submission through the canonical backend endpoint, adding application/frontend tests, and documenting the remaining validation limitations honestly.
+P9.3.1 finishes the POS payment handoff by making the frontend payment submission path a single SubmitPOSPayment API call and by making backend accounting replay-safe. The POS UI now builds a canonical command for `POST /api/pos/payments/submit`; it no longer sends old `amount` / `payment_method` create-and-pay fields as part of a fresh cart payment payload. Draft save and restaurant kitchen order creation still use create/update order APIs because those actions are not payment submission.
 
-## 2. Root Cause Fixed
+## 2. What was still broken after P9.3
 
-- Fresh-cart multi/split payment could still be sequenced by the frontend as create order first and then payment rows. The frontend core service now emits one canonical command to the backend submit endpoint.
-- Invalid `order_type_id` could reach an order insert and show a database FK error. SubmitPOSPayment now validates order type before repository insertion through the order type port.
-- Split bill frontend metadata was not sent as a backend-owned split lifecycle command. The frontend command now carries split bills with `clientBillId`, `splitNo`, `amountDue`, `amountPaid`, and status.
-- Existing Replit changes included a hardcoded old alias set. It was removed; validation now accepts only canonical values and returns user-safe errors.
+- The backend endpoint existed, but frontend flow code could still behave like old create-order / record-payment orchestration.
+- Fresh cart partial payments could clear the cart as though fully paid.
+- Split bill replay accounting could add the requested line amount to `order_bill_splits.amount_paid` before knowing whether the payment row was an idempotent replay.
+- Order `paid_amount` could be calculated from requested line totals rather than newly inserted payment totals.
+- The required P9.3 report file did not exist.
 
-## 3. Backend SubmitPOSPayment Architecture
-
-- `packages/application/payments/SubmitPOSPayment.ts` validates canonical payment method/flow values, required source/order fields, line counts, amounts, and order type through a port.
-- `packages/application/payments/ports/SubmitPOSPaymentRepositoryPort.ts` keeps application orchestration independent from Drizzle.
-- `packages/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository.ts` owns the single transaction for order creation/reuse, split persistence, payment rows, and parent order paid status updates.
-- `apps/api/src/http/controllers/POSPaymentController.ts` handles HTTP DTO validation, entitlement checks, user-safe error mapping, and delegates to the use case.
-
-## 4. API Endpoint and DTO
-
-- Canonical endpoint: `POST /api/pos/payments/submit`.
-- DTO values are canonical only:
-  - Methods: `CASH`, `MANUAL_TRANSFER`, `MANUAL_QRIS`.
-  - Flows: `FULL`, `DOWN_PAYMENT`, `MULTI_PAYMENT`, `SPLIT_BILL`.
-  - Kinds: `FULL_PAYMENT`, `DOWN_PAYMENT`, `REMAINING_PAYMENT`, `MULTI_PAYMENT_LINE`, `SPLIT_BILL_LINE`.
-- Invalid enum values are mapped to cashier-safe messages instead of Zod technical text.
-
-## 5. Order Type Guard Behavior
-
-- Provided `order_type_id` must exist, be active, and be enabled for the tenant through `tenant_order_types`.
-- Missing/null `order_type_id` deterministically resolves to the only enabled active type if the tenant has exactly one.
-- If multiple or zero enabled active order types exist, null remains null; no provided invalid value is silently replaced.
-- Invalid values return: `Tipe pesanan tidak valid atau belum aktif untuk tenant ini. Muat ulang POS lalu coba lagi.`
-
-## 6. Full Payment Flow
-
-- Fresh-cart full payment submits one backend command.
-- Repository creates/reuses the parent order in the same transaction as the payment row.
-- Result clears the cart only when backend returns `shouldClearCart: true`.
-
-## 7. DP Flow
-
-- DP uses one payment line per submit.
-- Application returns `PARTIAL` for incomplete settlement.
-- Frontend respects `shouldClearCart: false`, so the cart/session is not cleared for partial results.
-
-## 8. Multi Flow
-
-- Multi payment supports up to two lines.
-- Frontend no longer creates a parent order and loops through payment row calls for fresh-cart multi payment; it posts one canonical command.
-- Repository inserts the payment rows inside the same transaction.
-
-## 9. Split Bill Persisted Lifecycle
-
-- Split payment sends selected bill and split metadata through the backend command.
-- Repository persists/updates `order_bill_splits`, tracks amount paid, updates status, and ties payment rows to real split IDs when available.
-- Parent order can remain partial/open while an individual bill is paid and other bill/unassigned amount remains unpaid.
-
-## 10. Transaction / Idempotency Strategy
-
-- Fresh-cart session identity uses `orders.idempotency_key = clientPaymentSessionId`.
-- Payment line identity uses deterministic keys: `clientPaymentSessionId:flow:targetBillId|none:lineIndex:method:amount`.
-- Retry reuses the existing parent order and skips duplicate payment line inserts for matching idempotency keys.
-
-## 11. Frontend Command Submission Changes
-
-- `posPaymentSubmissionService` now builds a backend `SubmitPOSPaymentRequest` and calls `submitCanonicalPayment` once.
-- `useSubmitPOSPayment()` posts to `/api/pos/payments/submit` and invalidates order/open-order/catalog queries.
-- Retail and restaurant active-payment flows use the single submit dependency instead of direct payment row persistence.
-
-## 12. UI Partial-result Behavior
-
-- The frontend result is now the backend result.
-- `shouldClearCart` and `shouldPrintReceipt` are not inferred from local line totals.
-- Partial results keep the session open unless the backend explicitly says otherwise.
-
-## 13. User-safe Error Mapping
-
-- `INVALID_ORDER_TYPE` → `Tipe pesanan tidak valid atau belum aktif untuk tenant ini. Muat ulang POS lalu coba lagi.`
-- `PAYMENT_AMOUNT_EXCEEDS_REMAINING` → `Jumlah pembayaran melebihi sisa tagihan.`
-- `INVALID_SPLIT_BILL` → `Bill yang dipilih tidak valid atau sudah lunas.`
-- `PAYMENT_METHOD_INVALID` → `Metode pembayaran tidak valid.`
-- `PAYMENT_FLOW_INVALID` → `Tipe pembayaran tidak valid.`
-- Generic database/FK errors are mapped to safe retry text and not exposed to the cashier.
-
-## 14. Files Changed
+## 3. Files inspected before coding
 
 - `packages/application/payments/SubmitPOSPayment.ts`
-- `packages/application/payments/__tests__/SubmitPOSPayment.test.ts`
+- `packages/application/payments/POSPaymentCommand.ts`
+- `packages/application/payments/POSPaymentResult.ts`
+- `packages/application/payments/ports/SubmitPOSPaymentRepositoryPort.ts`
+- `packages/application/payments/ports/POSPaymentOrderTypePort.ts`
 - `packages/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository.ts`
+- `packages/infrastructure/repositories/payments/DrizzlePOSPaymentOrderTypeRepository.ts`
 - `apps/api/src/http/controllers/POSPaymentController.ts`
 - `apps/api/src/http/routes/pos.ts`
-- `apps/api/src/container.ts`
+- `apps/api/src/http/routes/index.ts`
+- `apps/pos-terminal-web/src/features/pos-core/services/posPaymentSubmissionService.ts`
+- `apps/pos-terminal-web/src/features/pos-flows/retail/useRetailStandardPOSFlow.ts`
+- `apps/pos-terminal-web/src/features/pos-flows/restaurant/useRestaurantTableServicePOSFlow.ts`
+- `apps/pos-terminal-web/src/lib/api/hooks.ts`
+- `apps/pos-terminal-web/src/components/pos/PaymentMethodDialog.tsx`
+- `packages/infrastructure/db/schema/orders.schema.ts`
+- `migrations/0017_p9_3_order_bill_splits_client_bill_id.sql`
+
+## 4. Backend SubmitPOSPayment final flow
+
+1. Resolve or create the order inside one transaction.
+2. Lock/read current order total and paid amount.
+3. Build deterministic idempotency keys for all requested payment lines.
+4. Query existing payment rows by those keys before modifying split or order totals.
+5. Calculate `newLineTotal` from only non-replayed lines.
+6. Validate overpayment/multi-payment rules using current database remaining amount and `newLineTotal`.
+7. Persist split rows and increment selected split `amount_paid` only by `newLineTotal`.
+8. Insert only new payment rows; replayed rows are returned but not inserted again.
+9. Increment `orders.paid_amount` only by `newLineTotal`.
+10. Return aggregate state from database row status/amounts after the transaction.
+
+## 5. Frontend SubmitPOSPayment final flow
+
+1. UI collects cashier payment mode and method.
+2. `posPaymentSubmissionService` maps UI state to a canonical SubmitPOSPayment request.
+3. The only payment dependency is `submitPayment(payload)`.
+4. `useSubmitPOSPayment` posts to `/api/pos/payments/submit`.
+5. React Query invalidates order/open order/catalog cache after success.
+6. The retail flow clears cart/session only when backend returns `shouldClearCart === true`.
+
+## 6. User-readable Bayar Penuh flow
+
+Cashier adds items, opens Payment, chooses **Bayar Penuh**, chooses **Tunai**, **Transfer Manual**, or **QRIS Manual**, and confirms. POS sends one SubmitPOSPayment request. Backend creates/reuses the order and records one full payment row. If the order is fully paid, the UI closes the payment session, clears the cart, and receipt printing can run.
+
+## 7. User-readable DP flow
+
+Cashier chooses **DP** and enters a down-payment amount. POS sends one SubmitPOSPayment request. Backend creates/reuses the order and records a DP payment row. The order becomes partial. The cart/payment session is not cleared as paid; the cashier sees the remaining bill and can continue later. Final settlement uses `REMAINING_PAYMENT` when applicable.
+
+## 8. User-readable Multi flow
+
+Cashier chooses **Multi** and enters up to two payment lines, for example Tunai + QRIS Manual. POS sends one backend SubmitPOSPayment request with two lines. Backend records both rows in one transaction. The order becomes paid only when the remaining bill is covered. Frontend does not loop through manual create-order then record-payment calls for payment submission.
+
+## 9. User-readable Split flow
+
+Cashier chooses **Split**, assigns bill rows, and pays the selected bill. POS sends one SubmitPOSPayment request with `targetBillId`, payment line, and split metadata. Backend creates/reuses the parent order once, persists split rows, records a payment tied to the selected split row when available, and keeps the parent order partial until all amounts are covered. Retrying the same selected bill payment does not duplicate the parent order, payment row, parent paid amount, or split paid amount.
+
+## 10. Order type guard behavior
+
+`SubmitPOSPayment` validates `order_type_id` through `POSPaymentOrderTypePort` before repository submission. Invalid, inactive, or cross-tenant order types are rejected with a user-safe validation message instead of a database foreign-key error.
+
+## 11. Split bill retry/idempotency fix
+
+The repository now checks existing payment rows before any split paid amount update. Existing payment rows are treated as replayed rows and returned without incrementing `order_bill_splits.amount_paid` or `orders.paid_amount` again. Mixed requests increment totals only for newly inserted rows.
+
+## 12. Cart/session clear rules
+
+- `PAID` with `shouldClearCart === true`: reset payment session, close dialog, clear cart, and navigate back to POS as needed.
+- `PARTIAL` with `shouldClearCart === false`: keep cart/payment session available, do not clear as though paid, and show the backend partial-payment message.
+- Manual draft discard, local draft resume, true draft save, and restaurant kitchen submission may still clear cart because they are not payment success paths.
+
+## 13. User-safe error behavior
+
+- Non-canonical payment methods/flows are rejected with cashier-safe messages.
+- Invalid order type is rejected before DB insert/update.
+- The frontend payment service maps raw enum/zod-like messages to a generic payment failure message.
+- API controller maps known technical payment/order errors to safe Indonesian messages.
+
+## 14. Files changed
+
+- `packages/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository.ts`
 - `apps/pos-terminal-web/src/features/pos-core/services/posPaymentSubmissionService.ts`
 - `apps/pos-terminal-web/src/features/pos-core/services/__tests__/posPaymentSubmissionService.test.ts`
 - `apps/pos-terminal-web/src/features/pos-flows/retail/useRetailStandardPOSFlow.ts`
 - `apps/pos-terminal-web/src/features/pos-flows/restaurant/useRestaurantTableServicePOSFlow.ts`
 - `apps/pos-terminal-web/src/lib/api/hooks.ts`
-- `migrations/0016_order_payment_flow_metadata.sql`
-- `migrations/0017_order_bill_splits_client_bill_id.sql`
 - `PLANS.md`
-- `roadmap/business-flows/replit_codex_P9_3_backend_submit_pos_payment_prompt.md`
+- `roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md`
 
-## 15. Tests Added/Updated
+## 15. Tests added/updated
 
-- Added `packages/application/payments/__tests__/SubmitPOSPayment.test.ts` for canonical use-case validation and order type guard behavior.
-- Updated `apps/pos-terminal-web/src/features/pos-core/services/__tests__/posPaymentSubmissionService.test.ts` for backend command building and partial clear-cart behavior.
+- Updated `posPaymentSubmissionService.test.ts` to use the new `submitPayment` dependency name and assert fresh cart payment request does not carry old `amount` / `payment_method` order fields.
+- Existing application tests continue to cover canonical flow/method rejection and invalid order type validation.
+- Existing POS terminal service tests cover FULL, DP/PARTIAL, MULTI, SPLIT request mapping, and user-safe enum error mapping.
 
-## 16. Validation Output
+## 16. Validation output
 
 - `pnpm --filter @pos/domain type-check`: passed.
 - `pnpm --filter @pos/application type-check`: passed.
 - `pnpm --filter @pos/application test`: passed.
 - `pnpm --filter @pos/api type-check`: passed.
-- `pnpm --filter @pos/api test`: passed.
+- `pnpm --filter @pos/api test`: passed, 181 tests passed.
 - `pnpm --filter @pos/terminal-web type-check`: passed.
 - `pnpm --filter @pos/terminal-web test`: passed.
-- `pnpm type-check`: passed across 10 workspace packages.
-- `pnpm test`: passed across all configured workspace test packages.
-- `pnpm build`: passed; Vite reported the existing large chunk warning only.
+- `pnpm type-check`: passed, 10/10 Turbo tasks successful.
 
-## 17. Grep Cleanup Output
+## 17. Grep cleanup output
 
-- `rg -n "full_payment|partial_payment_dp|normalizePOSPaymentFlow|paymentDetails\?.flow.*unknown|shouldClearCart: true|recordPaymentLines" ...` returns only tests proving non-canonical old flow strings are rejected.
-- `rg -n "createOrderMutation\.mutateAsync|recordPaymentMutation\.mutateAsync|createOrder\(|recordPayment\(" ...` returns draft/kitchen order creation paths only; payment submission no longer loops record-payment rows in pos-core or flow hooks.
-- `rg -n "order_type_id.*insert|orderTypeId: order_type_id|orderTypeId:" ...` confirms SubmitPOSPayment order insert uses a guarded `orderData.order_type_id`; `/api/orders`, `/api/orders/:id`, and `/api/orders/create-and-pay` now resolve order type through the same tenant-aware guard before use-case execution.
+### Old orchestration pattern
 
-## 18. Remaining Limitations
+Remaining `createOrderMutation.mutateAsync` matches are draft save and restaurant kitchen send-to-kitchen creation, not payment submission. There are no `recordPaymentMutation.mutateAsync` matches in the checked frontend payment paths.
 
-None for this execution batch. The earlier type-check blockers were fixed, older order/create-and-pay paths now use the same tenant-aware order type guard, and root type-check/test/build validation passed.
+### Cart clear pattern
 
-## 19. Next Recommended Phase
+Remaining `cart.clearCart()` calls include draft load/save, manual flow actions, kitchen submission, and paid-result guarded payment success. Partial payment success no longer reaches the fresh cart unconditional clear path.
 
-1. Add a dedicated integration-test harness for the payment repository if the project later standardizes real database integration tests.
-2. Tune POS bundle chunking if the existing Vite large chunk warning becomes a release concern.
+### Alias/provider checks
+
+- Runtime payment code keeps canonical flows: `FULL`, `DOWN_PAYMENT`, `MULTI_PAYMENT`, `SPLIT_BILL`.
+- Runtime payment code keeps canonical methods: `CASH`, `MANUAL_TRANSFER`, `MANUAL_QRIS`.
+- Old alias strings remain only in tests/docs that prove rejection or unrelated descriptive text.
+- No card/ewallet/provider/gateway mapping was added to SubmitPOSPayment payment domain/application/controller/service code.
+
+## Acceptance checklist status
+
+- [x] POS frontend calls POST /api/pos/payments/submit for payment submission.
+- [x] Frontend payment submit no longer manually orchestrates createOrder + recordPayment.
+- [x] Business-flow hooks do not pass createOrder/recordPayment/createAndPay dependencies into payment submission.
+- [x] posPaymentSubmissionService no longer owns backend order/payment sequencing.
+- [x] Fresh cart FULL goes through SubmitPOSPayment endpoint.
+- [x] Fresh cart DP goes through SubmitPOSPayment endpoint.
+- [x] Fresh cart MULTI goes through SubmitPOSPayment endpoint.
+- [x] Fresh cart SPLIT goes through SubmitPOSPayment endpoint.
+- [x] ACTIVE_ORDER payment goes through SubmitPOSPayment endpoint.
+- [x] SAVED_ORDER payment has documented pre-payment draft update followed by SubmitPOSPayment.
+- [x] PARTIAL result does not clear cart/session.
+- [x] PAID result clears cart/session.
+- [x] Split bill retry does not double-count order_bill_splits.amount_paid.
+- [x] Idempotent payment replay does not double-count orders.paid_amount.
+- [x] Split bill payment row uses real split_id when split row exists.
+- [x] Invalid order_type_id shows user-safe message, not FK constraint name.
+- [x] Raw enum/zod/database errors are not shown to cashier.
+- [x] Payment methods remain only CASH, MANUAL_TRANSFER, MANUAL_QRIS.
+- [x] Payment flows remain only FULL, DOWN_PAYMENT, MULTI_PAYMENT, SPLIT_BILL.
+- [x] No card/ewallet/provider mapping was added.
+- [x] No legacy alias compatibility was added.
+- [x] Report file exists and documents the final user-readable flow.

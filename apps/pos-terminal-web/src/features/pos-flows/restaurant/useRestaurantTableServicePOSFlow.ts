@@ -258,12 +258,15 @@ export function useRestaurantTableServicePOSFlow() {
         partialAmount,
         paymentDetails,
       }, {
-        submitCanonicalPayment: (payload: any) => submitPOSPaymentMutation.mutateAsync(payload),
+        submitPayment: (payload: any) => submitPOSPaymentMutation.mutateAsync(payload),
       });
       await refetchOpenOrders();
       toast({ title: result.messageTitle, description: result.messageDescription });
-      setPendingOrderForPayment(null);
-      setPaymentMethodDialogOpen(false);
+      if (result.shouldClearCart) {
+        paymentSessionIdRef.current = null;
+        setPendingOrderForPayment(null);
+        setPaymentMethodDialogOpen(false);
+      }
     } catch (error) {
       toast({ title: "Pembayaran gagal", description: toUserSafePaymentError(error), variant: "destructive" });
     } finally {

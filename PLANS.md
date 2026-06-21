@@ -10407,3 +10407,110 @@ Move POS payment submission to a backend-owned canonical SubmitPOSPayment flow, 
 ### Continuation Notes
 
 No remaining blocker from this execution batch. Future work can add optional real-database integration coverage for the payment repository and tune POS bundle chunking if needed.
+
+## Plan: P9.3.1 Finish POS Payment Flow End-to-End
+
+### Source
+- Tasklist: roadmap/business-flows/replit_codex_P9_3_1_finish_payment_flow_prompt.md
+- User request: Analisa mendalam dan eksekusi roadmap P9.3.1 finish payment flow
+- Date started: 2026-06-21
+- Current status: In progress
+
+### Goal
+Wire POS payment submission to the canonical SubmitPOSPayment endpoint, remove frontend payment orchestration responsibilities, fix backend idempotent replay accounting for order/split totals, document flows and validation honestly.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active roadmap prompt
+- [x] Relevant source files listed by roadmap
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: SubmitPOSPayment repository/controller behavior.
+- Files inspected: packages/application/payments/SubmitPOSPayment.ts, POSPaymentCommand.ts, POSPaymentResult.ts, packages/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository.ts, apps/api/src/http/controllers/POSPaymentController.ts
+- Findings: Use case validates canonical methods/flows; repository still updated split/order paid totals using requested lineTotal before replay-aware accounting.
+- Tasks: Make replay detection happen before split paid/order paid increments; return fresh aggregate.
+- Risks: DB transaction behavior depends on Drizzle/Postgres row locks.
+- Validation: package type-check/test.
+
+#### Frontend/UI Workstream
+- Scope: Retail/restaurant payment submission and cart clear behavior.
+- Files inspected: hooks.ts, posPaymentSubmissionService.ts, retail and restaurant POS flow hooks, PaymentMethodDialog.tsx.
+- Findings: API hook exists; service is mostly mapper/client boundary already, but dependency name is still old-ish and retail flow clears cart unconditionally after payment.
+- Tasks: Rename dependency to submitPayment; clear cart only when result.shouldClearCart; remove old payment fields from fresh cart payload.
+- Risks: Existing draft save/kitchen create order paths remain intentionally outside payment submission.
+- Validation: POS terminal type-check/test.
+
+#### Tests/Validation Workstream
+- Scope: Existing application/frontend tests and required grep checks.
+- Files inspected: existing payment tests under application and pos-core service tests.
+- Findings: Need replay accounting tests if feasible; existing tests cover canonical alias rejection.
+- Tasks: Add/update tests and run required validation commands.
+- Risks: Repo may have pre-existing unrelated type/test failures.
+- Validation: Required commands from roadmap.
+
+#### Documentation Workstream
+- Scope: Required P9.3 backend submit POS payment report and plan/checklist honesty.
+- Files inspected: roadmap prompt and existing docs.
+- Findings: Required report missing.
+- Tasks: Create report with flows, inspected files, validation/grep output; update plan status.
+- Risks: None.
+- Validation: File presence and content review.
+
+### Execution Order
+1. Fix backend replay-safe accounting.
+2. Fix frontend cart/session clearing and dependency/API boundary naming.
+3. Add/update tests.
+4. Run validation and grep checks.
+5. Create final report and update plan.
+6. Commit and create PR.
+
+### Progress
+
+### P9.3.1 Batch Completion Update — 2026-06-21
+
+#### Completed
+- [x] Frontend payment submission uses SubmitPOSPayment API/client boundary only.
+  - Files changed: apps/pos-terminal-web/src/features/pos-core/services/posPaymentSubmissionService.ts, apps/pos-terminal-web/src/features/pos-flows/retail/useRetailStandardPOSFlow.ts, apps/pos-terminal-web/src/features/pos-flows/restaurant/useRestaurantTableServicePOSFlow.ts, apps/pos-terminal-web/src/lib/api/hooks.ts
+  - Validation: POS terminal type-check/test passed.
+  - Docs updated: roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md
+- [x] Backend replay-safe payment/split accounting.
+  - Files changed: packages/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository.ts
+  - Validation: API/application type-check/test passed.
+  - Docs updated: roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md
+- [x] Required report created with acceptance checklist and validation notes.
+  - Files changed: roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md
+  - Validation: Required commands and grep checks run.
+  - Docs updated: roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md
+
+#### Partially Completed
+- [ ] No partial items in this batch.
+
+#### Blocked
+- [ ] No blocked items in this batch.
+
+#### Not Attempted
+- [ ] Additional DB integration test specific to DrizzleSubmitPOSPaymentRepository split replay was not added as a separate database fixture; replay accounting was implemented in repository code and covered by package/API validation plus documented grep checks.
+
+### Validation Log
+- Command: pnpm --filter @pos/domain type-check && pnpm --filter @pos/application type-check && pnpm --filter @pos/application test && pnpm --filter @pos/api type-check && pnpm --filter @pos/api test && pnpm --filter @pos/terminal-web type-check && pnpm --filter @pos/terminal-web test
+- Result: pass
+- Notes: API test suite reported 181 passing tests.
+- Command: pnpm type-check
+- Result: pass
+- Notes: Turbo reported 10 successful tasks.
+- Command: rg cleanup checks from roadmap
+- Result: pass with expected remaining non-payment draft/kitchen/manual clear matches documented in the report.
+
+### Documentation Updates
+- File: roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md
+- Change: Added P9.3/P9.3.1 implementation report, user-readable flows, acceptance checklist, and validation output.
+
+### Checklist Updates
+- File: roadmap/business-flows/P9_3_backend_submit_pos_payment_report.md
+- Change: Marked acceptance items complete based on implemented code and validation.
+
+### Continuation Notes
+P9.3.1 core flow is complete for this batch. Recommended next batch: add a dedicated repository-level database integration test fixture for SubmitPOSPayment split replay if the project adds a reusable DB fixture for this repository.

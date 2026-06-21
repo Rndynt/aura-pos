@@ -27,7 +27,7 @@ import {
   type InsertOrder,
   type InsertOrderPayment,
 } from "@pos/infrastructure/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { toInsertOrderItemDb, toInsertOrderItemModifierDb } from "@pos/application/orders/mappers";
 import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE } from "@pos/core/pricing";
 import { calculateSelectedOptionsDelta, flattenSelectedOptions } from "@pos/application/catalog";
@@ -225,22 +225,64 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
 
       const remaining = roundCurrency(orderTotal - orderPaidBefore);
 
-      // ── 2. Validate payment amounts against current remaining ──────────
+      // ── 2. Build deterministic idempotency keys and detect replays ─────
+      const lineStates = lines.map((line, index) => ({
+        line,
+        index,
+        idempotencyKey: buildDeterministicIdempotencyKey(
+          clientPaymentSessionId,
+          flow,
+          targetBillId,
+          index,
+          line.method,
+          line.amount,
+        ),
+        existingPayment: undefined as any | undefined,
+      }));
+
+      if (lineStates.length > 0) {
+        const existingPayments = await tx
+          .select()
+          .from(orderPayments)
+          .where(
+            and(
+              eq(orderPayments.orderId, orderId),
+              inArray(orderPayments.idempotencyKey, lineStates.map((state) => state.idempotencyKey)),
+            ),
+          )
+          .for("update");
+        const existingByKey = new Map(existingPayments.map((payment) => [payment.idempotencyKey, payment]));
+        for (const state of lineStates) {
+          state.existingPayment = existingByKey.get(state.idempotencyKey);
+        }
+      }
+
       const lineTotal = roundCurrency(lines.reduce((s, l) => s + l.amount, 0));
+      const newLineTotal = roundCurrency(
+        lineStates
+          .filter((state) => !state.existingPayment)
+          .reduce((sum, state) => sum + state.line.amount, 0),
+      );
+
+      if (remaining <= 0.001 && newLineTotal > 0.001) {
+        throw new Error("Order sudah lunas. Pembayaran baru tidak dapat dicatat.");
+      }
+
+      // ── 3. Validate new payment amounts against current remaining ──────
 
       if (flow === "FULL" || flow === "DOWN_PAYMENT") {
-        if (lineTotal > remaining + 0.001) {
+        if (newLineTotal > remaining + 0.001) {
           throw new Error("Jumlah pembayaran melebihi sisa tagihan.");
         }
       }
 
-      if (flow === "MULTI_PAYMENT") {
-        if (Math.abs(lineTotal - remaining) > 0.001) {
+      if (flow === "MULTI_PAYMENT" && newLineTotal > 0.001) {
+        if (Math.abs(newLineTotal - remaining) > 0.001) {
           throw new Error("Total multi payment harus sama dengan sisa tagihan.");
         }
       }
 
-      // ── 3. Persist bill splits for SPLIT_BILL ─────────────────────────
+      // ── 4. Persist bill splits for SPLIT_BILL ─────────────────────────
       const splitIdMap = new Map<string, string>(); // clientBillId → db split id
 
       if (flow === "SPLIT_BILL" && splits.length > 0) {
@@ -261,8 +303,8 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
             const existing = existingSplits[0];
             splitIdMap.set(split.clientBillId, existing.id);
             // Update amountPaid and status if this is the selected bill
-            if (split.clientBillId === targetBillId) {
-              const newPaid = roundCurrency(parseFloat(existing.amountPaid ?? "0") + lineTotal);
+            if (split.clientBillId === targetBillId && newLineTotal > 0) {
+              const newPaid = roundCurrency(parseFloat(existing.amountPaid ?? "0") + newLineTotal);
               const due = parseFloat(existing.amountDue);
               const splitStatus =
                 newPaid >= due - 0.001 ? "paid" : newPaid > 0 ? "partial" : "unpaid";
@@ -277,7 +319,7 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
             }
           } else {
             const isTargetBill = split.clientBillId === targetBillId;
-            const paidNow = isTargetBill ? lineTotal : 0;
+            const paidNow = isTargetBill ? newLineTotal : 0;
             const due = split.amountDue;
             const splitStatus =
               paidNow >= due - 0.001 ? "paid" : paidNow > 0 ? "partial" : "unpaid";
@@ -300,8 +342,8 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
         }
       }
 
-      // ── 4. Check existing payment rows for DP/MULTI limits ────────────
-      if (flow === "DOWN_PAYMENT") {
+      // ── 5. Check existing payment rows for DP/MULTI limits ────────────
+      if (flow === "DOWN_PAYMENT" && newLineTotal > 0.001) {
         const dpRows = await tx
           .select({ id: orderPayments.id })
           .from(orderPayments)
@@ -312,7 +354,7 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
         }
       }
 
-      if (flow === "MULTI_PAYMENT") {
+      if (flow === "MULTI_PAYMENT" && newLineTotal > 0.001) {
         const multiRows = await tx
           .select({ id: orderPayments.id })
           .from(orderPayments)
@@ -323,11 +365,8 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
         }
       }
 
-      // ── 5. Determine payment kind ──────────────────────────────────────
-      function resolveKind(
-        lineIdx: number,
-        lineAmount: number,
-      ): string {
+      // ── 6. Determine payment kind ──────────────────────────────────────
+      function resolveKind(lineAmount: number): string {
         if (command.payment.paymentKind) return command.payment.paymentKind;
         if (flow === "DOWN_PAYMENT") {
           return lineAmount >= remaining - 0.001 ? "REMAINING_PAYMENT" : "DOWN_PAYMENT";
@@ -337,35 +376,13 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
         return "FULL_PAYMENT";
       }
 
-      // ── 6. Insert payment rows with deterministic idempotency ─────────
+      // ── 7. Insert only new payment rows ───────────────────────────────
       const insertedPayments: any[] = [];
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const idempotencyKey = buildDeterministicIdempotencyKey(
-          clientPaymentSessionId,
-          flow,
-          targetBillId,
-          i,
-          line.method,
-          line.amount,
-        );
-
-        // Idempotency check
-        const existing = await tx
-          .select()
-          .from(orderPayments)
-          .where(
-            and(
-              eq(orderPayments.orderId, orderId),
-              eq(orderPayments.idempotencyKey, idempotencyKey),
-            ),
-          )
-          .limit(1)
-          .for("update");
-
-        if (existing[0]) {
-          insertedPayments.push(existing[0]);
+      for (const state of lineStates) {
+        const line = state.line;
+        if (state.existingPayment) {
+          insertedPayments.push(state.existingPayment);
           continue;
         }
 
@@ -381,7 +398,7 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
           outletId: outletId ?? null,
           orderId,
           paymentFlow: flow as any,
-          paymentKind: resolveKind(i, line.amount) as any,
+          paymentKind: resolveKind(line.amount) as any,
           amount: line.amount.toString(),
           receivedAmount: line.receivedAmount != null ? line.receivedAmount.toString() : undefined,
           changeAmount:
@@ -393,16 +410,16 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
           paymentDate: new Date(),
           referenceNote: line.referenceNote,
           splitId,
-          sequence: i + 1,
-          idempotencyKey,
+          sequence: state.index + 1,
+          idempotencyKey: state.idempotencyKey,
         };
 
         const [created] = await tx.insert(orderPayments).values(paymentData).returning();
         insertedPayments.push(created);
       }
 
-      // ── 7. Update order paid_amount and payment_status ─────────────────
-      const newPaidAmount = roundCurrency(orderPaidBefore + lineTotal);
+      // ── 8. Update order paid_amount and payment_status by new rows only ─
+      const newPaidAmount = roundCurrency(orderPaidBefore + newLineTotal);
       const newRemaining = roundCurrency(orderTotal - newPaidAmount);
       const newPaymentStatus: "paid" | "partial" | "unpaid" =
         newRemaining <= 0.001 ? "paid" : newPaidAmount > 0 ? "partial" : "unpaid";
@@ -423,13 +440,19 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
         statusUpdates.closedAt = new Date();
       }
 
-      const [updatedOrder] = await tx
-        .update(orders)
-        .set(statusUpdates)
-        .where(and(eq(orders.id, orderId), eq(orders.tenantId, tenantId)))
-        .returning();
+      const [updatedOrder] = newLineTotal > 0.001
+        ? await tx
+            .update(orders)
+            .set(statusUpdates)
+            .where(and(eq(orders.id, orderId), eq(orders.tenantId, tenantId)))
+            .returning()
+        : await tx
+            .select()
+            .from(orders)
+            .where(and(eq(orders.id, orderId), eq(orders.tenantId, tenantId)))
+            .limit(1);
 
-      // ── 8. Return split rows ──────────────────────────────────────────
+      // ── 9. Return split rows ──────────────────────────────────────────
       let splitRows: SubmitPOSPaymentResultSplit[] = [];
       if (flow === "SPLIT_BILL") {
         const dbSplits = await tx

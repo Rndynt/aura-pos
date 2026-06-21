@@ -32,7 +32,7 @@ export type POSPaymentSubmissionInput = {
 };
 
 export type POSPaymentSubmissionDependencies = {
-  submitCanonicalPayment: (payload: SubmitPOSPaymentRequest) => Promise<SubmitPOSPaymentApiResult>;
+  submitPayment: (payload: SubmitPOSPaymentRequest) => Promise<SubmitPOSPaymentApiResult>;
 };
 
 export type POSPaymentSubmissionResult = {
@@ -170,7 +170,7 @@ export function buildSubmitPOSPaymentRequest(input: POSPaymentSubmissionInput): 
 }
 
 export async function submitPOSPayment(input: POSPaymentSubmissionInput, deps: POSPaymentSubmissionDependencies): Promise<POSPaymentSubmissionResult> {
-  const result = await deps.submitCanonicalPayment(buildSubmitPOSPaymentRequest(input));
+  const result = await deps.submitPayment(buildSubmitPOSPaymentRequest(input));
   return {
     orderId: result.orderId,
     orderNumber: result.orderNumber,
