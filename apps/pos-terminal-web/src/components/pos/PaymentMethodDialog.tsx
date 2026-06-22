@@ -95,20 +95,20 @@ function MethodSelector({
       {title && (
         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">{title}</p>
       )}
-      <div className="flex flex-col gap-1" data-testid={`${testIdPrefix}-method-selector`}>
+      <div className="flex flex-wrap gap-2" data-testid={`${testIdPrefix}-method-selector`}>
         {METHODS.map(({ id, label, Icon }) => (
           <button
             key={id}
             onClick={() => onChange(id)}
-            className={`flex items-center gap-2.5 py-2.5 px-3 rounded-xl border-2 transition-all font-bold text-xs w-full justify-start ${
+            className={`flex items-center gap-1.5 py-2 px-3 rounded-xl border-2 transition-all font-bold text-xs ${
               selected === id
                 ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-200"
                 : "bg-white border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600"
             }`}
             data-testid={`${testIdPrefix}-payment-${id}`}
           >
-            <Icon size={16} className="shrink-0" />
-            <span className="truncate">{label}</span>
+            <Icon size={14} className="shrink-0" />
+            <span>{label}</span>
           </button>
         ))}
       </div>
