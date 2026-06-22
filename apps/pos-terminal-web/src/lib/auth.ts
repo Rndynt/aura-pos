@@ -60,7 +60,36 @@ export async function loginWithEmailOrUsername(input: {
   identifier: string;
   password: string;
 }): Promise<AuthResult> {
-  // Coba username dulu
+  const looksLikeEmail = input.identifier.includes('@');
+
+  if (looksLikeEmail) {
+    // Identifier mengandung '@' → coba email dulu, fallback username
+    const byEmail = await postAuth('sign-in/email', {
+      email: input.identifier,
+      password: input.password,
+    });
+    if (byEmail.ok) {
+      await applyTenantFromSession();
+      return byEmail;
+    }
+
+    const byUsername = await postAuth('sign-in/username', {
+      username: input.identifier,
+      password: input.password,
+    });
+    if (byUsername.ok) {
+      await applyTenantFromSession();
+      return byUsername;
+    }
+
+    return {
+      ok: false,
+      message: byEmail.message || byUsername.message || 'Email atau password salah.',
+    };
+  }
+
+  // Identifier tanpa '@' → username saja, jangan fallback ke email
+  // (fallback ke email akan menghasilkan error "invalid email" dari Better Auth)
   const byUsername = await postAuth('sign-in/username', {
     username: input.identifier,
     password: input.password,
@@ -71,15 +100,8 @@ export async function loginWithEmailOrUsername(input: {
     return byUsername;
   }
 
-  // Fallback ke email
-  const byEmail = await postAuth('sign-in/email', {
-    email: input.identifier,
-    password: input.password,
-  });
-
-  if (byEmail.ok) {
-    await applyTenantFromSession();
-  }
-
-  return byEmail;
+  return {
+    ok: false,
+    message: byUsername.message || 'Username atau password salah.',
+  };
 }
