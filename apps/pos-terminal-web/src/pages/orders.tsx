@@ -307,7 +307,7 @@ function DetailPanel({ order, orderTypeName, onClose, onPrint, onSettle, isPrint
                 const unitPrice = item.quantity > 0 ? Math.round(item.item_subtotal / item.quantity) : money(item.base_price);
                 const selectedOpts = item.selected_options ?? [];
                 const optionsLabel = selectedOpts.length > 0
-                  ? selectedOpts.map((o) => (o as any).option_name ?? (o as any).name ?? (o as any).label ?? (o as any).value ?? "").filter(Boolean).join(", ")
+                  ? selectedOpts.map((o) => (o as any).optionName ?? (o as any).option_name ?? "").filter(Boolean).join(", ")
                   : null;
                 const variantDisplay = item.variant_name
                   ? optionsLabel ? `${item.variant_name} · ${optionsLabel}` : item.variant_name
