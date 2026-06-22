@@ -40,7 +40,7 @@ type NormalizedOrderItem = {
   base_price?: number;
   variant_name?: string | null;
   notes?: string | null;
-  selected_options?: Array<{ value?: string; label?: string; name?: string }>;
+  selected_options?: Array<{ option_name?: string; group_name?: string; price_delta?: number; [key: string]: any }>;
 };
 
 type NormalizedOrder = {
@@ -305,10 +305,13 @@ function DetailPanel({ order, orderTypeName, onClose, onPrint, onSettle, isPrint
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
               {order.items.map((item, idx) => {
                 const unitPrice = item.quantity > 0 ? Math.round(item.item_subtotal / item.quantity) : money(item.base_price);
-                const optionsLabel = (item.selected_options ?? []).length > 0
-                  ? (item.selected_options ?? []).map((o) => o.value ?? o.label ?? o.name ?? "").filter(Boolean).join(", ")
+                const selectedOpts = item.selected_options ?? [];
+                const optionsLabel = selectedOpts.length > 0
+                  ? selectedOpts.map((o) => (o as any).option_name ?? (o as any).name ?? (o as any).label ?? (o as any).value ?? "").filter(Boolean).join(", ")
                   : null;
-                const variantDisplay = item.variant_name ?? optionsLabel;
+                const variantDisplay = item.variant_name
+                  ? optionsLabel ? `${item.variant_name} · ${optionsLabel}` : item.variant_name
+                  : optionsLabel;
                 return (
                   <div key={item.id || idx} className={`px-4 py-3 ${idx < order.items.length - 1 ? "border-b border-slate-50" : ""}`}>
                     <div className="flex items-start justify-between gap-3">

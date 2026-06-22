@@ -549,9 +549,11 @@ function ActiveOrderDetailDialog({
               const variantLabel = item.variantName ?? item.variant_name ?? null;
               const selectedOpts: any[] = item.selectedOptions ?? item.selected_options ?? [];
               const optionsLabel = selectedOpts.length > 0
-                ? selectedOpts.map((o: any) => o.value ?? o.label ?? o.name ?? String(o)).join(", ")
+                ? selectedOpts.map((o: any) => o.option_name ?? o.name ?? o.label ?? o.value ?? "").filter(Boolean).join(", ")
                 : null;
-              const variantDisplay = variantLabel ?? optionsLabel;
+              const variantDisplay = variantLabel
+                ? optionsLabel ? `${variantLabel} · ${optionsLabel}` : variantLabel
+                : optionsLabel;
               return (
                 <div
                   key={item.id ?? index}
