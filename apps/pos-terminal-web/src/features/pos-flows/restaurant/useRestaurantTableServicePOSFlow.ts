@@ -278,7 +278,7 @@ export function useRestaurantTableServicePOSFlow() {
       });
       await refetchOpenOrders();
       toast({ title: result.messageTitle, description: result.messageDescription });
-      if (result.shouldClearCart) {
+      if (result.status === "PAID" || result.status === "PARTIAL") {
         paymentSessionIdRef.current = null;
         setPendingOrderForPayment(null);
         setPaymentMethodDialogOpen(false);

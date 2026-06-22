@@ -225,7 +225,7 @@ export function useRetailStandardPOSFlow() {
           paymentDetails,
         }, dependencies);
         toast({ title: result.messageTitle, description: result.messageDescription });
-        if (result.shouldClearCart) {
+        if (result.status === "PAID" || result.status === "PARTIAL") {
           paymentSessionIdRef.current = null;
           setPendingOrderForPayment(null);
           setPaymentMethodDialogOpen(false);
@@ -258,7 +258,7 @@ export function useRetailStandardPOSFlow() {
           paymentDetails,
         }, dependencies);
         toast({ title: result.messageTitle, description: result.messageDescription });
-        if (result.shouldClearCart) {
+        if (result.status === "PAID" || result.status === "PARTIAL") {
           paymentSessionIdRef.current = null;
           cart.clearCart();
           setPaymentMethodDialogOpen(false);
@@ -298,7 +298,7 @@ export function useRetailStandardPOSFlow() {
         }
       }
       toast({ title: result.status === "PAID" ? "Pesanan berhasil dibuat & dibayar" : result.messageTitle, description: result.status === "PAID" ? `Order #${result.orderNumber} - Total: Rp ${snapshot.total.toLocaleString("id-ID")}` : result.messageDescription });
-      if (result.shouldClearCart) {
+      if (result.status === "PAID" || result.status === "PARTIAL") {
         paymentSessionIdRef.current = null;
         cart.clearCart();
         setPaymentMethodDialogOpen(false);

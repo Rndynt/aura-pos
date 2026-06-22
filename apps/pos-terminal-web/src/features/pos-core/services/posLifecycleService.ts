@@ -50,7 +50,7 @@ export function isTrueServerDraft(order: POSLifecycleOrder): boolean {
   return (
     order.isEditableDraft === true ||
     (String(order.status ?? "").toLowerCase() === "draft" &&
-      getOrderPaymentStatus(order) !== "paid" &&
+      getOrderPaymentStatus(order) === "unpaid" &&
       !isKitchenLocked(order))
   );
 }
