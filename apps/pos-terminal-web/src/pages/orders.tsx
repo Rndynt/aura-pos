@@ -3,16 +3,7 @@ import { useLocation } from "wouter";
 import { useOrder, useOrders, useOrderTypes, useRecordPayment } from "@/lib/api/hooks";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { PaymentMethodDialog } from "@/components/pos/PaymentMethodDialog";
 import { useToast } from "@/hooks/use-toast";
 import { UnifiedBottomNav } from "@/components/navigation/UnifiedBottomNav";
 import {
@@ -21,13 +12,13 @@ import {
   ArrowLeft,
   ShoppingBag,
   Printer,
-  Banknote,
   Receipt,
   Clock,
   CheckCircle2,
   Package,
 } from "lucide-react";
 import type { POSPaymentMethod } from "@pos/domain/payments";
+import type { PaymentMethod } from "@/hooks/useCart";
 import {
   enqueuePrintJob,
   markPrinting,
@@ -74,12 +65,6 @@ type NormalizedOrder = {
 };
 
 type OrderTypeSummary = { id: string; name: string };
-
-const POS_PAYMENT_METHOD_OPTIONS: Array<{ value: POSPaymentMethod; label: string }> = [
-  { value: "CASH", label: "Tunai" },
-  { value: "MANUAL_TRANSFER", label: "Transfer Manual" },
-  { value: "MANUAL_QRIS", label: "QRIS Manual" },
-];
 
 const STATUS_CFG: Record<string, { label: string; badge: string; dot: string }> = {
   draft: { label: "Ditunda", badge: "bg-slate-100 text-slate-600", dot: "bg-slate-300" },
@@ -483,7 +468,6 @@ export default function OrdersPage() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [settleDialogOpen, setSettleDialogOpen] = useState(false);
-  const [settlePaymentMethod, setSettlePaymentMethod] = useState<POSPaymentMethod>("CASH");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -587,18 +571,32 @@ export default function OrdersPage() {
       toast({ title: "Sudah Terbayar", description: "Pesanan ini sudah lunas.", variant: "destructive" });
       return;
     }
-    setSettlePaymentMethod("CASH");
     setSettleDialogOpen(true);
   };
 
-  const handleConfirmSettle = async () => {
+  const handleConfirmSettleFromPaymentDialog = async (
+    method: PaymentMethod,
+    cashReceived?: number,
+    _partialAmount?: number,
+    paymentDetails?: { lines?: Array<{ amount: number; receivedAmount?: number }> }
+  ) => {
     if (!selectedOrder) return;
     const remaining = Math.max(0, selectedOrder.total_amount - selectedOrder.paid_amount);
     if (remaining <= 0) return;
-    setSettleDialogOpen(false);
+
+    const line = paymentDetails?.lines?.[0];
+    const amount = line?.amount ?? remaining;
+    const received_amount = line?.receivedAmount ?? cashReceived;
+
     try {
-      await recordPaymentMutation.mutateAsync({ orderId: selectedOrder.id, amount: remaining, payment_method: settlePaymentMethod });
-      toast({ title: "Pembayaran berhasil", description: `${formatPrice(remaining)} telah dicatat.` });
+      await recordPaymentMutation.mutateAsync({
+        orderId: selectedOrder.id,
+        amount,
+        payment_method: method as "CASH" | "MANUAL_TRANSFER" | "MANUAL_QRIS",
+        received_amount,
+      });
+      setSettleDialogOpen(false);
+      toast({ title: "Pembayaran berhasil", description: `${formatPrice(amount)} telah dicatat.` });
     } catch (error) {
       toast({ title: "Gagal", description: error instanceof Error ? error.message : "Gagal mencatat pembayaran", variant: "destructive" });
     }
@@ -667,38 +665,20 @@ export default function OrdersPage() {
       {selectedOrder && <div className="fixed inset-0 bg-black/25 backdrop-blur-[1px] z-[55] md:hidden" onClick={() => setSelectedOrderId(null)} />}
       <UnifiedBottomNav cartCount={0} />
 
-      <AlertDialog open={settleDialogOpen} onOpenChange={setSettleDialogOpen}>
-        <AlertDialogContent className="max-w-sm mx-4 rounded-2xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-base font-bold text-slate-800">Konfirmasi Pembayaran</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3 pt-1">
-                {selectedOrder && (
-                  <div className="bg-slate-50 rounded-xl p-3.5 space-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-slate-500">Pesanan</span><span className="font-bold text-slate-800">#{selectedOrder.order_number}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Sisa tagihan</span><span className="font-black text-amber-600">{formatPrice(Math.max(0, selectedOrder.total_amount - selectedOrder.paid_amount))}</span></div>
-                  </div>
-                )}
-                <div>
-                  <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Metode Pembayaran</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {POS_PAYMENT_METHOD_OPTIONS.map(({ value, label }) => (
-                      <button key={value} onClick={() => setSettlePaymentMethod(value)} data-testid={`settle-method-${value}`} className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 text-xs font-bold transition-all ${settlePaymentMethod === value ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}>
-                        <Banknote size={18} />
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2 mt-1">
-            <AlertDialogCancel className="flex-1 rounded-xl font-semibold" data-testid="button-settle-cancel">Batal</AlertDialogCancel>
-            <AlertDialogAction className="flex-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold" onClick={handleConfirmSettle} data-testid="button-settle-confirm">Lunasi Sekarang</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {selectedOrder && (
+        <PaymentMethodDialog
+          open={settleDialogOpen}
+          onClose={() => setSettleDialogOpen(false)}
+          cartTotal={Math.max(0, selectedOrder.total_amount - selectedOrder.paid_amount)}
+          cartItems={[]}
+          isSubmitting={recordPaymentMutation.isPending}
+          defaultPaymentMethod="CASH"
+          allowPartial={false}
+          allowMultiPayment={false}
+          allowSplitBill={false}
+          onConfirm={handleConfirmSettleFromPaymentDialog}
+        />
+      )}
     </div>
   );
 }

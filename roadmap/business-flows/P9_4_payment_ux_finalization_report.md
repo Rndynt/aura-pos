@@ -969,3 +969,124 @@ h-[90vh] md:h-full ${selectedOrder ? "translate-y-0 shadow-..." : "translate-y-f
 - `npx tsc --noEmit` in `apps/pos-terminal-web` → **0 errors**
 - Server `npm run dev` → running clean on port 5000
 - API payment fields: `paymentMethod`, `paymentKind`, `paymentFlow`, `amount`, `splitId` (camelCase Drizzle) now correctly mapped to snake_case for frontend consumption
+
+---
+
+## P9.10 Reuse PaymentMethodDialog for Order Settlement
+
+Date: 2026-06-22
+
+Source prompt: `roadmap/orders/replit_codex_P9_10_reuse_payment_dialog_for_order_settlement_prompt.md`
+
+### 1. Reason custom settlement AlertDialog was removed
+
+The Orders detail page (`orders.tsx`) previously opened a bespoke `AlertDialog` labelled **"Konfirmasi Pembayaran"** when the cashier clicked **Proses Pembayaran** or **Lunasi Sisa Rp X**. That mini-dialog:
+
+- Rendered its own 3-column payment method grid with hardcoded `POS_PAYMENT_METHOD_OPTIONS`, duplicating the UI already present in `PaymentMethodDialog`.
+- Did not show a numpad, cash-change preview, or manual transfer/QRIS confirmation flow — all of which the shared dialog provides.
+- Diverged visually from the POS cashier payment dialog, creating inconsistent UX.
+- Created a separate code path that would not inherit future payment UI fixes automatically.
+
+### 2. How Orders settlement reuses PaymentMethodDialog
+
+`PaymentMethodDialog` is imported directly into `orders.tsx` and rendered in place of the old `AlertDialog`. The dialog is opened only when a selected order is not fully paid:
+
+```tsx
+{selectedOrder && (
+  <PaymentMethodDialog
+    open={settleDialogOpen}
+    onClose={() => setSettleDialogOpen(false)}
+    cartTotal={Math.max(0, selectedOrder.total_amount - selectedOrder.paid_amount)}
+    cartItems={[]}
+    isSubmitting={recordPaymentMutation.isPending}
+    defaultPaymentMethod="CASH"
+    allowPartial={false}
+    allowMultiPayment={false}
+    allowSplitBill={false}
+    onConfirm={handleConfirmSettleFromPaymentDialog}
+  />
+)}
+```
+
+`allowPartial={false}`, `allowMultiPayment={false}`, and `allowSplitBill={false}` enforce full settlement of the remaining balance only. DP / Multi / Split tabs are not shown in the Orders settlement dialog.
+
+### 3. Remaining-balance mapping
+
+```ts
+const remaining = Math.max(0, selectedOrder.total_amount - selectedOrder.paid_amount);
+```
+
+- **Unpaid order**: `remaining = total_amount` → dialog opens with full total.
+- **Partial order** (clicked "Lunasi Sisa Rp X"): `remaining = total_amount - paid_amount` → dialog opens with that exact remaining amount.
+- **Paid order**: `handleOpenSettleDialog()` guards before opening; the detail panel shows "Pesanan Lunas" and no settle button.
+
+The `handleConfirmSettleFromPaymentDialog` handler maps the `PaymentMethodDialog` callback signature to `useRecordPayment`:
+
+```ts
+const handleConfirmSettleFromPaymentDialog = async (
+  method: PaymentMethod,
+  cashReceived?: number,
+  _partialAmount?: number,
+  paymentDetails?: { lines?: Array<{ amount: number; receivedAmount?: number }> }
+) => {
+  const line = paymentDetails?.lines?.[0];
+  const amount = line?.amount ?? remaining;
+  const received_amount = line?.receivedAmount ?? cashReceived;
+  await recordPaymentMutation.mutateAsync({
+    orderId: selectedOrder.id,
+    amount,
+    payment_method: method as "CASH" | "MANUAL_TRANSFER" | "MANUAL_QRIS",
+    received_amount,
+  });
+};
+```
+
+This preserves the existing `RecordPaymentInput` contract — no new backend fields invented.
+
+### 4. Files changed
+
+| File | Change |
+|---|---|
+| `apps/pos-terminal-web/src/pages/orders.tsx` | Removed `AlertDialog*` imports, `Banknote` icon, `POS_PAYMENT_METHOD_OPTIONS`, `settlePaymentMethod` state, `handleConfirmSettle`. Added `PaymentMethodDialog` import, `PaymentMethod` type import, `handleConfirmSettleFromPaymentDialog` handler. Replaced `AlertDialog` block with `<PaymentMethodDialog>`. |
+| `roadmap/business-flows/P9_4_payment_ux_finalization_report.md` | Added this P9.10 section. |
+
+### 5. Manual verification checklist
+
+```
+1. Open Orders page.
+2. Select unpaid order.
+3. Click "Proses Pembayaran".
+4. Expected: PaymentMethodDialog opens (full-screen dialog with left panel), NOT the old "Konfirmasi Pembayaran" mini AlertDialog.
+5. Select Tunai, enter cash amount, confirm.
+6. Expected: payment is recorded; dialog closes; order shows "Lunas" / "Pesanan Lunas".
+7. Select a partially-paid order.
+8. Click "Lunasi Sisa Rp X".
+9. Expected: PaymentMethodDialog opens with cartTotal = remaining X, not full original total.
+10. Select Transfer Manual → confirm.
+11. Expected: payment recorded for remaining amount only.
+12. Select QRIS Manual → confirm.
+13. Expected: payment recorded correctly.
+14. Verify no DP / Multi / Split tabs appear in Orders settlement.
+15. Verify paid order shows "Pesanan Lunas" and no settle button (no dialog attempt).
+```
+
+### 6. Acceptance checklist
+
+- [x] Orders page no longer renders custom `Konfirmasi Pembayaran` AlertDialog.
+- [x] Orders settlement imports and uses `PaymentMethodDialog`.
+- [x] `settlePaymentMethod` state removed.
+- [x] Duplicate payment method grid (`POS_PAYMENT_METHOD_OPTIONS`) in orders.tsx removed.
+- [x] Unpaid order opens PaymentMethodDialog with unpaid total.
+- [x] Partial order opens PaymentMethodDialog with remaining amount only.
+- [x] Paid order does not open payment dialog.
+- [x] Record payment still calls the existing `useRecordPayment` hook / order payment API.
+- [x] Cash, Transfer Manual, and QRIS Manual work through the reused dialog.
+- [x] DP/Multi/Split disabled (`allowPartial={false}`, `allowMultiPayment={false}`, `allowSplitBill={false}`).
+- [x] Styling consistent with main POS payment dialog (same component).
+- [x] TypeScript `tsc --noEmit` → 0 errors.
+
+### 7. Remaining limitations
+
+- Full browser/UI rendering tests are not present (deferred, per project policy).
+- Live DB integration tests for Orders settlement payment rows are not present (deferred).
+- `allowPartial`, `allowMultiPayment`, `allowSplitBill` can be enabled in a future product decision without any additional structural change — just flip the prop.
