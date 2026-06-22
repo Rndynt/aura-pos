@@ -60,6 +60,18 @@ function mapApiOrder(raw: Record<string, any>): Order {
           selected_options: item.selectedOptions ?? item.selected_options ?? [],
         }))
       : [],
+    ...(Array.isArray(raw.payments) ? {
+      payments: raw.payments.map((p: Record<string, any>) => ({
+        id: p.id,
+        payment_method: p.paymentMethod ?? p.payment_method,
+        payment_kind: p.paymentKind ?? p.payment_kind,
+        payment_flow: p.paymentFlow ?? p.payment_flow,
+        amount: Number(p.amount ?? 0),
+        split_id: p.splitId ?? p.split_id,
+        sequence: p.sequence ?? 1,
+        payment_date: p.paymentDate ?? p.payment_date,
+      })),
+    } : {}),
   } as Order;
 }
 

@@ -914,3 +914,58 @@ h-[90vh] md:h-full ${selectedOrder ? "translate-y-0 shadow-..." : "translate-y-f
 
 - `npx tsc --noEmit` in `apps/pos-terminal-web` → **0 errors**
 - Server `npm run dev` → running clean on port 5000, 0 migration errors
+
+---
+
+## P9.9 Orders Page + Draft Dialog Readability Final Fix
+
+**Date:** 2026-06-22  
+**Scope:** Full redesign per 494-line P9.9 spec
+
+### 1. Root Causes Diagnosed
+
+**Critical bug found:** `mapApiOrder()` in `hooks.ts` did not preserve `payments[]` from API response. `useOrder(id)` returned an Order with `payments = undefined`, causing DetailPanel to always show "Belum ada pembayaran" even when payments existed. Fix: added payments mapping in `mapApiOrder`.
+
+**Header bloat:** DetailPanel consumed ~120px with two large info-cards (2×2 grid: Status/Pembayaran + Meja/Pelanggan) before the scrollable content. This left very little room for order items + payment section.
+
+**Draft dialog rows:** Each row used ~72px height (order number + customer name + price on separate lines) for very simple information, limiting how many drafts fit on screen.
+
+**Layout imbalance:** Detail panel was fixed at `md:w-[400px]` (static), making it narrow on large screens and cutting off content.
+
+### 2. Changes Implemented
+
+#### `apps/pos-terminal-web/src/lib/api/hooks.ts`
+- Added `payments` mapping in `mapApiOrder()`: preserves raw payment records from API response with snake_case normalized fields (`payment_method`, `payment_kind`, `payment_flow`, `amount`, `split_id`, `sequence`, `payment_date`)
+- Payments are now correctly available in `DetailPanel` via `selectedOrderResponse`
+
+#### `apps/pos-terminal-web/src/pages/orders.tsx`
+- **`paymentKindLabel()`**: Added `FULL_PAYMENT → "Bayar Penuh"` (was returning `null`/hidden before); `SPLIT_BILL_LINE → "Split Bill"` (was "Split")
+- **DetailPanel header compaction**: Replaced 120px two-card grid with 52px single chip row:
+  - `#ORD-xxxx` bold mono title on top line
+  - Inline chips: `[orderType] [status] [payment] [Meja X] [CustomerName] [🕐 HH:MM DD/MM]`
+  - Close button top-right
+- **Payment section redesign**: Full breakdown with flow-aware grouping:
+  - Summary card: Total / Dibayar / Sisa + amber progress bar for partial
+  - `MULTI_PAYMENT`: "Multi Payment" header + numbered lines + "Total dibayar" footer
+  - `SPLIT_BILL`: "Split Bill" header + "Bill A/B/..." per `splitId` + method
+  - Default: `• Tunai · Bayar Penuh +Rp 190.900` format
+- **Layout proportions**: `md:w-[400px]` → `md:w-[45%] md:min-w-[320px] md:max-w-[520px]`; better balance on tablet/desktop
+
+#### `apps/pos-terminal-web/src/components/pos/CombinedDraftSheet.tsx`
+- **Server draft rows**: Compact 2-line format `ORDER-XXXX [Meja X]` / `Rp xx.xxx · N item · HH:MM`; icon buttons `w-7 h-7` (was `w-8 h-8`); Lanjut button `text-[11px]` (was `text-xs`)
+- **Active order rows**: Same compact format; Eye icon-only Detail button; Bayar button smaller
+- **Local draft rows**: `LOCAL-xxxxxxxx [Meja X]` / `Rp xx.xxx · HH:MM`; removed redundant full timestamp line
+
+### 3. Files Changed
+
+| File | Change |
+|------|--------|
+| `apps/pos-terminal-web/src/lib/api/hooks.ts` | Added `payments[]` mapping in `mapApiOrder()` |
+| `apps/pos-terminal-web/src/pages/orders.tsx` | `paymentKindLabel` fix; DetailPanel compact header; payment section redesign; layout proportions |
+| `apps/pos-terminal-web/src/components/pos/CombinedDraftSheet.tsx` | Compact rows for server drafts, active orders, local drafts |
+
+### 4. Verification
+
+- `npx tsc --noEmit` in `apps/pos-terminal-web` → **0 errors**
+- Server `npm run dev` → running clean on port 5000
+- API payment fields: `paymentMethod`, `paymentKind`, `paymentFlow`, `amount`, `splitId` (camelCase Drizzle) now correctly mapped to snake_case for frontend consumption

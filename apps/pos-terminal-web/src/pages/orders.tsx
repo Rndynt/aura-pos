@@ -131,10 +131,11 @@ const formatTime = (date: Date | string | undefined | null) => {
 
 function paymentKindLabel(kind: unknown): string | null {
   const k = String(kind ?? "").toUpperCase();
+  if (k === "FULL_PAYMENT") return "Bayar Penuh";
   if (k === "DOWN_PAYMENT") return "DP";
   if (k === "REMAINING_PAYMENT") return "Pelunasan";
   if (k === "MULTI_PAYMENT_LINE") return "Multi";
-  if (k === "SPLIT_BILL_LINE") return "Split";
+  if (k === "SPLIT_BILL_LINE") return "Split Bill";
   return null;
 }
 
@@ -275,42 +276,30 @@ function DetailPanel({ order, orderTypeName, onClose, onPrint, onSettle, isPrint
         <div className="pt-2.5 flex justify-center md:hidden">
           <div className="w-10 h-1 bg-slate-200 rounded-full" />
         </div>
-        <div className="px-4 pt-3 pb-1 flex items-center justify-between gap-2">
-          {orderTypeName ? <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg">{orderTypeName}</span> : <span />}
-          <button onClick={onClose} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-500 transition-colors" data-testid="button-close-details">
-            <X size={14} />
-          </button>
-        </div>
-        <div className="px-4 pb-3">
-          <h2 className="font-mono text-lg font-black text-slate-900 leading-tight">#{order.order_number}</h2>
-          <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
-            <Clock size={10} />
-            {formatDateTime(order.created_at)}
-          </p>
-        </div>
-        <div className="mx-4 mb-4 rounded-2xl bg-slate-50 border border-slate-100 overflow-hidden">
-          <div className="grid grid-cols-2 divide-x divide-slate-100">
-            <div className="px-3.5 py-2.5">
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Status</p>
-              <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-lg ${statusCfg.badge}`}>{statusCfg.label}</span>
-            </div>
-            <div className="px-3.5 py-2.5">
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pembayaran</p>
-              <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-lg ${paymentCfg.badge}`}>{paymentCfg.label}</span>
+        <div className="px-4 pt-2.5 pb-3 flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <h2 className="font-mono text-base font-black text-slate-900 leading-tight">#{order.order_number}</h2>
+            <div className="flex items-center gap-1 flex-wrap mt-1.5">
+              {orderTypeName && (
+                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">{orderTypeName}</span>
+              )}
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${statusCfg.badge}`}>{statusCfg.label}</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${paymentCfg.badge}`}>{paymentCfg.label}</span>
+              {order.table_number && (
+                <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">Meja {order.table_number}</span>
+              )}
+              {order.customer_name && (
+                <span className="text-[10px] text-slate-500 truncate max-w-[110px]">{order.customer_name}</span>
+              )}
+              <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                <Clock size={9} />
+                {formatDateTime(order.created_at)}
+              </span>
             </div>
           </div>
-          {(order.table_number || order.customer_name) && (
-            <div className="grid grid-cols-2 divide-x divide-slate-100 border-t border-slate-100">
-              <div className="px-3.5 py-2.5">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Meja</p>
-                <p className="text-sm font-bold text-slate-700">{order.table_number ?? "—"}</p>
-              </div>
-              <div className="px-3.5 py-2.5">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pelanggan</p>
-                <p className="text-sm font-medium text-slate-700 truncate">{order.customer_name || "—"}</p>
-              </div>
-            </div>
-          )}
+          <button onClick={onClose} className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-500 transition-colors flex-shrink-0 mt-0.5" data-testid="button-close-details">
+            <X size={14} />
+          </button>
         </div>
       </div>
 
@@ -364,41 +353,105 @@ function DetailPanel({ order, orderTypeName, onClose, onPrint, onSettle, isPrint
         </div>
 
         <div className="px-5 pt-2 pb-4">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 py-3 space-y-1.5">
-            <div className="flex items-center justify-between mb-1">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="px-4 pt-3 pb-2 border-b border-slate-50 flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pembayaran</span>
               <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg ${paymentCfg.badge}`}>{paymentCfg.label}</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Dibayar</span>
-              <span className={`font-bold ${order.paid_amount > 0 ? "text-emerald-600" : "text-slate-400"}`}>{formatPrice(order.paid_amount)}</span>
-            </div>
-            {!isFullyPaid && <div className="flex justify-between text-sm border-t border-slate-50 pt-1.5"><span className="text-slate-600 font-medium">Sisa Tagihan</span><span className="font-black text-amber-600">{formatPrice(remaining)}</span></div>}
-            {Array.isArray(order.payments) && order.payments.length > 0 && (
-              <div className="border-t border-slate-50 pt-2 space-y-1.5 mt-1">
-                {order.payments.map((p: any, idx: number) => {
-                  const method = p.payment_method ?? p.paymentMethod;
-                  const kind = p.payment_kind ?? p.paymentKind;
-                  const kindBadge = paymentKindLabel(kind);
-                  return (
-                    <div key={p.id ?? idx} className="flex justify-between items-center text-xs">
-                      <div className="flex items-center gap-1.5 text-slate-500 flex-wrap">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                        <span>{paymentMethodLabel(method)}</span>
-                        {kindBadge && (
-                          <span className="bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0 rounded text-[10px] font-bold leading-5">{kindBadge}</span>
-                        )}
-                        <span className="text-slate-300">·</span>
-                        <span className="text-slate-400">{formatTime(p.payment_date ?? p.paymentDate)}</span>
-                      </div>
-                      <span className="font-bold text-emerald-600 flex-shrink-0">+{formatPrice(Number(p.amount ?? 0))}</span>
-                    </div>
-                  );
-                })}
+            <div className="px-4 py-2.5 space-y-1.5">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Total</span>
+                <span className="font-bold text-slate-800">{formatPrice(order.total_amount)}</span>
               </div>
-            )}
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Dibayar</span>
+                <span className={`font-bold ${order.paid_amount > 0 ? "text-emerald-600" : "text-slate-400"}`}>{formatPrice(order.paid_amount)}</span>
+              </div>
+              {!isFullyPaid && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600 font-medium">Sisa</span>
+                  <span className="font-black text-amber-600">{formatPrice(remaining)}</span>
+                </div>
+              )}
+              {order.payment_status === "partial" && order.total_amount > 0 && (
+                <div className="pt-0.5">
+                  <div className="h-1.5 bg-amber-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-amber-400 rounded-full transition-all" style={{ width: `${Math.min(100, (order.paid_amount / order.total_amount) * 100)}%` }} />
+                  </div>
+                </div>
+              )}
+            </div>
+            {Array.isArray(order.payments) && order.payments.length > 0 && (() => {
+              const pmts = order.payments;
+              const firstFlow = String(pmts[0]?.payment_flow ?? pmts[0]?.paymentFlow ?? "FULL").toUpperCase();
+              const isMulti = firstFlow === "MULTI_PAYMENT" && pmts.length > 1;
+              const isSplit = firstFlow === "SPLIT_BILL";
+              if (isMulti) {
+                const multiTotal = pmts.reduce((s: number, p: any) => s + Number(p.amount ?? 0), 0);
+                return (
+                  <div className="border-t border-slate-50 px-4 py-2.5 space-y-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Multi Payment</p>
+                    {pmts.map((p: any, idx: number) => (
+                      <div key={p.id ?? idx} className="flex justify-between text-xs">
+                        <span className="text-slate-500">{idx + 1}. {paymentMethodLabel(p.payment_method ?? p.paymentMethod)}</span>
+                        <span className="font-semibold text-emerald-600">{formatPrice(Number(p.amount ?? 0))}</span>
+                      </div>
+                    ))}
+                    <div className="border-t border-slate-100 pt-1 flex justify-between text-xs">
+                      <span className="text-slate-600 font-semibold">Total dibayar</span>
+                      <span className="font-black text-emerald-700">{formatPrice(multiTotal)}</span>
+                    </div>
+                  </div>
+                );
+              }
+              if (isSplit) {
+                const splitLabels = new Map<string, string>();
+                const alphabet = "ABCDEFGHIJ";
+                let labelIdx = 0;
+                pmts.forEach((p: any) => {
+                  const sid = p.split_id ?? p.splitId;
+                  if (sid && !splitLabels.has(sid)) splitLabels.set(sid, `Bill ${alphabet[labelIdx++] ?? labelIdx}`);
+                });
+                return (
+                  <div className="border-t border-slate-50 px-4 py-2.5 space-y-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Split Bill</p>
+                    {pmts.map((p: any, idx: number) => {
+                      const sid = p.split_id ?? p.splitId;
+                      const billLabel = sid ? (splitLabels.get(sid) ?? "Bill ?") : `Pembayaran ${idx + 1}`;
+                      return (
+                        <div key={p.id ?? idx} className="flex justify-between items-center text-xs">
+                          <span className="text-slate-500">{billLabel} · {paymentMethodLabel(p.payment_method ?? p.paymentMethod)}</span>
+                          <span className="font-semibold text-emerald-600">{formatPrice(Number(p.amount ?? 0))}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
+              return (
+                <div className="border-t border-slate-50 px-4 py-2.5 space-y-1.5">
+                  {pmts.map((p: any, idx: number) => {
+                    const method = p.payment_method ?? p.paymentMethod;
+                    const kind = p.payment_kind ?? p.paymentKind;
+                    const kindLabel = paymentKindLabel(kind);
+                    return (
+                      <div key={p.id ?? idx} className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                          {paymentMethodLabel(method)}
+                          {kindLabel && <span className="text-slate-400">· {kindLabel}</span>}
+                        </span>
+                        <span className="font-semibold text-emerald-600">+{formatPrice(Number(p.amount ?? 0))}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
             {Array.isArray(order.payments) && order.payments.length === 0 && order.paid_amount === 0 && (
-              <p className="text-[11px] text-slate-400 text-center py-1.5">Belum ada pembayaran tercatat</p>
+              <div className="px-4 pb-3">
+                <p className="text-[11px] text-slate-400 text-center py-1">Belum ada pembayaran tercatat</p>
+              </div>
             )}
           </div>
         </div>
@@ -605,7 +658,7 @@ export default function OrdersPage() {
             </ScrollArea>
           </div>
 
-          <div className={`fixed md:relative inset-x-0 bottom-0 md:inset-auto md:w-[400px] md:h-full z-[60] bg-white md:border-l border-slate-200 md:shadow-none flex flex-col transition-transform duration-300 ease-out rounded-t-3xl md:rounded-none h-[90vh] md:h-full ${selectedOrder ? "translate-y-0 shadow-[0_-8px_40px_rgba(0,0,0,0.18)]" : "translate-y-full md:translate-y-0"}`}>
+          <div className={`fixed md:relative inset-x-0 bottom-0 md:inset-auto md:w-[45%] md:min-w-[320px] md:max-w-[520px] md:h-full z-[60] bg-white md:border-l border-slate-200 md:shadow-none flex flex-col transition-transform duration-300 ease-out rounded-t-3xl md:rounded-none h-[90vh] md:h-full ${selectedOrder ? "translate-y-0 shadow-[0_-8px_40px_rgba(0,0,0,0.18)]" : "translate-y-full md:translate-y-0"}`}>
             <DetailPanel order={selectedOrder} orderTypeName={selectedOrder?.order_type_id ? orderTypeMap[selectedOrder.order_type_id] : undefined} onClose={() => setSelectedOrderId(null)} onPrint={handleReprintReceipt} onSettle={handleOpenSettleDialog} isPrinting={isPrinting} isSettling={recordPaymentMutation.isPending} />
           </div>
         </div>
