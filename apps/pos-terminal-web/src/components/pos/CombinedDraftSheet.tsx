@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Drawer } from "vaul";
 import {
   Dialog,
@@ -8,10 +8,9 @@ import {
 } from "@/components/ui/dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
-  Clock,
+  X,
   ArrowRight,
   PackageOpen,
-  User,
   Trash2,
   Loader2,
   Smartphone,
@@ -428,8 +427,27 @@ function EmptyState({ label, sublabel }: { label: string; sublabel?: string }) {
 }
 
 function formatRp(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return "Tidak tersedia";
+  if (value === null || !Number.isFinite(value)) return "—";
   return `Rp ${value.toLocaleString("id-ID")}`;
+}
+
+function useIsLandscapeMobile() {
+  const [isLandscape, setIsLandscape] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      setIsLandscape(
+        window.innerWidth > window.innerHeight && window.innerWidth < 900,
+      );
+    };
+    check();
+    window.addEventListener("resize", check);
+    window.addEventListener("orientationchange", check);
+    return () => {
+      window.removeEventListener("resize", check);
+      window.removeEventListener("orientationchange", check);
+    };
+  }, []);
+  return isLandscape;
 }
 
 function ActiveOrderDetailDialog({
@@ -441,46 +459,216 @@ function ActiveOrderDetailDialog({
   onOpenChange: (open: boolean) => void;
   onPay: (order: POSLifecycleOrder) => void;
 }) {
+  const isLandscape = useIsLandscapeMobile();
+
   if (!order) return null;
-  const items = ((order as any).items ?? (order as any).orderItems ?? []) as Array<any>;
+
+  const items = (
+    (order as any).items ?? (order as any).orderItems ?? []
+  ) as Array<any>;
   const total = getOrderTotalAmount(order);
   const paid = getOrderPaidAmount(order);
   const remaining = getOrderRemainingAmount(order);
   const canPay = canPayActiveOrder(order) && remaining !== null && remaining > 0;
 
+  const orderNumber =
+    (order as any).orderNumber ?? (order as any).order_number ?? order.id;
+  const tableNumber =
+    (order as any).tableNumber ?? (order as any).table_number;
+  const customerName =
+    (order as any).customerName ?? (order as any).customer_name;
+  const statusLabel =
+    (order as any).lifecycleLabel ?? getActiveOrderStatusLabel(order);
+  const payStatus =
+    (order as any).paymentStatus ?? (order as any).payment_status ?? "unpaid";
+
+  const payStatusLabel =
+    payStatus === "paid"
+      ? "Lunas"
+      : payStatus === "partial"
+        ? "Sebagian"
+        : "Belum Bayar";
+  const payStatusCls =
+    payStatus === "paid"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : payStatus === "partial"
+        ? "bg-amber-50 text-amber-700 border-amber-200"
+        : "bg-slate-100 text-slate-500 border-slate-200";
+
+  /* ── Left panel: order info + items list ── */
+  const leftPanel = (
+    <div
+      className={`flex flex-col min-h-0 ${isLandscape ? "flex-1 border-r border-slate-100 overflow-hidden" : ""}`}
+    >
+      {/* Order header */}
+      <div className="px-4 pt-3 pb-3 border-b border-slate-100 flex-shrink-0">
+        <div className="font-mono font-black text-slate-900 text-base leading-tight">
+          {orderNumber}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+          <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] px-2 h-5 font-semibold">
+            {statusLabel}
+          </Badge>
+          <Badge
+            className={`border text-[10px] px-2 h-5 font-semibold ${payStatusCls}`}
+          >
+            {payStatusLabel}
+          </Badge>
+          {tableNumber && (
+            <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+              Meja {tableNumber}
+            </span>
+          )}
+          {customerName && (
+            <span className="text-[11px] text-slate-600 truncate max-w-[140px]">
+              {customerName}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Items list — scrollable */}
+      <div
+        className={`overflow-y-auto px-4 py-3 ${isLandscape ? "flex-1 min-h-0" : "max-h-44"}`}
+      >
+        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2.5">
+          Item Pesanan ({items.length})
+        </div>
+        {items.length === 0 ? (
+          <p className="text-sm text-slate-400 py-2 text-center">
+            Tidak ada item
+          </p>
+        ) : (
+          <div className="space-y-2.5">
+            {items.map((item, index) => {
+              const qty = item.quantity ?? 1;
+              const subtotal = Number(
+                item.itemSubtotal ?? item.item_subtotal ?? 0,
+              );
+              const unitPrice = qty > 0 ? Math.round(subtotal / qty) : subtotal;
+              return (
+                <div
+                  key={item.id ?? index}
+                  className="flex items-start justify-between gap-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-800 leading-snug">
+                      {item.productName ??
+                        item.product_name ??
+                        item.name ??
+                        "Item"}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {formatRp(unitPrice)} × {qty}
+                    </p>
+                  </div>
+                  <span className="text-sm font-bold text-slate-800 flex-shrink-0">
+                    {formatRp(subtotal)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  /* ── Right panel: summary + actions ── */
+  const rightPanel = (
+    <div
+      className={`flex flex-col flex-shrink-0 ${isLandscape ? "w-[200px]" : ""}`}
+    >
+      {/* Summary */}
+      <div className={`px-4 pt-3 pb-3 ${isLandscape ? "flex-1" : "border-t border-slate-100"}`}>
+        {isLandscape && (
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2.5">
+            Ringkasan
+          </div>
+        )}
+        <div className="space-y-1.5 text-sm">
+          <div className="flex justify-between">
+            <span className="text-slate-500">Total</span>
+            <span className="font-bold text-slate-800">{formatRp(total)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Terbayar</span>
+            <span
+              className={`font-bold ${paid !== null && paid > 0 ? "text-emerald-600" : "text-slate-400"}`}
+            >
+              {formatRp(paid)}
+            </span>
+          </div>
+          {remaining !== null && remaining > 0 && (
+            <div className="flex justify-between border-t border-slate-100 pt-1.5 mt-0.5">
+              <span className="font-semibold text-slate-700">Sisa</span>
+              <span className="font-black text-amber-600">
+                {formatRp(remaining)}
+              </span>
+            </div>
+          )}
+          {remaining === 0 && (
+            <div className="text-[11px] text-emerald-600 font-semibold text-center py-1 bg-emerald-50 rounded-lg mt-1">
+              ✓ Tagihan Lunas
+            </div>
+          )}
+          {remaining === null && (
+            <p className="text-[10px] text-red-500 mt-1">
+              Sisa tidak dapat dihitung.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="px-4 py-3 flex gap-2 border-t border-slate-100">
+        <button
+          onClick={() => onOpenChange(false)}
+          className="flex-1 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold transition-colors"
+        >
+          Tutup
+        </button>
+        <button
+          disabled={!canPay}
+          onClick={() => onPay(order)}
+          className="flex-1 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Bayar
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <Dialog open={!!order} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md rounded-2xl">
-        <DialogHeader>
+      <DialogContent
+        className={`p-0 gap-0 overflow-hidden ${isLandscape ? "max-w-[560px]" : "max-w-sm"}`}
+        style={{ maxHeight: isLandscape ? "85dvh" : "88dvh" }}
+      >
+        <DialogHeader className="sr-only">
           <DialogTitle>Detail Pesanan Aktif</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 text-sm">
-          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 space-y-1">
-            <div className="font-bold text-slate-800">{(order as any).orderNumber ?? (order as any).order_number ?? order.id}</div>
-            {((order as any).tableNumber ?? (order as any).table_number) && <div>Meja {(order as any).tableNumber ?? (order as any).table_number}</div>}
-            {((order as any).customerName ?? (order as any).customer_name) && <div>{(order as any).customerName ?? (order as any).customer_name}</div>}
-            <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200">{(order as any).lifecycleLabel ?? getActiveOrderStatusLabel(order)}</Badge>
-          </div>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {items.length === 0 ? <div className="text-slate-500">Item tidak tersedia dari API.</div> : items.map((item, index) => (
-              <div key={item.id ?? index} className="flex justify-between gap-3 border-b border-slate-100 pb-2">
-                <div><div className="font-medium">{item.productName ?? item.product_name ?? item.name ?? 'Item'}</div><div className="text-xs text-slate-500">Qty {item.quantity ?? 1}</div></div>
-                <div className="font-semibold">{formatRp(Number(item.itemSubtotal ?? item.item_subtotal ?? 0))}</div>
-              </div>
-            ))}
-          </div>
-          <div className="rounded-xl border border-slate-100 p-3 space-y-1">
-            <div className="flex justify-between"><span>Total</span><b>{formatRp(total)}</b></div>
-            <div className="flex justify-between"><span>Terbayar</span><b>{formatRp(paid)}</b></div>
-            <div className="flex justify-between"><span>Sisa</span><b>{formatRp(remaining)}</b></div>
-            <div className="flex justify-between"><span>Status pembayaran</span><b>{(order as any).paymentStatus ?? (order as any).payment_status ?? 'unpaid'}</b></div>
-          </div>
-          {remaining === null && <p className="text-xs text-red-600">Sisa pembayaran tidak dapat dihitung. Pembayaran diblokir agar tidak mencatat nominal tidak valid.</p>}
-          {remaining === 0 && <p className="text-xs text-slate-500">Tagihan sudah lunas/settled.</p>}
-          <div className="flex justify-end gap-2 pt-2">
-            <button onClick={() => onOpenChange(false)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-semibold">Tutup</button>
-            <button disabled={!canPay} onClick={() => onPay(order)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed">Bayar</button>
-          </div>
+
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 flex-shrink-0">
+          <h3 className="text-sm font-bold text-slate-800">
+            Detail Pesanan Aktif
+          </h3>
+          <button
+            onClick={() => onOpenChange(false)}
+            className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Content: 2-panel on landscape, stacked on portrait */}
+        <div
+          className={`flex min-h-0 ${isLandscape ? "flex-row overflow-hidden" : "flex-col"}`}
+          style={isLandscape ? { height: "calc(85dvh - 52px)" } : undefined}
+        >
+          {leftPanel}
+          {rightPanel}
         </div>
       </DialogContent>
     </Dialog>

@@ -175,11 +175,6 @@ function normalizeOrder(order: any): NormalizedOrder {
   };
 }
 
-function StatusDot({ status }: { status: string }) {
-  const dot = STATUS_CFG[status]?.dot ?? "bg-slate-300";
-  return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />;
-}
-
 function OrderCard({ order, selected, onClick, orderTypeName }: { order: NormalizedOrder; selected: boolean; onClick: () => void; orderTypeName?: string }) {
   const statusCfg = STATUS_CFG[order.status] ?? STATUS_CFG.draft;
   const paymentCfg = PAYMENT_CFG[order.payment_status] ?? PAYMENT_CFG.unpaid;
@@ -191,34 +186,35 @@ function OrderCard({ order, selected, onClick, orderTypeName }: { order: Normali
       data-testid={`order-card-${order.id}`}
       className={`w-full text-left bg-white rounded-2xl border shadow-sm p-4 transition-all hover:shadow-md focus:outline-none ${selected ? "border-blue-500 ring-2 ring-blue-500/20 shadow-md" : "border-slate-100 hover:border-slate-200"}`}
     >
-      <div className="flex items-start justify-between gap-2 mb-2.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <StatusDot status={order.status} />
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {orderTypeName && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md">{orderTypeName}</span>}
-              {order.table_number && <span className="text-xs text-slate-500">Meja {order.table_number}</span>}
-              {order.customer_name && <span className="text-xs text-slate-500 truncate max-w-[120px]">{order.customer_name}</span>}
-            </div>
-            <span className="text-xs text-slate-400 font-mono">#{order.order_number}</span>
-          </div>
+      {/* Row 1: order type label + status badge */}
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+          {orderTypeName && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md">{orderTypeName}</span>}
+          {order.table_number && <span className="text-xs text-slate-500">Meja {order.table_number}</span>}
+          {order.customer_name && <span className="text-xs text-slate-500 truncate max-w-[120px]">{order.customer_name}</span>}
         </div>
         <span className={`text-[10px] font-bold px-2 py-1 rounded-lg flex-shrink-0 ${statusCfg.badge}`}>{statusCfg.label}</span>
       </div>
 
-      <div className="flex items-center justify-between">
+      {/* Row 2: order number — dark & readable */}
+      <div className="font-mono text-sm font-bold text-slate-800 mb-2">{order.order_number}</div>
+
+      {/* Row 3: timestamp left, price right */}
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
           <Clock size={11} />
           {formatDateTime(order.created_at)}
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${paymentCfg.badge}`}>{paymentCfg.label}</span>
-          <span className="font-black text-slate-800 text-sm">{formatPrice(order.total_amount)}</span>
-        </div>
+        <span className="font-black text-slate-800 text-sm">{formatPrice(order.total_amount)}</span>
+      </div>
+
+      {/* Row 4: payment badge on its own line */}
+      <div className="mt-1.5">
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${paymentCfg.badge}`}>{paymentCfg.label}</span>
       </div>
 
       {order.payment_status === "partial" && order.paid_amount > 0 && order.total_amount > 0 && (
-        <div className="mt-2.5 pt-2.5 border-t border-amber-100">
+        <div className="mt-2 pt-2 border-t border-amber-100">
           <div className="h-1.5 bg-amber-100 rounded-full overflow-hidden mb-1.5">
             <div className="h-full bg-amber-400 rounded-full" style={{ width: `${Math.min(100, (order.paid_amount / order.total_amount) * 100)}%` }} />
           </div>
@@ -656,7 +652,7 @@ export default function OrdersPage() {
             </ScrollArea>
           </div>
 
-          <div className={`fixed md:relative inset-x-0 bottom-0 md:inset-auto md:w-[45%] md:min-w-[320px] md:max-w-[520px] md:h-full z-[60] bg-white md:border-l border-slate-200 md:shadow-none flex flex-col transition-transform duration-300 ease-out rounded-t-3xl md:rounded-none h-[90vh] md:h-full ${selectedOrder ? "translate-y-0 shadow-[0_-8px_40px_rgba(0,0,0,0.18)]" : "translate-y-full md:translate-y-0"}`}>
+          <div className={`fixed md:relative inset-x-0 bottom-0 md:inset-auto md:w-[45%] md:min-w-[320px] md:max-w-[520px] md:h-full z-[60] bg-white md:border-l border-slate-200 md:shadow-none flex flex-col transition-transform duration-300 ease-out rounded-t-3xl md:rounded-none overflow-hidden h-[90vh] md:h-full ${selectedOrder ? "translate-y-0 shadow-[0_-8px_40px_rgba(0,0,0,0.18)]" : "translate-y-full md:translate-y-0"}`}>
             <DetailPanel order={selectedOrder} orderTypeName={selectedOrder?.order_type_id ? orderTypeMap[selectedOrder.order_type_id] : undefined} onClose={() => setSelectedOrderId(null)} onPrint={handleReprintReceipt} onSettle={handleOpenSettleDialog} isPrinting={isPrinting} isSettling={recordPaymentMutation.isPending} />
           </div>
         </div>
