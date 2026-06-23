@@ -10967,3 +10967,100 @@ Document concrete dependency-boundary violations and map each to the hardening p
 
 ### Continuation Notes
 Next recommended batch: start P5/P6 on payment/order DTO and shared pricing source-of-truth, then P4 split `POSPaymentController`, `OrdersController`, and `SyncController` into typed handlers.
+
+## Plan: API Bootstrap Refactor
+
+### Source
+- Tasklist: User-provided API bootstrap restructuring checklist
+- User request: Split apps/api/src/index.ts responsibilities into bootstrap/runtime modules and add/update CORS + auth compatibility tests
+- Date started: 2026-06-23
+- Current status: Implemented and validated
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (user prompt)
+- [x] Relevant source files (apps/api/src/index.ts, apps/api/src/routes.ts, existing API tests)
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: Express app bootstrap, auth route mounting, route registration, server startup.
+- Files inspected: apps/api/src/index.ts, apps/api/src/routes.ts
+- Findings: index.ts owned env validation, CORS, auth route handlers, JSON middleware, logger, route mounting, static/Vite setup, listen, and background migrations.
+- Tasks: Extracted bootstrap modules and runtime/server.ts while preserving middleware order.
+- Risks: Better Auth wildcard must remain after /api/auth/me and CORS must remain before auth.
+- Validation: pnpm --filter @pos/api type-check; pnpm --filter @pos/api test:file src/__tests__/bootstrap.test.ts; pnpm --filter @pos/api build; pnpm --filter @pos/api test.
+
+#### Tests/Validation Workstream
+- Scope: Unit/compatibility tests for CORS origin parsing and auth route order.
+- Files inspected: apps/api/src/__tests__/*.test.ts
+- Findings: Node test runner is used via tsx; tests can create ephemeral Express apps.
+- Tasks: Added bootstrap tests with dependency-injected auth route dependencies to avoid live DB requirements.
+- Risks: None remaining for this refactor batch.
+- Validation: targeted bootstrap test passed.
+
+### Execution Order
+1. Extract config/CORS/auth/bootstrap modules preserving existing behavior. Done.
+2. Add runtime server wrapper and simplify index.ts. Done.
+3. Add targeted tests. Done.
+4. Run type-check, targeted tests, and build. Done.
+5. Update plan and commit. Done in this batch.
+
+### Progress
+#### Completed
+- [x] Task: Create apps/api/src/bootstrap structure.
+  - Files changed: apps/api/src/bootstrap/*.ts
+  - Validation: type-check, targeted test, build
+  - Docs updated: PLANS.md
+- [x] Task: Move env parsing to loadApiConfig().
+  - Files changed: apps/api/src/bootstrap/env.ts, apps/api/src/index.ts
+  - Validation: type-check, targeted test, build
+  - Docs updated: PLANS.md
+- [x] Task: Move CORS inline middleware to bootstrap/cors.ts with env-based production allowlist.
+  - Files changed: apps/api/src/bootstrap/cors.ts, apps/api/src/__tests__/bootstrap.test.ts
+  - Validation: type-check, targeted test, build
+  - Docs updated: PLANS.md
+- [x] Task: Move /api/auth/me and /api/auth/* compatibility handlers to bootstrap/auth.ts.
+  - Files changed: apps/api/src/bootstrap/auth.ts, apps/api/src/__tests__/bootstrap.test.ts
+  - Validation: type-check, targeted test, build
+  - Docs updated: PLANS.md
+- [x] Task: Move route/static/error/readiness/startup/migration concerns into bootstrap/runtime modules and keep index.ts as thin entrypoint.
+  - Files changed: apps/api/src/bootstrap/createApp.ts, apps/api/src/bootstrap/routes.ts, apps/api/src/bootstrap/errorHandling.ts, apps/api/src/bootstrap/readiness.ts, apps/api/src/bootstrap/startupChecks.ts, apps/api/src/bootstrap/migrations.ts, apps/api/src/runtime/server.ts, apps/api/src/index.ts
+  - Validation: type-check, targeted test, build
+  - Docs updated: PLANS.md
+
+#### Partially Completed
+- [x] None.
+
+#### Blocked
+- [x] None.
+
+#### Not Attempted
+- [x] None.
+
+### Validation Log
+- Command: pnpm --filter @pos/api test:file src/__tests__/bootstrap.test.ts
+- Result: pass
+- Notes: Covers CORS parsing, production allowlist behavior, local LAN allowance, /api/auth/me precedence, and /api/auth/* wildcard compatibility.
+- Command: pnpm --filter @pos/api type-check
+- Result: pass
+- Notes: API TypeScript check passed.
+- Command: pnpm --filter @pos/api build
+- Result: pass
+- Notes: API esbuild bundle completed.
+- Command: pnpm --filter @pos/api test
+- Result: pass
+- Notes: Full API test suite passed (194 tests).
+
+### Documentation Updates
+- File: PLANS.md
+- Change: Added and completed API Bootstrap Refactor plan with validation log.
+
+### Checklist Updates
+- File: User prompt only
+- Change: All requested checklist items implemented in code; no source checklist file existed to edit.
+
+### Continuation Notes
+This batch is complete. Recommended next batch: run broader API regression tests if desired (`pnpm --filter @pos/api test`) before deployment because this refactor changes server bootstrap order even though targeted compatibility checks passed.
+
