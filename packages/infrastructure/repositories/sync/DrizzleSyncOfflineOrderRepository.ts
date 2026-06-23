@@ -2,9 +2,10 @@ import type { Database } from '../../database';
 import { CreateAndPayOrder } from '@pos/application/orders/CreateAndPayOrder';
 import type { CreateAndPayOrderItemInput } from '@pos/application/orders/CreateAndPayOrder';
 import { syncBatches, syncEvents, serverSyncConflicts, orders } from '@pos/infrastructure/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { ConflictType } from '@pos/application/sync/conflictTypes';
 import type { SyncBatchInput, SyncBatchOutput, SyncItemStatus, SyncOrderItemResult } from '@pos/application/sync/SyncOfflineOrder';
+import type { PullTenantChangesInput, PushOfflineOrdersInput, ResolveSyncConflictInput, ResolveSyncConflictOutput, SyncRepositoryPort } from '@pos/application/sync/ports/SyncRepositoryPort';
 import { DrizzleCreateAndPayOrderRepository } from '../orders/DrizzleCreateAndPayOrderRepository';
 import { DrizzleUnitOfWork } from '../../unit-of-work';
 
@@ -41,11 +42,71 @@ function classifyError(error: unknown): { status: SyncItemStatus; message: strin
   return { status: 'failed', message: msg };
 }
 
-export class DrizzleSyncOfflineOrderRepository {
+export class DrizzleSyncOfflineOrderRepository implements SyncRepositoryPort {
   private readonly createAndPay: CreateAndPayOrder;
 
   constructor(private readonly db: Database, unitOfWork?: DrizzleUnitOfWork) {
     this.createAndPay = new CreateAndPayOrder(new DrizzleCreateAndPayOrderRepository(db, unitOfWork));
+  }
+
+  async pushOfflineOrders(input: PushOfflineOrdersInput): Promise<SyncBatchOutput> {
+    return this.syncOfflineOrder(input);
+  }
+
+  async listSyncBatches(input: PullTenantChangesInput): Promise<unknown[]> {
+    return this.db
+      .select()
+      .from(syncBatches)
+      .where(and(...this.scopedConditions(syncBatches, input.tenant_id, input.outlet_id)))
+      .orderBy(desc(syncBatches.createdAt))
+      .limit(Math.min(input.limit ?? 20, 100));
+  }
+
+  async listSyncConflicts(input: PullTenantChangesInput): Promise<unknown[]> {
+    return this.db
+      .select()
+      .from(serverSyncConflicts)
+      .where(and(...this.scopedConditions(serverSyncConflicts, input.tenant_id, input.outlet_id)))
+      .orderBy(desc(serverSyncConflicts.createdAt))
+      .limit(Math.min(input.limit ?? 20, 100));
+  }
+
+  async listSyncEvents(input: PullTenantChangesInput): Promise<unknown[]> {
+    return this.db
+      .select()
+      .from(syncEvents)
+      .where(and(...this.scopedConditions(syncEvents, input.tenant_id, input.outlet_id)))
+      .orderBy(desc(syncEvents.createdAt))
+      .limit(Math.min(input.limit ?? 50, 200));
+  }
+
+  async resolveSyncConflict(input: ResolveSyncConflictInput): Promise<ResolveSyncConflictOutput> {
+    const where = and(eq(serverSyncConflicts.id, input.conflict_id), ...this.scopedConditions(serverSyncConflicts, input.tenant_id, input.outlet_id));
+    const existing = await this.db.select({ id: serverSyncConflicts.id }).from(serverSyncConflicts).where(where).limit(1);
+
+    if (!existing.length) {
+      throw new Error('SYNC_CONFLICT_NOT_FOUND');
+    }
+
+    const [conflict] = await this.db
+      .update(serverSyncConflicts)
+      .set({
+        resolution: input.resolution,
+        resolvedAt: input.resolution !== 'pending' ? new Date() : null,
+        resolvedBy: input.resolved_by ?? null,
+      })
+      .where(where)
+      .returning();
+
+    return { conflict };
+  }
+
+  private scopedConditions<T extends { tenantId: any; outletId?: any }>(table: T, tenantId: string, outletId?: string | null) {
+    const conditions = [eq(table.tenantId, tenantId)];
+    if (outletId && table.outletId) {
+      conditions.push(eq(table.outletId, outletId));
+    }
+    return conditions;
   }
 
   async syncOfflineOrder(input: SyncBatchInput): Promise<SyncBatchOutput> {

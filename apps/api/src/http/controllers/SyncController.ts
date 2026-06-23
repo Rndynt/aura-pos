@@ -1,7 +1,5 @@
 /**
- * SyncController — Sprint 4 + Sprint 5
- * Handles batch offline order sync from terminals.
- * Sprint 5: adds conflict resolution endpoint.
+ * SyncController — thin HTTP adapter for offline sync use cases.
  */
 
 import { Request, Response } from 'express';
@@ -9,8 +7,7 @@ import { z } from 'zod';
 import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { emitOrderQueueChanged } from '../services/orderQueueEvents';
-import { syncBatches, syncEvents, serverSyncConflicts } from '@pos/infrastructure/db/schema';
-import { eq, desc, and } from 'drizzle-orm';
+import type { SyncActorContext } from '@pos/application/sync/ports/SyncRepositoryPort';
 
 const selectedOptionSchema = z.object({
   group_id: z.string(),
@@ -54,106 +51,8 @@ const offlineOrderSchema = z.object({
 const batchBodySchema = z.object({
   terminal_id: z.string().min(1),
   app_version: z.string().optional(),
+  terminal_token_id: z.string().min(1).optional(),
   orders: z.array(offlineOrderSchema).min(1).max(50),
-});
-
-function scopedConditions<T extends { tenantId: any; outletId?: any }>(table: T, tenantId: string, outletId?: string) {
-  const conditions = [eq(table.tenantId, tenantId)];
-  if (outletId && table.outletId) {
-    conditions.push(eq(table.outletId, outletId));
-  }
-  return conditions;
-}
-
-/**
- * POST /api/sync/offline-orders
- * Accept a batch of up to 50 offline orders from a terminal.
- * Each order is processed independently; 1 conflict/failure does not abort the batch.
- */
-export const syncOfflineOrders = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.tenantId!;
-
-  const parsed = batchBodySchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw createError(
-      'Invalid request body: ' + parsed.error.message,
-      400,
-      'VALIDATION_ERROR'
-    );
-  }
-
-  const result = await container.syncOfflineOrder.execute({
-    tenant_id: tenantId,
-    terminal_id: parsed.data.terminal_id,
-    outlet_id: req.outletId ?? null,
-    app_version: parsed.data.app_version,
-    orders: parsed.data.orders as any,
-  });
-
-  // Notify SSE subscribers so queue refreshes on connected devices
-  if (result.synced > 0 || result.replayed > 0) {
-    emitOrderQueueChanged(tenantId, {
-      source: 'offline_sync',
-      synced: result.synced,
-      replayed: result.replayed,
-    });
-  }
-
-  res.status(200).json({ success: true, data: result });
-});
-
-/**
- * GET /api/sync/batches
- * List recent sync batches for a tenant (admin/debug use).
- */
-export const listSyncBatches = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.tenantId!;
-  const limitRaw = Math.min(parseInt(String(req.query.limit ?? '20'), 10), 100);
-
-  const rows = await container.db
-    .select()
-    .from(syncBatches)
-    .where(and(...scopedConditions(syncBatches, tenantId, req.outletId)))
-    .orderBy(desc(syncBatches.createdAt))
-    .limit(limitRaw);
-
-  res.json({ success: true, data: { batches: rows } });
-});
-
-/**
- * GET /api/sync/conflicts
- * List recent sync conflicts for a tenant.
- */
-export const listSyncConflicts = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.tenantId!;
-  const limitRaw = Math.min(parseInt(String(req.query.limit ?? '20'), 10), 100);
-
-  const rows = await container.db
-    .select()
-    .from(serverSyncConflicts)
-    .where(and(...scopedConditions(serverSyncConflicts, tenantId, req.outletId)))
-    .orderBy(desc(serverSyncConflicts.createdAt))
-    .limit(limitRaw);
-
-  res.json({ success: true, data: { conflicts: rows } });
-});
-
-/**
- * GET /api/sync/events
- * List recent sync events for a tenant (per-item audit log).
- */
-export const listSyncEvents = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.tenantId!;
-  const limitRaw = Math.min(parseInt(String(req.query.limit ?? '50'), 10), 200);
-
-  const rows = await container.db
-    .select()
-    .from(syncEvents)
-    .where(and(...scopedConditions(syncEvents, tenantId, req.outletId)))
-    .orderBy(desc(syncEvents.createdAt))
-    .limit(limitRaw);
-
-  res.json({ success: true, data: { events: rows } });
 });
 
 const resolveConflictBodySchema = z.object({
@@ -161,38 +60,106 @@ const resolveConflictBodySchema = z.object({
   resolved_by: z.string().min(1).max(255).optional(),
 });
 
-/**
- * PATCH /api/sync/conflicts/:id/resolve
- * Mark a sync conflict as resolved or ignored (Sprint 5).
- */
-export const resolveConflict = asyncHandler(async (req: Request, res: Response) => {
-  const tenantId = req.tenantId!;
-  const conflictId = req.params.id;
+function parseLimit(value: unknown, fallback: number, max: number): number {
+  const parsed = Number.parseInt(String(value ?? fallback), 10);
+  if (Number.isNaN(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, max);
+}
 
+function resolveSyncActor(req: Request, terminalTokenId?: string): SyncActorContext {
+  if (req.userId) {
+    return { kind: 'cashier_session', cashier_user_id: req.userId };
+  }
+
+  if (terminalTokenId) {
+    return { kind: 'terminal_token', terminal_token_id: terminalTokenId };
+  }
+
+  throw createError('Cashier session or terminal token is required for sync', 401, 'SYNC_AUTH_REQUIRED');
+}
+
+/**
+ * POST /api/sync/offline-orders
+ * Accept a batch of up to 50 offline orders from a terminal.
+ */
+export const syncOfflineOrders = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.tenantId!;
+
+  const parsed = batchBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
+  }
+
+  const result = await container.syncOfflineBatch.execute({
+    tenant_id: tenantId,
+    terminal_id: parsed.data.terminal_id,
+    outlet_id: req.outletId ?? null,
+    app_version: parsed.data.app_version,
+    actor: resolveSyncActor(req, parsed.data.terminal_token_id),
+    orders: parsed.data.orders as any,
+  });
+
+  if (result.synced > 0 || result.replayed > 0) {
+    emitOrderQueueChanged(tenantId, { source: 'offline_sync', synced: result.synced, replayed: result.replayed });
+  }
+
+  res.status(200).json({ success: true, data: result });
+});
+
+/** GET /api/sync/batches */
+export const listSyncBatches = asyncHandler(async (req: Request, res: Response) => {
+  const rows = await container.pullTenantChanges.listBatches({
+    tenant_id: req.tenantId!,
+    outlet_id: req.outletId ?? null,
+    limit: parseLimit(req.query.limit, 20, 100),
+  });
+
+  res.json({ success: true, data: { batches: rows } });
+});
+
+/** GET /api/sync/conflicts */
+export const listSyncConflicts = asyncHandler(async (req: Request, res: Response) => {
+  const rows = await container.pullTenantChanges.listConflicts({
+    tenant_id: req.tenantId!,
+    outlet_id: req.outletId ?? null,
+    limit: parseLimit(req.query.limit, 20, 100),
+  });
+
+  res.json({ success: true, data: { conflicts: rows } });
+});
+
+/** GET /api/sync/events */
+export const listSyncEvents = asyncHandler(async (req: Request, res: Response) => {
+  const rows = await container.pullTenantChanges.listEvents({
+    tenant_id: req.tenantId!,
+    outlet_id: req.outletId ?? null,
+    limit: parseLimit(req.query.limit, 50, 200),
+  });
+
+  res.json({ success: true, data: { events: rows } });
+});
+
+/** PATCH /api/sync/conflicts/:id/resolve */
+export const resolveConflict = asyncHandler(async (req: Request, res: Response) => {
   const parsed = resolveConflictBodySchema.safeParse(req.body);
   if (!parsed.success) {
     throw createError('Invalid request body: ' + parsed.error.message, 400, 'VALIDATION_ERROR');
   }
 
-  const existing = await container.db
-    .select({ id: serverSyncConflicts.id })
-    .from(serverSyncConflicts)
-    .where(and(eq(serverSyncConflicts.id, conflictId), ...scopedConditions(serverSyncConflicts, tenantId, req.outletId)))
-    .limit(1);
-
-  if (!existing.length) {
-    throw createError('Conflict not found', 404, 'NOT_FOUND');
-  }
-
-  const [updated] = await container.db
-    .update(serverSyncConflicts)
-    .set({
+  try {
+    const result = await container.pullTenantChanges.resolveConflict({
+      tenant_id: req.tenantId!,
+      outlet_id: req.outletId ?? null,
+      conflict_id: req.params.id,
       resolution: parsed.data.resolution,
-      resolvedAt: parsed.data.resolution !== 'pending' ? new Date() : null,
-      resolvedBy: parsed.data.resolved_by ?? null,
-    })
-    .where(and(eq(serverSyncConflicts.id, conflictId), ...scopedConditions(serverSyncConflicts, tenantId, req.outletId)))
-    .returning();
+      resolved_by: parsed.data.resolved_by ?? null,
+    });
 
-  res.json({ success: true, data: { conflict: updated } });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    if (err instanceof Error && err.message === 'SYNC_CONFLICT_NOT_FOUND') {
+      throw createError('Conflict not found', 404, 'NOT_FOUND');
+    }
+    throw err;
+  }
 });

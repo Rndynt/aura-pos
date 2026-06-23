@@ -15,6 +15,8 @@
     "./tenants": "./tenants/index.ts",
     "./tenants/*": "./tenants/*.ts",
     "./sync/*": "./sync/*.ts",
+    "./sync/ports": "./sync/ports/index.ts",
+    "./sync/ports/*": "./sync/ports/*.ts",
     "./inventory": "./inventory/index.ts",
     "./inventory/*": "./inventory/*.ts",
     "./shared/ports": "./shared/ports/index.ts",
@@ -38,7 +40,7 @@
   },
   "scripts": {
     "type-check": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --tsconfig tsconfig.json orders/__tests__/orderLifecycleDtoMapper.test.ts && tsx --tsconfig tsconfig.json orders/__tests__/UpdateOrder.lifecycleLocks.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/resolveBusinessProfile.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/orderActionPolicy.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/orderActionPermissions.test.ts && tsx --tsconfig tsconfig.json orders/__tests__/paymentFlow.test.ts && tsx --tsconfig tsconfig.json payments/__tests__/SubmitPOSPayment.test.ts"
+    "test": "tsx --tsconfig tsconfig.json orders/__tests__/orderLifecycleDtoMapper.test.ts && tsx --tsconfig tsconfig.json orders/__tests__/UpdateOrder.lifecycleLocks.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/resolveBusinessProfile.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/orderActionPolicy.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/orderActionPermissions.test.ts && tsx --tsconfig tsconfig.json orders/__tests__/paymentFlow.test.ts && tsx --tsconfig tsconfig.json payments/__tests__/SubmitPOSPayment.test.ts && tsx --tsconfig tsconfig.json sync/__tests__/syncUseCases.test.ts"
   },
   "keywords": [
     "application",

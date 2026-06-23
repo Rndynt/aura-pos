@@ -11388,3 +11388,108 @@ This batch is complete. Future cleanup can continue removing unrelated `as any` 
 
 ### Continuation Notes
 No known blockers. If continuing, consider extracting order policy/entitlement checks behind an application port so HTTP handlers no longer call entitlement infrastructure directly.
+
+## Plan: Refactor SyncController to Application Use Cases
+
+### Source
+- Tasklist: User request with 6 numbered sync refactor/testing tasks
+- User request: Refactor `apps/api/src/http/controllers/SyncController.ts` handlers into application use cases, repository ports/adapters, thin controller, and tests.
+- Date started: 2026-06-23
+- Current status: Implemented and validated in this batch
+
+### Goal
+Move sync read/write/conflict operations out of the HTTP controller into `packages/application/sync` use cases backed by infrastructure repository adapters, while preserving tenant/outlet scoping and adding coverage for auth-context distinction, tenant scoping, and retry/error state behavior.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (user request)
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: `SyncController`, sync routes, DI module
+- Files inspected: `apps/api/src/http/controllers/SyncController.ts`, `apps/api/src/http/routes/sync.ts`, `apps/api/src/composition/modules/syncModule.ts`
+- Findings: Controller had direct Drizzle reads/updates for sync batches/events/conflicts; offline order push already used an application class.
+- Tasks: Completed: controller now validates payload/context, delegates to `SyncOfflineBatch`/`PullTenantChanges`, and returns DTOs.
+- Risks: Existing route guard still requires cashier/manager sessions; terminal token actor support is represented at use-case/controller DTO boundary but routes do not yet expose a terminal-token-only guard.
+- Validation: `pnpm --filter @pos/api type-check` passed.
+
+#### Database/Schema Workstream
+- Scope: Existing sync schema only
+- Files inspected: `packages/infrastructure/db/schema/cfd.schema.ts`, `packages/infrastructure/repositories/sync/DrizzleSyncOfflineOrderRepository.ts`
+- Findings: Existing tables support all requested operations; no migration needed.
+- Tasks: Completed: Drizzle sync adapter now implements push/list/resolve repository port methods with tenant/outlet predicates.
+- Risks: None identified in this batch.
+- Validation: API type-check passed.
+
+#### Tests/Validation Workstream
+- Scope: Sync application use case tests
+- Files inspected: `packages/application/package.json`, `packages/application/sync/**`
+- Findings: Application package uses direct `tsx` test scripts.
+- Tasks: Completed: added sync use-case tests for cashier session vs terminal token actor distinction, tenant/outlet scoping, and retry/error state preservation.
+- Risks: Tests are application-unit tests with fake repository; no DB integration test was added in this batch.
+- Validation: `pnpm --filter @pos/application test` passed.
+
+### Execution Order
+1. [x] Add application ports/use cases.
+2. [x] Implement Drizzle adapter methods.
+3. [x] Wire DI and thin controller.
+4. [x] Add tests for auth context, scoping, retry/error states.
+5. [x] Run validation and update plan.
+
+### Progress
+
+#### Completed
+- [x] Identified SyncController handlers and moved sync operations behind application use cases.
+  - Files changed: `apps/api/src/http/controllers/SyncController.ts`, `apps/api/src/composition/modules/syncModule.ts`, `packages/application/sync/*`
+  - Validation: `pnpm --filter @pos/api type-check`
+  - Docs updated: `PLANS.md`
+- [x] Defined sync repository port and Drizzle adapter methods.
+  - Files changed: `packages/application/sync/ports/SyncRepositoryPort.ts`, `packages/infrastructure/repositories/sync/DrizzleSyncOfflineOrderRepository.ts`
+  - Validation: `pnpm --filter @pos/api type-check`, `pnpm --filter @pos/application type-check`
+  - Docs updated: `PLANS.md`
+- [x] Added sync use-case tests.
+  - Files changed: `packages/application/sync/__tests__/syncUseCases.test.ts`, `packages/application/package.json`
+  - Validation: `pnpm --filter @pos/application test`
+  - Docs updated: `PLANS.md`
+
+#### Partially Completed
+- [ ] Terminal-token-only HTTP route guard.
+  - Completed: Use-case and controller input can distinguish cashier session from terminal token.
+  - Remaining: Add/enable a dedicated route middleware that authenticates terminal tokens without `requireCashier` if product requirements demand terminal-token-only sync.
+  - Reason: Existing route architecture currently protects offline sync with `requireCashier`; changing route auth semantics is security-sensitive and outside the explicit controller/use-case extraction.
+
+#### Blocked
+- [ ] None.
+  - Blocker: N/A
+  - Required next step: N/A
+
+#### Not Attempted
+- [ ] DB integration tests for Drizzle sync repository.
+  - Reason: Unit tests cover application semantics; no test database harness was required for this batch.
+
+### Validation Log
+- Command: `pnpm --filter @pos/application test`
+- Result: pass
+- Notes: Includes new sync use-case unit tests.
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: Application layer compiles.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: API composition/controller compiles.
+
+### Documentation Updates
+- File: `PLANS.md`
+- Change: Added and completed active plan for sync controller refactor.
+
+### Checklist Updates
+- File: N/A (user tasklist only)
+- Change: N/A
+
+### Continuation Notes
+No blockers for the completed refactor. Recommended next batch: decide whether `/api/sync/offline-orders` should support terminal-token-only auth, then implement a dedicated terminal sync guard and DB-backed terminal token verification if required.
