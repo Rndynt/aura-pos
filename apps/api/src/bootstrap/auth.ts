@@ -1,6 +1,7 @@
 import type { Express, RequestHandler } from 'express';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
-import { sql } from 'drizzle-orm';
+import { GetCurrentAuthUserProfile } from '@pos/application/auth';
+import { DrizzleAuthUserProfileReader } from '@pos/infrastructure/repositories/auth';
 import { auth, authDb } from '../lib/auth';
 
 type AuthSessionApi = {
@@ -15,11 +16,14 @@ export type AuthBootstrapDependencies = {
   authApi?: AuthSessionApi;
   database?: AuthDb;
   authHandler?: RequestHandler;
+  getCurrentAuthUserProfile?: GetCurrentAuthUserProfile;
 };
 
 export function registerAuthRoutes(app: Express, dependencies: AuthBootstrapDependencies = {}) {
   const authApi = dependencies.authApi ?? auth.api;
   const database = dependencies.database ?? authDb;
+  const getCurrentAuthUserProfile = dependencies.getCurrentAuthUserProfile
+    ?? new GetCurrentAuthUserProfile(new DrizzleAuthUserProfileReader(database));
   const authHandler = dependencies.authHandler ?? (toNodeHandler(auth) as unknown as RequestHandler);
 
   app.get('/api/auth/me', async (req, res) => {
@@ -27,25 +31,15 @@ export function registerAuthRoutes(app: Express, dependencies: AuthBootstrapDepe
       const session = await authApi.getSession({
         headers: fromNodeHeaders(req.headers),
       });
-      if (!session?.user) {
+      const result = await getCurrentAuthUserProfile.execute(session?.user);
+
+      if (!result.success) {
         return res.status(401).json({ success: false, error: 'Unauthenticated' });
       }
 
-      const rows = await database.execute(
-        sql`SELECT tenant_id, username, role FROM "user" WHERE id = ${session.user.id} LIMIT 1`,
-      );
-      const extra = (rows as any[])[0] ?? {};
-
       return res.status(200).json({
         success: true,
-        data: {
-          id: session.user.id,
-          name: session.user.name,
-          email: session.user.email,
-          username: extra.username ?? null,
-          tenantId: extra.tenant_id ?? null,
-          role: extra.role ?? null,
-        },
+        data: result.profile,
       });
     } catch (err) {
       console.error('[auth/me]', err);
