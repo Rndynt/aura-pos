@@ -11268,3 +11268,123 @@ This batch is complete. Future cleanup can continue removing unrelated `as any` 
 - Removed `as any` casts from API container wiring by tightening order mapper/update repository port types enough for the concrete infrastructure repository to satisfy use-case constructors.
 - Validation: `pnpm --filter @pos/api type-check` passed.
 - Status: Completed for this batch; broader cleanup of unrelated `as any` in repositories/tests remains outside this requested composition refactor.
+
+## Plan: Orders Controller Handler Refactor and Regression Coverage
+
+### Source
+- Tasklist: User request to audit all exports/handlers in `apps/api/src/http/controllers/OrdersController.ts` and refactor by use case.
+- User request: Split order endpoints into small handlers, move business orchestration/pricing to application/shared pricing, preserve tenant guards, add regression tests.
+- Date started: 2026-06-23
+- Current status: Implemented and validated with API type-check + API test suite.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Relevant docs (`docs/ORDER_LIFECYCLE.md` discovered as relevant lifecycle doc)
+- [x] Relevant source files (`OrdersController`, order routes, orders application use cases, composition module, existing order tests)
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: Order HTTP handlers/controllers and route compatibility exports.
+- Files inspected: `apps/api/src/http/controllers/OrdersController.ts`, `apps/api/src/http/routes/orders.ts`, `apps/api/src/composition/modules/ordersModule.ts`.
+- Findings: The controller mixed request parsing, tenant/outlet guards, payment flow decisions, pricing estimate, policy checks, and response mapping in one large file.
+- Tasks: Split endpoint groups into small files under `apps/api/src/http/handlers/orders/` while keeping controller exports stable.
+- Risks: Existing tests import `OrdersController` directly, so compatibility exports must remain.
+- Validation: `pnpm --filter @pos/api type-check`, `pnpm --filter @pos/api test -- orders-handler-regression.test.ts`.
+
+#### Database/Schema Workstream
+- Scope: No schema changes.
+- Files inspected: Existing repository ports via composition and tests.
+- Findings: Tenant ownership guard remains repository-based through tenant-scoped `findById` and outlet checks before mutations.
+- Tasks: None.
+- Risks: None from schema.
+- Validation: Regression tests cover cross-tenant payment guard before persistence.
+
+#### Frontend/UI Workstream
+- Scope: Not changed.
+- Files inspected: Not applicable for this backend-only refactor.
+- Findings: No public API contract change intended.
+- Tasks: None.
+- Risks: None.
+- Validation: API response shapes preserved.
+
+#### Tests/Validation Workstream
+- Scope: API handler regression tests.
+- Files inspected: Existing order/action/payment/idempotency tests.
+- Findings: Direct controller tests already existed; additional regression coverage was needed for the new handler split and pricing/payment lifecycle path.
+- Tasks: Add cross-tenant order payment access and create-and-pay partial lifecycle regression tests.
+- Risks: Full API test command is long but passed.
+- Validation: API suite pass.
+
+#### Documentation Workstream
+- Scope: Execution plan tracking and controller audit note.
+- Files inspected: `PLANS.md`, `OrdersController.ts`.
+- Findings: No user-facing API behavior changed, so no README/API doc update required.
+- Tasks: Update `PLANS.md` with this implementation plan and validation.
+- Risks: None.
+- Validation: N/A.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Tenant/outlet ownership checks around reads and mutations.
+- Files inspected: Common handler helpers and payment/create/update/status handlers.
+- Findings: Tenant guard remains before payment/update/status/kitchen mutations; `getOrderById` now also applies the outlet guard when an outlet context exists.
+- Tasks: Preserve tenant-scoped repository calls and add regression test for cross-tenant payment access.
+- Risks: Direct handler tests can override singleton container; tests reset policy override.
+- Validation: Cross-tenant payment regression passed.
+
+### Execution Order
+1. Audited existing controller exports and grouped endpoints by requested use case.
+2. Extracted small HTTP handlers under `apps/api/src/http/handlers/orders/`.
+3. Moved create-and-pay total estimation/payment-flow decision to `packages/application/orders/paymentOrchestration.ts` using `CalculateOrderPricing`.
+4. Kept `OrdersController.ts` as route/test compatibility re-export surface with audit grouping comments.
+5. Added API regression tests for cross-tenant payment access and create-and-pay payment lifecycle.
+6. Ran API type-check and API tests.
+
+### Progress
+#### Completed
+- [x] Audit and grouping of all `OrdersController` exports.
+  - Files changed: `apps/api/src/http/controllers/OrdersController.ts`
+  - Validation: API type-check and tests passed.
+  - Docs updated: `PLANS.md`
+- [x] Split order endpoints into small handlers.
+  - Files changed: `apps/api/src/http/handlers/orders/*`
+  - Validation: API type-check and tests passed.
+  - Docs updated: `PLANS.md`
+- [x] Move create-and-pay pricing/payment-flow orchestration to application/shared pricing path.
+  - Files changed: `packages/application/orders/paymentOrchestration.ts`, `packages/application/orders/index.ts`, `apps/api/src/http/handlers/orders/createAndPay.ts`
+  - Validation: API type-check and tests passed.
+  - Docs updated: `PLANS.md`
+- [x] Preserve and regression-test tenant ownership/payment lifecycle guards.
+  - Files changed: `apps/api/src/__tests__/orders-handler-regression.test.ts`
+  - Validation: API tests passed.
+  - Docs updated: `PLANS.md`
+
+#### Partially Completed
+- [ ] None.
+
+#### Blocked
+- [ ] None.
+
+#### Not Attempted
+- [ ] Frontend/UI changes.
+  - Reason: Request targeted backend controller/handler/application/test refactor only.
+
+### Validation Log
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: TypeScript API project passed after handler extraction.
+- Command: `pnpm --filter @pos/api test -- orders-handler-regression.test.ts`
+- Result: pass
+- Notes: Script runs the API node:test suite; 196 tests passed.
+
+### Documentation Updates
+- File: `PLANS.md`
+- Change: Added this active execution plan with workstreams, progress, validation, and continuation notes.
+
+### Checklist Updates
+- File: N/A
+- Change: User provided an inline task list, not a repository checklist document.
+
+### Continuation Notes
+No known blockers. If continuing, consider extracting order policy/entitlement checks behind an application port so HTTP handlers no longer call entitlement infrastructure directly.

@@ -1,0 +1,7 @@
+import { Request, Response } from 'express';
+import { z } from 'zod';
+import { container } from '../../../container';
+import { asyncHandler, createError } from '../../middleware/errorHandler';
+import { emitOrderQueueChanged } from '../../services/orderQueueEvents';
+import { assertOrderBelongsToOutlet } from './common';
+export const createKitchenTicket = asyncHandler(async (req: Request, res: Response) => { const tenantId = req.tenantId!; const { id } = req.params; if (!id) throw createError('Order ID is required',400,'MISSING_PARAMETER'); const parsed = z.object({ priority: z.enum(['normal','high','urgent']).optional() }).safeParse(req.body); if (!parsed.success) throw createError('Data pesanan tidak valid. Periksa input lalu coba lagi.',400,'VALIDATION_ERROR'); await assertOrderBelongsToOutlet(id,tenantId,req.outletId); try { await container.confirmOrderWorkflow.execute({tenantId,outletId:req.outletId ?? null, orderId:id}); emitOrderQueueChanged(tenantId,{source:'confirm_order',orderId:id}); } catch(error:any) { if (error?.code === 'INVENTORY_MOVEMENT_REQUIRED' || error?.code === 'INSUFFICIENT_STOCK') throw error; } const result = await container.createKitchenTicket.execute({ order_id:id, tenant_id:tenantId, priority: parsed.data.priority }); emitOrderQueueChanged(tenantId,{source:'kitchen_ticket_created', orderId:id}); res.status(201).json({success:true,data:{ticket:result.ticket}}); });
