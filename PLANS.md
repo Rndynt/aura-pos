@@ -10764,3 +10764,99 @@ Next recommended batch: add full DB-backed repository/integration tests for reje
 
 ### Continuation Notes
 Next safest continuation: add React DOM test tooling or a lightweight component test harness for `PaymentMethodDialog`, then add DB integration fixtures asserting the final FULL/DP/MULTI/SPLIT row contracts.
+
+## Plan: Architecture Production Hardening Baseline Report
+
+### Source
+- Tasklist: roadmap/architecture-production-hardening/tasklist.md (Task P0.2 Baseline Build & Test)
+- User request: Run pnpm install/type-check/build/test and create baseline-report.md without source-code changes.
+- Date started: 2026-06-23
+- Current status: In progress
+
+### Goal
+Record an honest baseline of dependency installation, type-check, build, and test results before architecture-production-hardening refactors, without changing application source code.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [ ] Relevant docs
+- [x] Relevant source files (package.json scripts)
+
+### Workstreams
+#### Tests/Validation Workstream
+- Scope: Root pnpm install/type-check/build/test baseline commands.
+- Files inspected: package.json, roadmap/architecture-production-hardening/tasklist.md
+- Findings: Root scripts exist for type-check, build, and test through Turbo.
+- Tasks: Run commands and capture pass/fail output.
+- Risks: Existing failures may be unrelated; must document honestly and not fix in this baseline commit.
+- Validation: pnpm install; pnpm type-check; pnpm build; pnpm test.
+
+#### Documentation Workstream
+- Scope: baseline report and execution plan updates only.
+- Files inspected: PLANS.md, roadmap/architecture-production-hardening/tasklist.md
+- Findings: Tasklist defines required report template and high-risk files.
+- Tasks: Create roadmap/architecture-production-hardening/baseline-report.md with date, commit, branch, command results, existing failures, package coverage map, and high-risk files.
+- Risks: Report must not overclaim fixes.
+- Validation: Review generated markdown.
+
+### Execution Order
+1. Capture git branch/commit and package scripts.
+2. Run required pnpm commands from repo root.
+3. Create baseline report.
+4. Update PLANS.md progress.
+5. Commit documentation-only baseline.
+
+### Progress
+#### Completed
+- [ ] Task P0.2 Baseline Build & Test
+  - Files changed: Pending
+  - Validation: Pending
+  - Docs updated: Pending
+
+### Validation Log
+- Command: Pending
+- Result: Pending
+- Notes: Pending
+
+### Documentation Updates
+- File: Pending
+- Change: Pending
+
+### Continuation Notes
+Continue with running required baseline commands and writing baseline-report.md. Do not change source code in this baseline commit.
+
+### Baseline Batch Update — 2026-06-23
+
+### Progress
+#### Completed
+- [x] Task P0.2 Baseline Build & Test
+  - Files changed: roadmap/architecture-production-hardening/baseline-report.md, PLANS.md
+  - Validation: `pnpm install` pass; `pnpm type-check` pass; `pnpm build` pass with warnings; `pnpm test` pass.
+  - Docs updated: Baseline report created with command results, warnings, package test coverage map, and high-risk files.
+
+### Validation Log
+- Command: pnpm install
+- Result: pass
+- Notes: pnpm ignored esbuild build scripts pending approval; install still completed successfully.
+- Command: pnpm type-check
+- Result: pass
+- Notes: Turbo completed 10/10 type-check tasks.
+- Command: pnpm build
+- Result: pass
+- Notes: PostCSS `from` warning and Vite chunk-size warning observed; build completed successfully.
+- Command: pnpm test
+- Result: pass
+- Notes: Turbo completed 4/4 package test tasks.
+
+### Documentation Updates
+- File: roadmap/architecture-production-hardening/baseline-report.md
+- Change: Created baseline report for Task P0.2.
+
+### Checklist Updates
+- File: roadmap/architecture-production-hardening/tasklist.md
+- Change: Not modified in this baseline batch; source tasklist remains an execution reference.
+
+### Continuation Notes
+Next safe task in the roadmap is P0.3 Dependency Boundary Audit. Start by auditing imports and documenting violations in `roadmap/architecture-production-hardening/dependency-boundary-audit.md`; do not mix that audit into this baseline commit.
