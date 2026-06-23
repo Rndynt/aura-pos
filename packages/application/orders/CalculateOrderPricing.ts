@@ -1,12 +1,11 @@
 /**
  * CalculateOrderPricing Use Case
- * Calculates comprehensive pricing breakdown for an order
+ * Thin application wrapper around the canonical pure pricing engine in @pos/core.
  */
 
 import type { SelectedOption, SelectedOptionGroup } from '@pos/domain/orders/types';
 import type { PriceCalculation, AppliedDiscount } from '@pos/domain/pricing/types';
-import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE } from '@pos/core/pricing';
-import { calculateSelectedOptionsDelta } from '../catalog';
+import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE, calculateItemPricing, calculateOrderPricing } from '@pos/core/pricing';
 
 export interface OrderItemForPricing {
   base_price: number;
@@ -30,36 +29,12 @@ export interface CalculateOrderPricingOutput {
 export class CalculateOrderPricing {
   async execute(input: CalculateOrderPricingInput): Promise<CalculateOrderPricingOutput> {
     try {
-      let orderSubtotal = 0;
-
-      for (const item of input.items) {
-        const variantDelta = item.variant_price_delta ?? 0;
-        const optionsDelta = calculateSelectedOptionsDelta(
-          item.selected_options,
-          item.selected_option_groups
-        );
-
-        const itemPrice = item.base_price + variantDelta + optionsDelta;
-        const itemSubtotal = itemPrice * item.quantity;
-
-        orderSubtotal += itemSubtotal;
-      }
-
-      const appliedDiscounts = input.discounts ?? [];
-      const totalDiscount = appliedDiscounts.reduce(
-        (sum, discount) => sum + discount.amount_saved,
-        0
-      );
-
-      const subtotalAfterDiscount = Math.max(0, orderSubtotal - totalDiscount);
-
-      const taxRate = input.tax_rate ?? DEFAULT_TAX_RATE;
-      const serviceChargeRate = input.service_charge_rate ?? DEFAULT_SERVICE_CHARGE_RATE;
-
-      const taxAmount = subtotalAfterDiscount * taxRate;
-      const serviceChargeAmount = subtotalAfterDiscount * serviceChargeRate;
-
-      const totalAmount = subtotalAfterDiscount + taxAmount + serviceChargeAmount;
+      const result = calculateOrderPricing({
+        ...input,
+        tax_rate: input.tax_rate ?? DEFAULT_TAX_RATE,
+        service_charge_rate: input.service_charge_rate ?? DEFAULT_SERVICE_CHARGE_RATE,
+        discounts: input.discounts?.map((discount) => ({ amount: discount.amount_saved })),
+      });
 
       const pricing: PriceCalculation = {
         base_price: 0,
@@ -68,13 +43,13 @@ export class CalculateOrderPricing {
         item_price: 0,
         quantity: 0,
         item_subtotal: 0,
-        order_subtotal: orderSubtotal,
-        discounts: appliedDiscounts,
-        total_discount: totalDiscount,
-        subtotal_after_discount: subtotalAfterDiscount,
-        tax_amount: taxAmount,
-        service_charge_amount: serviceChargeAmount,
-        total_amount: totalAmount,
+        order_subtotal: result.order_subtotal,
+        discounts: input.discounts ?? [],
+        total_discount: result.total_discount,
+        subtotal_after_discount: result.subtotal_after_discount,
+        tax_amount: result.tax_amount,
+        service_charge_amount: result.service_charge_amount,
+        total_amount: result.total_amount,
       };
 
       return { pricing };
@@ -84,16 +59,10 @@ export class CalculateOrderPricing {
   }
 
   calculateItemPrice(item: OrderItemForPricing): number {
-    const variantDelta = item.variant_price_delta ?? 0;
-    const optionsDelta = calculateSelectedOptionsDelta(
-      item.selected_options,
-      item.selected_option_groups
-    );
-
-    return item.base_price + variantDelta + optionsDelta;
+    return calculateItemPricing(item).item_price;
   }
 
   calculateItemSubtotal(item: OrderItemForPricing): number {
-    return this.calculateItemPrice(item) * item.quantity;
+    return calculateItemPricing(item).item_subtotal;
   }
 }

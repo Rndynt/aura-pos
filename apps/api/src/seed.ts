@@ -20,6 +20,7 @@ import type {
   InsertTenantOrderType, InsertBusinessType, InsertOutlet,
 } from '@pos/infrastructure/db/schema';
 import { sql, eq } from 'drizzle-orm';
+import { calculateOrderPricing } from '@pos/core/pricing';
 import { auth } from './lib/auth';
 
 // ─── IMAGES ──────────────────────────────────────────────────────────────────
@@ -334,8 +335,9 @@ async function seedThamada(createdOrderTypes: any[]) {
     ];
     for (let i = 0; i < demoOrders.length; i++) {
       const o = demoOrders[i];
-      const sub = o.items.reduce((s, it) => s + parseFloat(it.p.basePrice) * it.qty, 0);
-      const tax = Math.round(sub * TAX); const svc = Math.round(sub * SVC);
+      const pricing = calculateOrderPricing({ items: o.items.map((it) => ({ base_price: parseFloat(it.p.basePrice), quantity: it.qty })), tax_rate: TAX, service_charge_rate: SVC });
+      const sub = pricing.order_subtotal;
+      const tax = pricing.tax_amount; const svc = pricing.service_charge_amount;
       const [order] = await db.insert(orders).values({
         tenantId: tenant.id, outletId: thamadaOutlet.id, orderTypeId: dineInOT.id,
         orderNumber: `#TH${String(i + 1).padStart(4, '0')}`,
@@ -573,8 +575,9 @@ async function seedNusantara(createdOrderTypes: any[]) {
     ];
     for (let i = 0; i < demoOrders.length; i++) {
       const o = demoOrders[i];
-      const sub = o.items.reduce((s, it) => s + parseFloat(it.p.basePrice) * it.qty, 0);
-      const tax = Math.round(sub * TAX); const svc = Math.round(sub * SVC);
+      const pricing = calculateOrderPricing({ items: o.items.map((it) => ({ base_price: parseFloat(it.p.basePrice), quantity: it.qty })), tax_rate: TAX, service_charge_rate: SVC });
+      const sub = pricing.order_subtotal;
+      const tax = pricing.tax_amount; const svc = pricing.service_charge_amount;
       const [order] = await db.insert(orders).values({
         tenantId: tenant.id, outletId: nusantaraOutlet.id, orderTypeId: dineInOT.id,
         orderNumber: `#NU${String(i + 1).padStart(4, '0')}`,

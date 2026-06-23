@@ -3,6 +3,7 @@ import { offlineDb } from "./db";
 import { generateIdempotencyKey } from "./idempotency";
 import { generateLocalOrderNumber } from "./orderNumber";
 import { enqueueOutbox } from "./outbox";
+import { calculateOrderPricing, type PricingSelectedOption } from "@pos/core/pricing";
 import type { LocalOrder, LocalOrderItem, LocalPayment } from "./types";
 
 export type LocalOrderItem_Input = {
@@ -13,7 +14,7 @@ export type LocalOrderItem_Input = {
   variant_id?: string;
   variant_name?: string;
   variant_price_delta?: number;
-  selected_options?: unknown[];
+  selected_options?: PricingSelectedOption[];
   notes?: string;
 };
 
@@ -42,10 +43,13 @@ export type CreateLocalOrderResult = {
 };
 
 function computePricing(items: LocalOrderItem_Input[], taxRate = 0, serviceChargeRate = 0) {
-  const subtotal = items.reduce((sum, item) => sum + (item.base_price + (item.variant_price_delta ?? 0)) * item.quantity, 0);
-  const tax_amount = Math.round(subtotal * taxRate);
-  const service_charge_amount = Math.round(subtotal * serviceChargeRate);
-  return { subtotal, tax_amount, service_charge_amount, total_amount: subtotal + tax_amount + service_charge_amount };
+  const pricing = calculateOrderPricing({ items, tax_rate: taxRate, service_charge_rate: serviceChargeRate });
+  return {
+    subtotal: pricing.order_subtotal,
+    tax_amount: pricing.tax_amount,
+    service_charge_amount: pricing.service_charge_amount,
+    total_amount: pricing.total_amount,
+  };
 }
 
 export async function createLocalOrder(input: CreateLocalOrderInput): Promise<CreateLocalOrderResult> {

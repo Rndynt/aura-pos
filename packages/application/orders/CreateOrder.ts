@@ -5,13 +5,13 @@
 
 import type { Order, OrderItem, SelectedOption, SelectedOptionGroup } from '@pos/domain/orders/types';
 import type { PriceCalculation } from '@pos/domain/pricing/types';
-import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE } from '@pos/core/pricing';
+import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE, calculateOrderPricing } from '@pos/core/pricing';
 import { toInsertOrderDb, toDomainOrder, type InsertOrderPersistenceData, type PersistedOrderRecord } from './mappers';
 import {
   type CheckProductAvailabilityInput,
   type CheckProductAvailabilityOutput,
 } from '../catalog';
-import { calculateSelectedOptionsDelta, flattenSelectedOptions } from '../catalog';
+import { flattenSelectedOptions } from '../catalog';
 
 export interface CreateOrderItemInput {
   product_id: string;
@@ -146,51 +146,36 @@ export class CreateOrder {
 
       const orderNumber = await this.orderRepository.generateOrderNumber(input.tenant_id);
 
-      const orderItems: OrderItem[] = [];
-      let subtotal = 0;
-
-      for (const itemInput of input.items) {
-
-        const variantDelta = itemInput.variant_price_delta ?? 0;
-        const optionsDelta = calculateSelectedOptionsDelta(
-          itemInput.selected_options,
-          itemInput.selected_option_groups
-        );
-
-        const flattenedOptions = flattenSelectedOptions(
-          itemInput.selected_options,
-          itemInput.selected_option_groups
-        );
-
-        const itemPrice = itemInput.base_price + variantDelta + optionsDelta;
-        const itemSubtotal = itemPrice * itemInput.quantity;
-
-        const orderItem: OrderItem = {
-          id: crypto.randomUUID(),
-          product_id: itemInput.product_id,
-          product_name: itemInput.product_name,
-          base_price: itemInput.base_price,
-          variant_id: itemInput.variant_id,
-          variant_name: itemInput.variant_name,
-          variant_price_delta: variantDelta,
-          selected_options: flattenedOptions,
-          selected_option_groups: itemInput.selected_option_groups,
-          quantity: itemInput.quantity,
-          item_subtotal: itemSubtotal,
-          notes: itemInput.notes,
-          status: 'pending',
-        };
-
-        orderItems.push(orderItem);
-        subtotal += itemSubtotal;
-      }
-
       const taxRate = input.tax_rate ?? DEFAULT_TAX_RATE;
       const serviceChargeRate = input.service_charge_rate ?? DEFAULT_SERVICE_CHARGE_RATE;
+      const pricingResult = calculateOrderPricing({
+        items: input.items,
+        tax_rate: taxRate,
+        service_charge_rate: serviceChargeRate,
+      });
+      const subtotal = pricingResult.order_subtotal;
+      const taxAmount = pricingResult.tax_amount;
+      const serviceChargeAmount = pricingResult.service_charge_amount;
+      const totalAmount = pricingResult.total_amount;
 
-      const taxAmount = subtotal * taxRate;
-      const serviceChargeAmount = subtotal * serviceChargeRate;
-      const totalAmount = subtotal + taxAmount + serviceChargeAmount;
+      const orderItems: OrderItem[] = input.items.map((itemInput, index) => ({
+        id: crypto.randomUUID(),
+        product_id: itemInput.product_id,
+        product_name: itemInput.product_name,
+        base_price: itemInput.base_price,
+        variant_id: itemInput.variant_id,
+        variant_name: itemInput.variant_name,
+        variant_price_delta: itemInput.variant_price_delta ?? 0,
+        selected_options: flattenSelectedOptions(
+          itemInput.selected_options,
+          itemInput.selected_option_groups
+        ),
+        selected_option_groups: itemInput.selected_option_groups,
+        quantity: itemInput.quantity,
+        item_subtotal: pricingResult.items[index].item_subtotal,
+        notes: itemInput.notes,
+        status: 'pending',
+      }));
 
       // Map domain Order type to database InsertOrder type (snake_case to camelCase)
       const orderForDb = toInsertOrderDb(

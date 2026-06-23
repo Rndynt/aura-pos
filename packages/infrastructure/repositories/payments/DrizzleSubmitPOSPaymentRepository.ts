@@ -32,8 +32,8 @@ import {
 } from "@pos/infrastructure/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { toInsertOrderItemDb, toInsertOrderItemModifierDb } from "@pos/application/orders/mappers";
-import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE } from "@pos/core/pricing";
-import { calculateSelectedOptionsDelta, flattenSelectedOptions } from "@pos/application/catalog";
+import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE, calculateOrderPricing } from "@pos/core/pricing";
+import { flattenSelectedOptions } from "@pos/application/catalog";
 import { nextOrderNumberForTenant } from "../orders/orderNumberSequence";
 import { firstRawRow, mapRawLockedOrderRow, toDbOrderPaymentStatus, toDbOrderStatus, toDbPaymentFlow, toDbPaymentKind, toDbPaymentMethod, toDbPaymentStatus, toOrderItemModifiers, toPaymentOrderItem } from "../orders/paymentPersistenceMappers";
 import type { SubmitPOSPaymentRepositoryPort } from "@pos/application/payments";
@@ -197,9 +197,24 @@ function computeOrderTotals(
     status: "pending";
   }>;
 } {
-  let subtotal = 0;
-  const computedItems = items.map((item) => {
-    const variantDelta = item.variant_price_delta ?? 0;
+  const pricing = calculateOrderPricing({
+    items: items.map((item) => ({
+      base_price: item.base_price,
+      quantity: item.quantity,
+      variant_price_delta: item.variant_price_delta,
+      selected_options: (item.selected_options ?? []).map((o) => ({
+        group_id: o.group_id,
+        group_name: o.group_name,
+        option_id: o.option_id,
+        option_name: o.option_name,
+        price_delta: o.price_delta,
+      })),
+      selected_option_groups: item.selected_option_groups as SelectedOptionGroup[] | undefined,
+    })),
+    tax_rate: taxRate,
+    service_charge_rate: serviceChargeRate,
+  });
+  const computedItems = items.map((item, index) => {
     const rawOptions = (item.selected_options ?? []).map((o) => ({
       group_id: o.group_id,
       group_name: o.group_name,
@@ -208,11 +223,7 @@ function computeOrderTotals(
       price_delta: o.price_delta,
     }));
     const optionGroups = item.selected_option_groups as SelectedOptionGroup[] | undefined;
-    const optionsDelta = calculateSelectedOptionsDelta(rawOptions, optionGroups);
     const flatOptions = flattenSelectedOptions(rawOptions, optionGroups);
-    const itemPrice = item.base_price + variantDelta + optionsDelta;
-    const itemSubtotal = itemPrice * item.quantity;
-    subtotal += itemSubtotal;
     return {
       product_id: item.product_id,
       product_name: item.product_name,
@@ -220,16 +231,17 @@ function computeOrderTotals(
       quantity: item.quantity,
       variant_id: item.variant_id,
       variant_name: item.variant_name,
-      variant_price_delta: variantDelta,
+      variant_price_delta: item.variant_price_delta ?? 0,
       selected_options: flatOptions,
       notes: item.notes,
-      item_subtotal: itemSubtotal,
+      item_subtotal: pricing.items[index].item_subtotal,
       status: "pending" as const,
     };
   });
-  const taxAmount = subtotal * taxRate;
-  const serviceChargeAmount = subtotal * serviceChargeRate;
-  const totalAmount = subtotal + taxAmount + serviceChargeAmount;
+  const subtotal = pricing.order_subtotal;
+  const taxAmount = pricing.tax_amount;
+  const serviceChargeAmount = pricing.service_charge_amount;
+  const totalAmount = pricing.total_amount;
   return { subtotal, taxAmount, serviceChargeAmount, totalAmount, computedItems };
 }
 

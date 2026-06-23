@@ -3,7 +3,7 @@ import { nanoid } from "nanoid";
 import type { Product, ProductVariant } from "@pos/domain/catalog/types";
 import type { SelectedOption } from "@pos/domain/orders/types";
 import type { POSPaymentMethod } from "@pos/domain/payments";
-import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE } from "@pos/core/pricing";
+import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE, calculateItemPricing, calculateOrderPricing } from "@pos/core/pricing";
 import { getActiveTenantId, resolveInitialTenantId } from "@/lib/tenant";
 import { clearCartSession, migrateLegacySession, saveCartSession } from "@pos/offline";
 
@@ -64,10 +64,12 @@ function calculateItemTotal(
   selectedOptions: SelectedOption[],
   quantity: number
 ): number {
-  const basePrice = product.base_price;
-  const variantDelta = variant?.price_delta || 0;
-  const optionsDelta = selectedOptions.reduce((sum, opt) => sum + opt.price_delta, 0);
-  return (basePrice + variantDelta + optionsDelta) * quantity;
+  return calculateItemPricing({
+    base_price: product.base_price,
+    variant_price_delta: variant?.price_delta,
+    selected_options: selectedOptions,
+    quantity,
+  }).item_subtotal;
 }
 
 export function getItemEffectiveTotal(item: CartItem): number {
@@ -355,19 +357,26 @@ export function useCart() {
       };
     });
 
-  const subtotal = useMemo(() => items.reduce((sum, item) => sum + getItemEffectiveTotal(item), 0), [items]);
-  const itemsDiscountTotal = useMemo(() => items.reduce((sum, item) => sum + getItemDiscountAmount(item), 0), [items]);
-  const orderDiscountAmount = useMemo(() => {
-    if (!orderDiscount || orderDiscount.value <= 0) return 0;
-    if (orderDiscount.type === "percent") return subtotal * (Math.min(orderDiscount.value, 100) / 100);
-    return Math.min(orderDiscount.value, subtotal);
-  }, [orderDiscount, subtotal]);
-  const discountedSubtotal = Math.max(0, subtotal - orderDiscountAmount);
   const taxRate = DEFAULT_TAX_RATE;
   const serviceChargeRate = DEFAULT_SERVICE_CHARGE_RATE;
-  const tax = discountedSubtotal * taxRate;
-  const serviceCharge = discountedSubtotal * serviceChargeRate;
-  const total = discountedSubtotal + tax + serviceCharge;
+  const cartPricing = useMemo(() => calculateOrderPricing({
+    items: items.map((item) => ({
+      base_price: item.product.base_price,
+      variant_price_delta: item.variant?.price_delta,
+      selected_options: item.selectedOptions,
+      quantity: item.quantity,
+      discounts: item.discount ? [{ type: item.discount.type, value: item.discount.value }] : undefined,
+    })),
+    discounts: orderDiscount ? [{ type: orderDiscount.type, value: orderDiscount.value }] : undefined,
+    tax_rate: taxRate,
+    service_charge_rate: serviceChargeRate,
+  }), [items, orderDiscount, taxRate, serviceChargeRate]);
+  const subtotal = cartPricing.order_subtotal - cartPricing.items_discount_total;
+  const itemsDiscountTotal = cartPricing.items_discount_total;
+  const orderDiscountAmount = cartPricing.order_discount_amount;
+  const tax = cartPricing.tax_amount;
+  const serviceCharge = cartPricing.service_charge_amount;
+  const total = cartPricing.total_amount;
 
   return {
     items,

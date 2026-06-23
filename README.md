@@ -7,7 +7,7 @@ AuraPoS adalah monorepo aplikasi Point of Sale (POS) untuk UMKM yang mencakup fr
 - **apps/web**: Frontend tambahan berbasis Next.js (marketing/opsional) yang memanfaatkan komponen bersama.
 - **apps/api**: Backend Express/TypeScript dengan Drizzle untuk akses database serta hooks React Query sebagai klien API.
 - **packages/domain**: Definisi tipe domain (catalog, orders, pricing, tenants) yang dipakai lintas aplikasi.
-- **packages/core / application / features / infrastructure**: Paket utilitas dan lapisan arsitektur pendukung.
+- **packages/core / application / features / infrastructure**: Paket utilitas dan lapisan arsitektur pendukung. Kalkulasi pricing order canonical berada di `@pos/core/pricing` agar API, POS frontend, offline mode, dan seed data memakai rumus subtotal/pajak/service/discount yang sama.
 - **design_guidelines.md**: Pedoman UI/UX berbasis Material Design untuk terminal kasir.
 
 ## Menjalankan Secara Lokal

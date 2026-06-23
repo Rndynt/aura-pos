@@ -588,6 +588,9 @@ importers:
 
   packages/offline:
     dependencies:
+      '@pos/core':
+        specifier: workspace:*
+        version: link:../core
       dexie:
         specifier: ^4.0.8
         version: 4.4.2

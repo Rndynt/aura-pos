@@ -25,8 +25,8 @@ import {
 } from '@pos/infrastructure/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { toInsertOrderItemDb, toInsertOrderItemModifierDb } from '@pos/application/orders/mappers';
-import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE } from '@pos/core/pricing';
-import { calculateSelectedOptionsDelta, flattenSelectedOptions } from '@pos/application/catalog';
+import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE, calculateOrderPricing } from '@pos/core/pricing';
+import { flattenSelectedOptions } from '@pos/application/catalog';
 import type { SelectedOption, SelectedOptionGroup } from '@pos/domain/orders/types';
 import { DrizzleInventoryPolicyRepository, DrizzleInventorySyncErrorRepository, DrizzleStockMovementRepository } from '../inventory';
 import { nextOrderNumberForTenant } from './orderNumberSequence';
@@ -113,7 +113,16 @@ export class DrizzleCreateAndPayOrderRepository {
     const taxRateVal = tax_rate ?? DEFAULT_TAX_RATE;
     const serviceChargeRateVal = service_charge_rate ?? DEFAULT_SERVICE_CHARGE_RATE;
 
-    let subtotal = 0;
+    const pricing = calculateOrderPricing({
+      items,
+      tax_rate: taxRateVal,
+      service_charge_rate: serviceChargeRateVal,
+    });
+    const subtotal = pricing.order_subtotal;
+    const taxAmount = pricing.tax_amount;
+    const serviceChargeAmount = pricing.service_charge_amount;
+    const totalAmount = pricing.total_amount;
+
     const computedItems: Array<{
       product_id: string;
       product_name: string;
@@ -126,40 +135,19 @@ export class DrizzleCreateAndPayOrderRepository {
       notes?: string;
       status: 'pending';
       item_subtotal: number;
-    }> = [];
-
-    for (const item of items) {
-      const variantDelta = item.variant_price_delta ?? 0;
-      const optionsDelta = calculateSelectedOptionsDelta(
-        item.selected_options,
-        item.selected_option_groups
-      );
-      const flattenedOptions = flattenSelectedOptions(
-        item.selected_options,
-        item.selected_option_groups
-      );
-      const itemPrice = item.base_price + variantDelta + optionsDelta;
-      const itemSubtotal = itemPrice * item.quantity;
-      subtotal += itemSubtotal;
-
-      computedItems.push({
-        product_id: item.product_id,
-        product_name: item.product_name,
-        base_price: item.base_price,
-        quantity: item.quantity,
-        variant_id: item.variant_id,
-        variant_name: item.variant_name,
-        variant_price_delta: variantDelta,
-        selected_options: flattenedOptions,
-        notes: item.notes,
-        status: 'pending',
-        item_subtotal: itemSubtotal,
-      });
-    }
-
-    const taxAmount = subtotal * taxRateVal;
-    const serviceChargeAmount = subtotal * serviceChargeRateVal;
-    const totalAmount = subtotal + taxAmount + serviceChargeAmount;
+    }> = items.map((item, index) => ({
+      product_id: item.product_id,
+      product_name: item.product_name,
+      base_price: item.base_price,
+      quantity: item.quantity,
+      variant_id: item.variant_id,
+      variant_name: item.variant_name,
+      variant_price_delta: item.variant_price_delta ?? 0,
+      selected_options: flattenSelectedOptions(item.selected_options, item.selected_option_groups),
+      notes: item.notes,
+      status: 'pending',
+      item_subtotal: pricing.items[index].item_subtotal,
+    }));
 
     if (amount > totalAmount + 0.01) {
       throw new Error(

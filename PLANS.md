@@ -11594,3 +11594,113 @@ Reduce high-risk `any`/enum escape hatches in payment/order persistence paths wi
 
 ### Continuation Notes
 This requested batch is complete. Next safest follow-up is type-cleaning create-order-specific repository mapping and inventory sync retry SQL/JSON casts without changing runtime behavior.
+
+## Plan: Canonical Shared Order Pricing
+
+### Source
+- Tasklist: User inline 6-step pricing centralization list
+- User request: Centralize subtotal/tax/service/total calculation in a canonical shared package, update backend/frontend/offline callers, and add golden tests.
+- Date started: 2026-06-23
+- Current status: Implemented and validated in this batch
+
+### Goal
+Use one pure typed pricing function for API/application/infrastructure/seed/frontend/offline calculations, including modifiers/options, discounts, tax, service charge, partial payment estimation, and create-and-pay totals.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (user request)
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: Order creation/create-and-pay/POS payment repositories and seed demo totals.
+- Files inspected: `packages/application/orders/CreateOrder.ts`, `packages/application/orders/CalculateOrderPricing.ts`, `packages/application/orders/paymentOrchestration.ts`, `packages/infrastructure/repositories/orders/DrizzleCreateAndPayOrderRepository.ts`, `packages/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository.ts`, `apps/api/src/seed.ts`.
+- Findings: Multiple local subtotal/tax/service total implementations existed; option delta was application-local.
+- Tasks: Completed: backend/application/infrastructure/seed totals now use `calculateOrderPricing` from `@pos/core/pricing` while preserving flattened modifier persistence.
+- Risks: None identified after type-check validation.
+- Validation: `pnpm --filter @pos/api type-check`, `pnpm --filter @pos/application type-check` passed.
+
+#### Frontend/UI Workstream
+- Scope: POS cart totals.
+- Files inspected: `apps/pos-terminal-web/src/hooks/useCart.ts`.
+- Findings: Cart locally calculated option delta, item/order discounts, tax, service, total.
+- Tasks: Completed: cart item totals and cart totals now use shared pricing.
+- Risks: No visual UI change; screenshot not required.
+- Validation: `pnpm --filter @pos/terminal-web type-check` passed.
+
+#### Tests/Validation Workstream
+- Scope: Golden pricing tests.
+- Files inspected: package scripts.
+- Findings: `@pos/core` had type-check only.
+- Tasks: Completed: added `@pos/core` node test script and golden cases for retail, restaurant, modifiers/options, tax, service charge, partial payment, and create-and-pay.
+- Risks: None.
+- Validation: `pnpm --filter @pos/core test` passed.
+
+### Progress
+#### Completed
+- [x] Canonical package selected: `packages/core/pricing` via `@pos/core/pricing`.
+  - Files changed: `packages/core/pricing/orderPricing.ts`, `packages/core/pricing.ts`.
+  - Validation: `pnpm --filter @pos/core type-check`, `pnpm --filter @pos/core test`.
+  - Docs updated: `README.md`, `PLANS.md`.
+- [x] Typed pricing input/output and pure `calculateOrderPricing` implemented.
+  - Files changed: `packages/core/pricing/orderPricing.ts`.
+  - Validation: `pnpm --filter @pos/core test`.
+  - Docs updated: `README.md`.
+- [x] Backend/application/infrastructure/seed pricing logic moved to shared function.
+  - Files changed: `packages/application/orders/CalculateOrderPricing.ts`, `packages/application/orders/CreateOrder.ts`, `packages/application/catalog/pricing.ts`, `packages/infrastructure/repositories/orders/DrizzleCreateAndPayOrderRepository.ts`, `packages/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository.ts`, `apps/api/src/seed.ts`.
+  - Validation: `pnpm --filter @pos/application type-check`, `pnpm --filter @pos/api type-check`.
+  - Docs updated: `PLANS.md`.
+- [x] Frontend/offline pricing logic moved to shared function.
+  - Files changed: `apps/pos-terminal-web/src/hooks/useCart.ts`, `packages/offline/src/localOrderService.ts`, `packages/offline/package.json`, `packages/offline/tsconfig.json`.
+  - Validation: `pnpm --filter @pos/offline type-check`, `pnpm --filter @pos/terminal-web type-check`.
+  - Docs updated: `README.md`, `PLANS.md`.
+- [x] Golden tests added.
+  - Files changed: `packages/core/pricing/__tests__/orderPricing.golden.test.ts`, `packages/core/package.json`.
+  - Validation: `pnpm --filter @pos/core test`.
+  - Docs updated: `PLANS.md`.
+
+#### Partially Completed
+- [ ] None.
+
+#### Blocked
+- [ ] None.
+
+#### Not Attempted
+- [ ] Full workspace `pnpm test`.
+  - Reason: Targeted package validation covered changed packages and new golden tests.
+
+### Validation Log
+- Command: `pnpm --filter @pos/core test`
+- Result: pass
+- Notes: 6 golden pricing tests passed.
+- Command: `pnpm --filter @pos/core type-check`
+- Result: pass
+- Notes: Canonical pricing package compiles.
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Notes: Application wrappers and create-order compile.
+- Command: `pnpm --filter @pos/offline type-check`
+- Result: pass
+- Notes: Offline local order pricing compiles with shared core pricing.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: API seed and infrastructure repositories compile.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: POS cart shared pricing usage compiles.
+
+### Documentation Updates
+- File: `README.md`
+- Change: Documented `@pos/core/pricing` as canonical shared pricing location.
+- File: `PLANS.md`
+- Change: Added completed active plan for canonical shared order pricing.
+
+### Checklist Updates
+- File: N/A (user tasklist only)
+- Change: N/A
+
+### Continuation Notes
+No blockers. Recommended next batch: add integration tests around persisted order totals in create-order/create-and-pay/POS payment repositories if a database test harness is available.
