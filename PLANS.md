@@ -1994,7 +1994,7 @@ Recommended next batch: add a formal CFD device management/pairing UI and revoke
 - Tasklist: User request with five database/schema/migration/CI tasks.
 - User request: Audit actual database via `information_schema.columns`, choose UUID standard, create explicit migration with FK drop/recreate, update schema/snapshots/docs, add drift check.
 - Date started: 2026-06-02
-- Current status: In progress
+- Current status: Completed for this batch
 
 ### Goal
 
@@ -11170,3 +11170,101 @@ This batch is complete. Recommended next batch: run broader API regression tests
 
 ### Continuation Notes
 No continuation needed for this batch. A future hardening batch could add direct adapter tests around Drizzle row mapping if a test database fixture is available.
+
+## Plan: API Composition Module Refactor
+
+### Source
+- Tasklist: User-provided composition refactor checklist
+- User request: Create composition structure, move repository/use-case wiring by bounded context, gradually remove `as any`, and use type-check as acceptance gate.
+- Date started: 2026-06-23
+- Current status: In progress
+
+### Goal
+Refactor the API dependency container into bounded-context composition modules without changing runtime behavior or public controller imports.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs (README architecture notes; no public API behavior change expected)
+- [x] Relevant source files (`apps/api/src/container.ts`, application use cases, API controllers)
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: API DI container and module wiring.
+- Files inspected: `apps/api/src/container.ts`, `apps/api/src/http/controllers/*` references.
+- Findings: Controllers depend on a singleton `container`; compatibility export should remain small by re-exporting the new composition container.
+- Tasks: Create `createAppContainer` and bounded-context modules.
+- Risks: Type mismatches from existing repository ports.
+- Validation: `pnpm --filter @pos/api type-check`.
+
+#### Database/Schema Workstream
+- Scope: Shared Drizzle db/unit-of-work construction.
+- Files inspected: `apps/api/src/container.ts`.
+- Findings: No schema changes required.
+- Tasks: Move db and unit-of-work setup into `shared/databaseModule`.
+- Risks: Inventory port configuration must still occur once.
+- Validation: API type-check.
+
+#### Tests/Validation Workstream
+- Scope: Type-check acceptance gate.
+- Files inspected: API package scripts.
+- Findings: User explicitly requested type-check gate.
+- Tasks: Run `pnpm --filter @pos/api type-check` after refactor.
+- Risks: Pre-existing type errors may appear; investigate if so.
+- Validation: Pending.
+
+#### Documentation Workstream
+- Scope: Execution plan synchronization.
+- Files inspected: `PLANS.md`.
+- Findings: No README/docs change needed because runtime API behavior and setup commands remain unchanged.
+- Tasks: Update `PLANS.md` with plan/progress.
+- Risks: None.
+- Validation: N/A.
+
+### Execution Order
+1. Add composition type definitions and shared database module.
+2. Move each bounded-context wiring into a small module factory.
+3. Replace legacy `container.ts` implementation with a compatibility re-export of `createAppContainer`.
+4. Run type-check and fix local type issues.
+5. Update `PLANS.md`, commit, and create PR metadata.
+
+### Progress
+#### Completed
+- [x] Created composition module structure and shared DI types.
+  - Files changed: `apps/api/src/composition/types.ts`, `apps/api/src/composition/shared/databaseModule.ts`, `apps/api/src/composition/createAppContainer.ts`, `apps/api/src/composition/modules/*`
+  - Validation: `pnpm --filter @pos/api type-check` passed.
+  - Docs updated: `PLANS.md`
+- [x] Moved repository/use-case wiring into bounded-context modules and kept a small compatibility export.
+  - Files changed: `apps/api/src/container.ts`, `apps/api/src/composition/modules/*`
+  - Validation: `pnpm --filter @pos/api type-check` passed.
+  - Docs updated: `PLANS.md`
+- [x] Tightened order port/persistence types enough to remove API container wiring casts.
+  - Files changed: `packages/application/orders/UpdateOrder.ts`, `packages/application/orders/mappers.ts`
+  - Validation: `pnpm --filter @pos/api type-check` passed.
+  - Docs updated: `PLANS.md`
+
+### Validation Log
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: Acceptance gate requested by user; confirms the new composition container and use-case constructor wiring type-check.
+
+### Documentation Updates
+- File: `PLANS.md`
+- Change: Added this active execution plan.
+
+### Checklist Updates
+- File: `PLANS.md`
+- Change: Tracking user checklist in this plan.
+
+### Continuation Notes
+This batch is complete. Future cleanup can continue removing unrelated `as any` usages inside order use-case implementation internals and infrastructure persistence mapping.
+
+### Batch Update — 2026-06-23
+- Completed composition structure under `apps/api/src/composition`.
+- Moved repository/use-case wiring into bounded-context modules for catalog, orders, payments, inventory, tenant, sync, and kitchen.
+- Replaced `apps/api/src/container.ts` with a small compatibility export only.
+- Removed `as any` casts from API container wiring by tightening order mapper/update repository port types enough for the concrete infrastructure repository to satisfy use-case constructors.
+- Validation: `pnpm --filter @pos/api type-check` passed.
+- Status: Completed for this batch; broader cleanup of unrelated `as any` in repositories/tests remains outside this requested composition refactor.

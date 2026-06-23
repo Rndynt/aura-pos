@@ -44,6 +44,23 @@ export interface UpdateOrderOutput {
   pricing: PriceCalculation;
 }
 
+export interface UpdateOrderItemPersistenceData extends UpdateOrderItemInput {
+  item_subtotal: number;
+  status?: string;
+}
+
+export interface UpdateOrderPersistenceData {
+  orderTypeId?: string;
+  subtotal?: string;
+  taxAmount?: string;
+  serviceCharge?: string;
+  discountAmount?: string;
+  total?: string;
+  customerName?: string;
+  tableNumber?: string;
+  notes?: string;
+}
+
 export interface IOrderRepository {
   findById(orderId: string, tenantId?: string): Promise<Order | null>;
   getEditLockState?(orderId: string, tenantId: string): Promise<{
@@ -52,8 +69,8 @@ export interface IOrderRepository {
   }>;
   updateWithItems(
     orderId: string,
-    orderUpdates: Partial<Order>,
-    newItems: UpdateOrderItemInput[],
+    orderUpdates: UpdateOrderPersistenceData,
+    newItems: UpdateOrderItemPersistenceData[],
     tenantId: string
   ): Promise<Order>;
 }
@@ -178,7 +195,7 @@ export class UpdateOrder {
       }
 
       // Convert orderItems back to OrderItemInput format (required by repository)
-      const itemsForUpdate: any[] = orderItems.map(item => ({
+      const itemsForUpdate: UpdateOrderItemPersistenceData[] = orderItems.map(item => ({
         product_id: item.product_id,
         product_name: item.product_name,
         base_price: item.base_price,

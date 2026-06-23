@@ -29,14 +29,14 @@ export interface InsertOrderPersistenceData {
   tenantId: string;
   orderTypeId?: string;
   orderNumber: string;
-  status: string;
+  status: 'draft' | 'confirmed' | 'preparing' | 'ready' | 'served' | 'completed' | 'cancelled';
   subtotal: string;
   taxAmount: string;
   serviceCharge: string;
   discountAmount: string;
   total: string;
   paidAmount: string;
-  paymentStatus: string;
+  paymentStatus: 'unpaid' | 'paid' | 'partial';
   customerName?: string;
   tableNumber?: string;
   notes?: string;
