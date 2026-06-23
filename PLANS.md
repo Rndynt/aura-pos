@@ -12052,3 +12052,97 @@ Ensure API boot only evaluates migration policy and never runs schema/data repai
 
 ### Continuation Notes
 No blocked code tasks remain. Next recommended batch: run migration command against staging with a verified database snapshot before production rollout.
+
+## Plan: Architecture Hardening Checklist Status Verification
+
+### Source
+- Tasklist: `roadmap/architecture-production-hardening/tasklist.md`
+- User request: Verify completed acceptance criteria and mark only truly complete items; add partial/blocked notes for incomplete work.
+- Date started: 2026-06-23
+- Current status: Completed for this verification batch
+
+### Goal
+Review the architecture-production-hardening checklist against existing docs/source/validation artifacts and update statuses honestly without implementing unrelated source changes.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs (`docs/ENVIRONMENT.md`, `DEPLOYMENT_GUIDE.md`, `.env.example`)
+- [x] Relevant source files (`package.json` scripts, Vite configs, API bootstrap/composition, offline outbox/type escape search results)
+
+### Workstreams
+
+#### Documentation Workstream
+- Scope: P0/P1/P9/P11 documentation and checklist status.
+- Files inspected: `roadmap/architecture-production-hardening/tasklist.md`, `baseline-report.md`, `dependency-boundary-audit.md`, `README.md`, `DEPLOYMENT_GUIDE.md`, `docs/ENVIRONMENT.md`, `.env.example`.
+- Findings: P0 baseline/audit docs exist; P1 port/Vite/env docs are synchronized; deployment docs describe explicit migration and backup/rollback discipline.
+- Tasks: Mark completed acceptance where verified; add partial/blocked notes elsewhere.
+- Risks: Some broad hardening phases remain incomplete and must not be marked complete.
+- Validation: markdown/source audit commands plus root `pnpm type-check`.
+
+#### Backend/API Workstream
+- Scope: P2/P3 source status verification.
+- Files inspected: `apps/api/src/index.ts`, `apps/api/src/bootstrap/*`, `apps/api/src/runtime/server.ts`, `apps/api/src/composition/*`, `apps/api/src/container.ts`.
+- Findings: Bootstrap decomposition and modular composition have progressed significantly; CORS/env centralization and shared infrastructure modules remain partial.
+- Tasks: Mark verified completed subitems and partial notes for incomplete acceptance.
+- Risks: Direct DB/type escape remains in some HTTP controllers/routes; do not mark P4/P5/P8 complete.
+- Validation: source search and `pnpm type-check`.
+
+#### Tests/Validation Workstream
+- Scope: Confirm baseline validation artifacts and current type-check.
+- Files inspected: `baseline-report.md`, package scripts.
+- Findings: Baseline report records install/type-check/build/test pass; current root type-check passes.
+- Tasks: Run current type-check after docs change.
+- Risks: Full build/test not rerun in this batch because checklist-only change plus existing baseline report already records required baseline commands.
+- Validation: `pnpm type-check`.
+
+### Progress
+
+#### Completed
+- [x] Verified and marked P0.1, P0.2, P0.3 acceptance criteria.
+  - Files changed: `roadmap/architecture-production-hardening/tasklist.md`
+  - Validation: source/docs inspection, baseline report inspection
+  - Docs updated: checklist status
+- [x] Verified and marked P1.1, P1.2, P1.3 acceptance criteria.
+  - Files changed: `roadmap/architecture-production-hardening/tasklist.md`
+  - Validation: script/config/docs inspection
+  - Docs updated: checklist status
+- [x] Verified and marked completed portions of P2/P3/P9/P11.
+  - Files changed: `roadmap/architecture-production-hardening/tasklist.md`
+  - Validation: source inspection and type-check
+  - Docs updated: checklist status and partial notes
+
+#### Partially Completed
+- [ ] P2.1/P2.2/P3.2/P3.4/P3.5 and P4/P5/P6/P8/P11 broad hardening items.
+  - Completed: verified completed subitems where source supports them.
+  - Remaining: schema-based env validation, stricter CORS allowlist/tests, Redis/cache/pubsub/observability composition, controller/type/pricing/offline hardening.
+  - Reason: Existing source still contains direct DB access/type escapes/duplicate logic/outbox retry bug.
+
+#### Blocked
+- [ ] P8.3/P9.2 outbox retry completion.
+  - Blocker: `packages/offline/src/outbox.ts` still contains `status: terminal ? "failed" : "failed"` and no completed state-machine/test update in this batch.
+  - Required next step: implement retry state machine and regression tests before marking complete.
+
+#### Not Attempted
+- [ ] Implementation of remaining roadmap items.
+  - Reason: User requested verification/checklist status update, not feature implementation.
+
+### Validation Log
+- Command: `pnpm type-check`
+- Result: pass
+- Notes: Turbo completed all type-check tasks successfully after checklist/plan updates.
+
+### Documentation Updates
+- File: `roadmap/architecture-production-hardening/tasklist.md`
+- Change: Marked verified completed acceptance criteria; added partial/blocked notes for incomplete items.
+- File: `PLANS.md`
+- Change: Added this execution plan and verification summary.
+
+### Checklist Updates
+- File: `roadmap/architecture-production-hardening/tasklist.md`
+- Change: P0/P1 verified complete; selected P2/P3/P9/P11 subitems marked complete only where source/docs/validation support them.
+
+### Continuation Notes
+Next safest batch: implement P8.3/P9.2 outbox retry state bug with tests, or finish P2.2 CORS/env validation tests before broader controller/type refactors.

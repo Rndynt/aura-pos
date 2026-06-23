@@ -157,14 +157,14 @@ roadmap/architecture-production-hardening/tasklist.md
 
 Task:
 
-- [ ] Pastikan file ini ada di repo.
-- [ ] Jangan mengubah source code pada task ini.
-- [ ] Jadikan file ini acuan task bertahap untuk Codex.
+- [x] Pastikan file ini ada di repo.
+- [x] Jangan mengubah source code pada task ini.
+- [x] Jadikan file ini acuan task bertahap untuk Codex.
 
 Acceptance criteria:
 
-- [ ] File markdown tersedia di repo.
-- [ ] Tidak ada perubahan source code dalam commit dokumen.
+- [x] File markdown tersedia di repo.
+- [x] Tidak ada perubahan source code dalam commit dokumen.
 
 ## Task P0.2 — Baseline Build & Test
 
@@ -226,9 +226,9 @@ Branch:
 
 Acceptance criteria:
 
-- [ ] Baseline report dibuat.
-- [ ] Semua error existing dicatat jujur.
-- [ ] Tidak ada klaim fixed tanpa test.
+- [x] Baseline report dibuat.
+- [x] Semua error existing dicatat jujur.
+- [x] Tidak ada klaim fixed tanpa test.
 
 ## Task P0.3 — Dependency Boundary Audit
 
@@ -240,11 +240,11 @@ roadmap/architecture-production-hardening/dependency-boundary-audit.md
 
 Task:
 
-- [ ] Audit import antar layer.
-- [ ] Cari import Express/React/Drizzle di domain/application.
-- [ ] Cari direct DB access dari route/controller.
-- [ ] Cari logic bisnis di React component.
-- [ ] Cari duplicate pricing/payment/entitlement logic.
+- [x] Audit import antar layer.
+- [x] Cari import Express/React/Drizzle di domain/application.
+- [x] Cari direct DB access dari route/controller.
+- [x] Cari logic bisnis di React component.
+- [x] Cari duplicate pricing/payment/entitlement logic.
 
 Format output:
 
@@ -264,8 +264,8 @@ Suggested action:
 
 Acceptance criteria:
 
-- [ ] Minimal mencakup API, frontend, offline, application, infrastructure.
-- [ ] Setiap violation dipetakan ke phase fix.
+- [x] Minimal mencakup API, frontend, offline, application, infrastructure.
+- [x] Setiap violation dipetakan ke phase fix.
 
 ---
 
@@ -300,14 +300,14 @@ DEPLOYMENT_GUIDE.md
 
 Task:
 
-- [ ] Audit semua script dev.
-- [ ] Pastikan tidak ada dua app default memakai port sama.
-- [ ] Update README dan deployment guide.
+- [x] Audit semua script dev.
+- [x] Pastikan tidak ada dua app default memakai port sama.
+- [x] Update README dan deployment guide.
 
 Acceptance criteria:
 
-- [ ] `pnpm dev` tidak menjalankan dua service pada port sama.
-- [ ] Docs menyebut port yang sama dengan script.
+- [x] `pnpm dev` tidak menjalankan dua service pada port sama.
+- [x] Docs menyebut port yang sama dengan script.
 
 ## Task P1.2 — Hapus Config Ganda Vite
 
@@ -322,16 +322,16 @@ apps/pos-terminal-web/package.json
 
 Task:
 
-- [ ] Tentukan satu config canonical untuk `apps/pos-terminal-web`.
-- [ ] Hapus config duplikat jika tidak digunakan.
-- [ ] Jika root `vite.config.ts` legacy, hapus atau dokumentasikan penggunaannya.
-- [ ] Pastikan build masih memakai config canonical.
+- [x] Tentukan satu config canonical untuk `apps/pos-terminal-web`.
+- [x] Hapus config duplikat jika tidak digunakan.
+- [x] Jika root `vite.config.ts` legacy, hapus atau dokumentasikan penggunaannya.
+- [x] Pastikan build masih memakai config canonical.
 
 Acceptance criteria:
 
-- [ ] Hanya ada config yang benar-benar digunakan.
-- [ ] Build frontend sukses.
-- [ ] Tidak ada output build path berbeda antara config aktif dan config sisa.
+- [x] Hanya ada config yang benar-benar digunakan.
+- [x] Build frontend sukses.
+- [x] Tidak ada output build path berbeda antara config aktif dan config sisa.
 
 ## Task P1.3 — Canonical Environment Matrix
 
@@ -363,16 +363,16 @@ VITE_APP_ENV=
 
 Task:
 
-- [ ] Update `.env.example`.
-- [ ] Tambahkan `docs/ENVIRONMENT.md`.
-- [ ] Pisahkan dev/staging/production requirements.
-- [ ] Jangan masukkan secret asli.
+- [x] Update `.env.example`.
+- [x] Tambahkan `docs/ENVIRONMENT.md`.
+- [x] Pisahkan dev/staging/production requirements.
+- [x] Jangan masukkan secret asli.
 
 Acceptance criteria:
 
-- [ ] `.env.example` cukup untuk dev.
-- [ ] `docs/ENVIRONMENT.md` menjelaskan env wajib production.
-- [ ] Tidak ada docs yang menyebut auth optional jika app butuh auth.
+- [x] `.env.example` cukup untuk dev.
+- [x] `docs/ENVIRONMENT.md` menjelaskan env wajib production.
+- [x] Tidak ada docs yang menyebut auth optional jika app butuh auth.
 
 ## Task P1.4 — Formatting Hygiene Untuk File One-Line Besar
 
@@ -435,18 +435,20 @@ apps/api/src/bootstrap/env.ts
 
 Task:
 
-- [ ] Buat `loadApiConfig()`.
-- [ ] Validasi env dengan schema typed.
-- [ ] Jangan membaca `process.env` secara acak di banyak file.
-- [ ] Export `ApiRuntimeConfig`.
+- [x] Buat `loadApiConfig()`.
+- [ ] Validasi env dengan schema typed. — **partial:** `loadApiConfig()` typed sudah ada, tetapi belum memakai schema validator formal.
+- [ ] Jangan membaca `process.env` secara acak di banyak file. — **partial:** bootstrap memakai `loadApiConfig()`, tetapi audit env lint/source-wide cleanup belum selesai.
+- [ ] Export `ApiRuntimeConfig`. — **partial:** kode mengekspor `ApiConfig`; nama acceptance belum persis `ApiRuntimeConfig`.
 
 Acceptance criteria:
 
-- [ ] Semua env utama dibaca melalui `loadApiConfig()`.
-- [ ] Error env production jelas.
-- [ ] Type-check green.
+- [ ] Semua env utama dibaca melalui `loadApiConfig()`. — **partial:** bootstrap utama membaca config lewat `loadApiConfig()`, tetapi belum semua env access repo-wide dipusatkan.
+- [x] Error env production jelas.
+- [x] Type-check green.
 
 ## Task P2.2 — Extract CORS Policy
+
+**Status note:** partial — inline CORS sudah keluar dari `index.ts`, tetapi production allowlist masih menerima base-domain/Replit/localhost paths dan unit test parsing origin belum ditemukan; acceptance tetap belum complete.
 
 File:
 
@@ -456,8 +458,8 @@ apps/api/src/bootstrap/cors.ts
 
 Task:
 
-- [ ] Hilangkan inline CORS policy dari `index.ts`.
-- [ ] Development boleh localhost.
+- [x] Hilangkan inline CORS policy dari `index.ts`.
+- [x] Development boleh localhost.
 - [ ] Production hanya allowlist eksplisit dari env.
 - [ ] Tambahkan unit test untuk parsing origins.
 
@@ -476,14 +478,14 @@ apps/api/src/bootstrap/auth.ts
 
 Task:
 
-- [ ] Mount Better Auth endpoints di modul khusus.
-- [ ] Jangan campur auth endpoint dengan migration/data repair.
-- [ ] Pastikan `/api/auth/*` tetap kompatibel.
+- [x] Mount Better Auth endpoints di modul khusus.
+- [x] Jangan campur auth endpoint dengan migration/data repair.
+- [x] Pastikan `/api/auth/*` tetap kompatibel.
 
 Acceptance criteria:
 
-- [ ] Login/session endpoint tetap jalan.
-- [ ] Tidak ada perubahan kontrak response tanpa test.
+- [x] Login/session endpoint tetap jalan.
+- [x] Tidak ada perubahan kontrak response tanpa test.
 
 ## Task P2.4 — Extract Route Mounting
 
@@ -495,13 +497,13 @@ apps/api/src/bootstrap/routes.ts
 
 Task:
 
-- [ ] Route mounting hanya menerima `app`, `container/modules`, `config`.
-- [ ] Tidak boleh instantiate repository di route mounting.
+- [x] Route mounting hanya menerima `app`, `container/modules`, `config`.
+- [x] Tidak boleh instantiate repository di route mounting.
 
 Acceptance criteria:
 
-- [ ] Semua route existing tetap mounted.
-- [ ] Route mounting pendek dan mudah dibaca.
+- [x] Semua route existing tetap mounted.
+- [x] Route mounting pendek dan mudah dibaca.
 
 ## Task P2.5 — Extract Startup Checks & Migration Policy
 
@@ -514,16 +516,16 @@ apps/api/src/bootstrap/migrations.ts
 
 Task:
 
-- [ ] Pisahkan readiness DB/Redis.
-- [ ] Pisahkan migration command dari app boot.
-- [ ] Production default: no auto-migrate on boot.
-- [ ] Dev boleh auto migrate hanya dengan env flag eksplisit.
-- [ ] Dokumentasikan migration production.
+- [x] Pisahkan readiness DB/Redis.
+- [x] Pisahkan migration command dari app boot.
+- [x] Production default: no auto-migrate on boot.
+- [x] Dev boleh auto migrate hanya dengan env flag eksplisit.
+- [x] Dokumentasikan migration production.
 
 Acceptance criteria:
 
-- [ ] App boot production tidak menjalankan repair schema/data otomatis.
-- [ ] Migration dijalankan via command/pipeline eksplisit.
+- [x] App boot production tidak menjalankan repair schema/data otomatis.
+- [x] Migration dijalankan via command/pipeline eksplisit.
 
 ## Task P2.6 — Simplify `index.ts`
 
@@ -548,9 +550,9 @@ main().catch((error) => {
 
 Acceptance criteria:
 
-- [ ] `index.ts` hanya orchestration startup.
-- [ ] Tidak ada SQL/migration/data repair inline.
-- [ ] Tidak ada CORS/auth/route implementation detail di `index.ts`.
+- [x] `index.ts` hanya orchestration startup.
+- [x] Tidak ada SQL/migration/data repair inline.
+- [x] Tidak ada CORS/auth/route implementation detail di `index.ts`.
 
 ---
 
@@ -612,28 +614,30 @@ apps/api/src/composition/types.ts
 
 Task:
 
-- [ ] Definisikan `SharedCompositionDeps`.
-- [ ] Definisikan `ModuleFactory<TModule>`.
-- [ ] Semua module factory memakai contract yang sama.
+- [x] Definisikan `SharedCompositionDeps`.
+- [x] Definisikan `ModuleFactory<TModule>`.
+- [x] Semua module factory memakai contract yang sama.
 
 Acceptance criteria:
 
-- [ ] Tidak ada module membaca global singleton tanpa jelas.
-- [ ] Type dependency terlihat eksplisit.
+- [x] Tidak ada module membaca global singleton tanpa jelas.
+- [x] Type dependency terlihat eksplisit.
 
 ## Task P3.2 — Extract Shared Infrastructure Modules
 
+**Status note:** partial — database/unit of work sudah menjadi shared module, tetapi Redis/cache/pubsub, logger/observability, dan provider time/id/idempotency belum lengkap.
+
 Task:
 
-- [ ] Extract database module.
-- [ ] Extract Redis/cache/pubsub module.
-- [ ] Extract logger/observability module.
-- [ ] Extract time/id/idempotency provider jika diperlukan.
+- [x] Extract database module.
+- [ ] Extract Redis/cache/pubsub module. — **partial:** belum ada shared Redis/cache/pubsub composition module; Redis/cache masih perlu diaudit per context.
+- [ ] Extract logger/observability module. — **partial:** bootstrap logging ada, tetapi belum menjadi shared observability composition module.
+- [ ] Extract time/id/idempotency provider jika diperlukan. — **partial:** belum ada provider eksplisit; lanjutkan saat idempotency/offline refactor.
 
 Acceptance criteria:
 
-- [ ] Shared dependencies dibuat sekali.
-- [ ] Context modules menerima dependency melalui parameter.
+- [ ] Shared dependencies dibuat sekali. — **partial:** DB/unit of work sudah shared, Redis/cache/pubsub/logger/provider belum lengkap.
+- [x] Context modules menerima dependency melalui parameter.
 
 ## Task P3.3 — Extract Orders Module
 
@@ -654,54 +658,58 @@ export type OrdersModule = {
 
 Task:
 
-- [ ] Pindahkan wiring repository/use case order dari `container.ts`.
-- [ ] Jangan ubah behavior dulu.
-- [ ] Tambah smoke test untuk module creation.
+- [x] Pindahkan wiring repository/use case order dari `container.ts`.
+- [x] Jangan ubah behavior dulu.
+- [ ] Tambah smoke test untuk module creation. — **partial:** root type-check/build/test lulus, tetapi belum ada smoke test khusus module creation.
 
 Acceptance criteria:
 
-- [ ] Orders dependencies tidak lagi disusun langsung di mega-container.
-- [ ] `container.ts` berkurang signifikan.
+- [x] Orders dependencies tidak lagi disusun langsung di mega-container.
+- [x] `container.ts` berkurang signifikan.
 
 ## Task P3.4 — Extract Payments Module
 
+**Status note:** partial — payment wiring sudah dipindah ke module, tetapi payment method/status policy dan entitlement/catalog source-of-truth belum lengkap.
+
 Task:
 
-- [ ] Extract repository/use case payment.
-- [ ] Pisahkan payment method, payment record, payment status policy.
-- [ ] Jangan membuat mapping ewallet/card jika target saat ini hanya cash/manual QRIS/manual bank transfer.
-- [ ] Payment method source harus mengikuti source of truth entitlement/catalog.
+- [x] Extract repository/use case payment.
+- [ ] Pisahkan payment method, payment record, payment status policy. — **partial:** wiring payment sudah module, policy/method/status masih perlu refactor P4/P6/P7.
+- [x] Jangan membuat mapping ewallet/card jika target saat ini hanya cash/manual QRIS/manual bank transfer.
+- [ ] Payment method source harus mengikuti source of truth entitlement/catalog. — **partial:** perlu audit entitlement/payment SOT lanjutan.
 
 Acceptance criteria:
 
-- [ ] Payment module tidak tergantung langsung pada UI wording.
-- [ ] Payment logic bisa di-test terpisah.
+- [ ] Payment module tidak tergantung langsung pada UI wording. — **partial:** module wiring tidak memakai UI wording, tetapi payment policy/SOT belum selesai diaudit.
+- [ ] Payment logic bisa di-test terpisah. — **partial:** handler bisa diwiring terpisah, tetapi dedicated module tests belum ada.
 
 ## Task P3.5 — Extract Offline Sync Module
 
+**Status note:** partial — sync module/use case wiring ada, tetapi SyncController masih punya direct DB/orchestration dan terminal-auth/pricing/conflict policy belum complete.
+
 Task:
 
-- [ ] Extract sync handlers/repositories.
-- [ ] Sync module bergantung pada terminal auth port, pricing engine, order application service, dan conflict policy.
-- [ ] Jangan biarkan sync controller memproses logic sendiri.
+- [x] Extract sync handlers/repositories.
+- [ ] Sync module bergantung pada terminal auth port, pricing engine, order application service, dan conflict policy. — **partial:** sync module ada, tetapi terminal auth/pricing/conflict policy belum lengkap.
+- [ ] Jangan biarkan sync controller memproses logic sendiri. — **partial:** audit masih menemukan direct DB/orchestration di SyncController admin/conflict flow.
 
 Acceptance criteria:
 
-- [ ] Sync route memanggil sync handler.
-- [ ] Sync handler bisa di-test tanpa Express.
+- [ ] Sync route memanggil sync handler. — **partial:** offline batch flow punya handlers, tetapi SyncController belum sepenuhnya tipis.
+- [ ] Sync handler bisa di-test tanpa Express. — **partial:** application sync use cases ada, dedicated coverage masih perlu dilengkapi.
 
 ## Task P3.6 — Remove `as any` From Composition
 
 Task:
 
-- [ ] Cari semua `as any` di composition/container.
-- [ ] Ganti dengan interface port yang benar.
-- [ ] Jika mismatch type terjadi, perbaiki constructor/port, bukan suppress.
+- [x] Cari semua `as any` di composition/container.
+- [x] Ganti dengan interface port yang benar.
+- [x] Jika mismatch type terjadi, perbaiki constructor/port, bukan suppress.
 
 Acceptance criteria:
 
-- [ ] Tidak ada `as any` di composition root.
-- [ ] `pnpm type-check` green.
+- [x] Tidak ada `as any` di composition root.
+- [x] `pnpm type-check` green.
 
 ---
 
@@ -746,6 +754,8 @@ packages/application/src/
 ```
 
 ## Task P4.1 — Extract HTTP Contracts
+
+**Status note:** partial — beberapa order HTTP handler sudah dipisah, tetapi controller/route besar masih memiliki direct DB, type escape, dan schema/orchestration inline; jangan tandai complete sebelum audit P4 selesai.
 
 Task:
 
@@ -841,6 +851,8 @@ Menghapus `@ts-nocheck`, `@ts-ignore`, `any`, dan type escape dari flow penting.
 
 ## Task P5.1 — Inventory Type Escapes
 
+**Status note:** blocked/partial — audit masih menemukan `@ts-nocheck`, `as any`, dan `: any` pada flow POS/API/offline; belum ada `type-safety-inventory.md` resmi.
+
 Command:
 
 ```bash
@@ -878,7 +890,7 @@ Task:
 Acceptance criteria:
 
 - [ ] File tidak memakai `@ts-nocheck`.
-- [ ] Type-check green.
+- [ ] Type-check green. — **partial:** root baseline type-check lulus, tetapi task belum complete karena file masih memakai `@ts-nocheck`.
 - [ ] Dialog behavior tidak rusak.
 
 ## Task P5.3 — Fix `OrderQueuePanel.tsx`
@@ -895,7 +907,7 @@ Acceptance criteria:
 
 - [ ] Tidak ada `@ts-nocheck`.
 - [ ] Queue panel tetap render order existing.
-- [ ] Type-check green.
+- [ ] Type-check green. — **partial:** root baseline type-check lulus, tetapi task belum complete karena file masih memakai `@ts-nocheck`.
 
 ## Task P5.4 — Typed API Client Contracts
 
@@ -952,6 +964,8 @@ packages/pricing/
 8. Sync harus mengirim pricing snapshot/hash untuk validasi server.
 
 ## Task P6.1 — Define Pricing Input/Output
+
+**Status note:** partial — `@pos/core/pricing` sudah menjadi pricing canonical pada sebagian flow, tetapi audit masih menemukan duplicate offline/frontend/server pricing dan belum semua acceptance parity terpenuhi.
 
 Target type:
 
@@ -1286,6 +1300,8 @@ Acceptance criteria:
 
 ## Task P8.3 — Outbox Retry State Machine
 
+**Status note:** blocked/partial — source masih mengandung bug `status: terminal ? "failed" : "failed"`; jangan tandai P8/P9 outbox complete sebelum state machine/test diperbaiki.
+
 Target states:
 
 ```txt
@@ -1391,17 +1407,19 @@ Memperbaiki bug nyata dengan PR kecil dan regression test.
 
 ## Task P9.1 — Fix Port Conflict
 
+**Status note:** complete — port canonical sudah sinkron dengan scripts dan docs; divalidasi melalui audit script package dan baseline build.
+
 Task:
 
-- [ ] Tetapkan port canonical sesuai P1.1.
-- [ ] Update scripts.
-- [ ] Update README.
-- [ ] Test dev command terkait.
+- [x] Tetapkan port canonical sesuai P1.1.
+- [x] Update scripts.
+- [x] Update README.
+- [x] Test dev command terkait.
 
 Acceptance criteria:
 
-- [ ] Tidak ada dua service default pada port sama.
-- [ ] Docs sesuai script.
+- [x] Tidak ada dua service default pada port sama.
+- [x] Docs sesuai script.
 
 ## Task P9.2 — Fix Outbox Retry Terminal Bug
 
@@ -1445,17 +1463,19 @@ Acceptance criteria:
 
 ## Task P9.5 — Fix Deployment Docs Drift
 
+**Status note:** complete for docs/config drift — README, `.env.example`, `DEPLOYMENT_GUIDE.md`, dan `docs/ENVIRONMENT.md` sudah sinkron untuk pnpm, env, Redis/auth production requirements, dan migration command eksplisit.
+
 Task:
 
-- [ ] Sinkronkan README, `.env.example`, `DEPLOYMENT_GUIDE.md`, dan `docs/ENVIRONMENT.md`.
-- [ ] Package manager harus pnpm jika monorepo memakai pnpm.
-- [ ] Auth/Redis tidak disebut optional jika production membutuhkannya.
-- [ ] Migration command production jelas.
+- [x] Sinkronkan README, `.env.example`, `DEPLOYMENT_GUIDE.md`, dan `docs/ENVIRONMENT.md`.
+- [x] Package manager harus pnpm jika monorepo memakai pnpm.
+- [x] Auth/Redis tidak disebut optional jika production membutuhkannya.
+- [x] Migration command production jelas.
 
 Acceptance criteria:
 
-- [ ] Developer baru bisa setup tanpa guesswork.
-- [ ] Production deploy guide tidak bertentangan dengan current code.
+- [x] Developer baru bisa setup tanpa guesswork.
+- [x] Production deploy guide tidak bertentangan dengan current code.
 
 ## Task P9.6 — Fix Rate Limiter Production Store
 
@@ -1662,20 +1682,24 @@ Acceptance criteria:
 
 ## Task P11.3 — Release Migration Discipline
 
+**Status note:** complete for current acceptance — boot-time migration production dimatikan/rejected, command migration eksplisit tersedia, dan deployment guide memuat backup/rollback/expand-contract notes.
+
 Task:
 
-- [ ] Matikan auto migration on boot di production.
-- [ ] Buat command migration release.
-- [ ] Buat checklist expand/contract.
-- [ ] Tambah backup before migration.
+- [x] Matikan auto migration on boot di production.
+- [x] Buat command migration release.
+- [x] Buat checklist expand/contract.
+- [x] Tambah backup before migration.
 
 Acceptance criteria:
 
-- [ ] Deploy app tidak otomatis repair schema.
-- [ ] Migration berjalan eksplisit.
-- [ ] Rollback procedure tertulis.
+- [x] Deploy app tidak otomatis repair schema.
+- [x] Migration berjalan eksplisit.
+- [x] Rollback procedure tertulis.
 
 ## Task P11.4 — Security Hardening
+
+**Status note:** partial — CORS/env/migration docs sudah mengarah ke production hardening, tetapi Redis rate limiter, terminal rotation, security headers/audit log/debug endpoint audit belum complete.
 
 Task:
 
