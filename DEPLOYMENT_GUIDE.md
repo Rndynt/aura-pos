@@ -39,8 +39,8 @@ pnpm build
 pnpm start
 
 # Environment variables (set in production):
-# DATABASE_URL=postgresql://user:password@host:5432/aurapos
-# NODE_ENV=production
+# See docs/ENVIRONMENT.md for the complete production checklist.
+# Never commit real secrets or production credentials.
 ```
 
 ---
@@ -156,11 +156,17 @@ GET    /api/tenants/profile           Get tenant config
 
 ### Environment Variables
 
+`docs/ENVIRONMENT.md` is the canonical reference for all AuraPoS environment variables, including the minimum dev/staging/production requirements and secret-handling rules. Use `.env.example` only as a safe local development template.
+
 #### Development (.env.local)
 ```
-DATABASE_URL=postgresql://user:password@localhost:5432/aurapos_dev
 NODE_ENV=development
+PORT=5000
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/aurapos_dev
+BETTER_AUTH_SECRET=local-dev-secret-change-me-at-least-32-chars
+BETTER_AUTH_URL=http://localhost:5000
 VITE_API_URL=http://localhost:5000
+VITE_APP_ENV=development
 ```
 
 Canonical local ports:
@@ -173,12 +179,13 @@ Canonical local ports:
 
 The POS terminal Vite config is `apps/pos-terminal-web/vite.config.ts`. The repository root `vite.config.ts` is retained only for the legacy/Replit root-client build path and should not be used as the POS terminal config.
 
-#### Production (.env.production)
-```
-DATABASE_URL=postgresql://user:password@host:5432/aurapos
-NODE_ENV=production
-VITE_API_URL=https://api.yourdomain.com
-```
+#### Production
+Do not commit `.env.production`. Configure production values in the deployment platform secret manager and follow `docs/ENVIRONMENT.md`. Minimum production categories are:
+
+- Runtime: `NODE_ENV`, `PORT`, `TRUST_PROXY`, `LOG_LEVEL`
+- Data stores: `DATABASE_URL`, `REDIS_URL`, `RATE_LIMIT_STORE`
+- Server secrets: `BETTER_AUTH_SECRET`, `TERMINAL_TOKEN_SECRET`, `ENTITLEMENT_SNAPSHOT_SECRET`
+- Public URLs/origins: `BETTER_AUTH_URL`, `CORS_ALLOWED_ORIGINS`, `VITE_API_URL`, `VITE_APP_ENV`
 
 ### Database Setup
 ```bash
