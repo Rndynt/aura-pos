@@ -11808,3 +11808,116 @@ Make local development ports unambiguous: API on 5000, POS terminal on 5173, adm
 
 ### Continuation Notes
 No blockers. Recommended next batch: update any historical roadmap references to the deleted JS Vite config only if those archived tasklists are meant to remain live execution sources.
+
+## Plan: Environment Documentation Audit
+
+### Source
+- Tasklist: User request to audit `.env.example`, `README.md`, `DEPLOYMENT_GUIDE.md`, and environment access in `apps/api`, `apps/pos-terminal-web`, and `apps/web`.
+- User request: Create `docs/ENVIRONMENT.md`, document minimum env variables, split dev/staging/production requirements, ensure no real secrets, and update `.env.example` for local dev.
+- Date started: 2026-06-23
+- Current status: Completed in this batch; documentation-only validation performed
+
+### Goal
+Provide a single authoritative environment variable reference and a safe local development example without committing real secrets.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (user prompt)
+- [x] Relevant docs (`DEPLOYMENT_GUIDE.md`, existing env sections in `README.md`, `docs/PRODUCTION_CACHE_PUBSUB.md`)
+- [x] Relevant source files and env access audit via `rg` across requested apps
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: `process.env` usage in `apps/api`.
+- Files inspected: `apps/api/src/bootstrap/env.ts`, `apps/api/src/lib/auth.ts`, `apps/api/src/http/middleware/tenant.ts`, `apps/api/src/services/distributedCache.ts`, `apps/api/src/realtime/cfd/CfdStateStore.ts`, `apps/api/src/jobs/inventorySyncRetryJob.ts`, tests using env defaults.
+- Findings: Required runtime env is `DATABASE_URL`; auth uses `BETTER_AUTH_SECRET`/`BETTER_AUTH_URL`; Redis is required for multi-instance production; several optional tenant/cache/job variables exist.
+- Tasks: Documented required and optional envs; kept `.env.example` safe.
+- Risks: Some requested minimum env names (`CORS_ALLOWED_ORIGINS`, `TRUST_PROXY`, `LOG_LEVEL`, `RATE_LIMIT_STORE`, `TERMINAL_TOKEN_SECRET`, `ENTITLEMENT_SNAPSHOT_SECRET`) are not currently consumed in requested app code and are documented honestly as reserved/expected deployment contract, not as active code behavior.
+- Validation: Documentation review and `git diff`.
+
+#### Frontend/UI Workstream
+- Scope: Vite env usage in `apps/pos-terminal-web` and `apps/web`.
+- Files inspected: `apps/pos-terminal-web/src/lib/subdomain.ts`, `apps/pos-terminal-web/src/pages/register-tenant.tsx`, `apps/pos-terminal-web/src/vite-env.d.ts`; no runtime env usage found in `apps/web` during requested audit.
+- Findings: POS terminal currently uses `VITE_BASE_DOMAIN`; `VITE_API_URL` is typed/documented for client API base URL. `VITE_APP_ENV` is requested as minimum but not currently consumed.
+- Tasks: Documented frontend envs and examples per environment.
+- Risks: Vite exposes `VITE_*` values to browsers; docs warn never to put secrets there.
+- Validation: Documentation review and `git diff`.
+
+#### Documentation Workstream
+- Scope: `.env.example`, `README.md`, `DEPLOYMENT_GUIDE.md`, new `docs/ENVIRONMENT.md`, and `PLANS.md`.
+- Files inspected: `.env.example`, `README.md`, `DEPLOYMENT_GUIDE.md`, existing docs.
+- Findings: Env docs were split and incomplete; `.env.example` only covered DB and Vite API URL.
+- Tasks: Added `docs/ENVIRONMENT.md`, pointed README and deployment guide to it, updated `.env.example` for local dev.
+- Risks: Avoided fake secrets and avoided claiming reserved envs are enforced by code when they are not.
+- Validation: Documentation review and `git diff`.
+
+### Execution Order
+1. Audit env access and existing env docs. Completed.
+2. Add authoritative `docs/ENVIRONMENT.md`. Completed.
+3. Update `.env.example` for local development only. Completed.
+4. Update `README.md` and `DEPLOYMENT_GUIDE.md` to reference `docs/ENVIRONMENT.md`. Completed.
+5. Validate diff and commit. Completed.
+
+### Progress
+
+#### Completed
+- [x] Audit requested environment files and env access.
+  - Files changed: `PLANS.md`
+  - Validation: `rg` audit commands completed.
+  - Docs updated: `PLANS.md`
+- [x] Create canonical environment documentation.
+  - Files changed: `docs/ENVIRONMENT.md`
+  - Validation: `rg` placeholder/secret review completed; `git diff` reviewed.
+  - Docs updated: `docs/ENVIRONMENT.md`
+- [x] Update local development env example.
+  - Files changed: `.env.example`
+  - Validation: `rg` placeholder/secret review completed; no real secrets added.
+  - Docs updated: `.env.example`
+- [x] Sync README and deployment guide references.
+  - Files changed: `README.md`, `DEPLOYMENT_GUIDE.md`
+  - Validation: `git diff` reviewed.
+  - Docs updated: `README.md`, `DEPLOYMENT_GUIDE.md`
+
+#### Partially Completed
+- [ ] None.
+
+#### Blocked
+- [ ] None.
+
+#### Not Attempted
+- [ ] Runtime implementation for reserved env names.
+  - Reason: User requested audit and documentation; no runtime behavior change requested.
+
+### Validation Log
+- Command: `rg -n "process\.env|import\.meta\.env" apps/api apps/pos-terminal-web apps/web .env.example README.md DEPLOYMENT_GUIDE.md docs`
+- Result: pass
+- Notes: Used to audit requested app env access and existing docs.
+- Command: `rg -n "CORS_ALLOWED_ORIGINS|TRUST_PROXY|LOG_LEVEL|RATE_LIMIT_STORE|TERMINAL_TOKEN_SECRET|ENTITLEMENT_SNAPSHOT_SECRET|VITE_APP_ENV|VITE_API_URL|REDIS_URL|BETTER_AUTH|PORT|NODE_ENV" apps/api apps/pos-terminal-web apps/web README.md DEPLOYMENT_GUIDE.md docs .env.example`
+- Result: pass
+- Notes: Confirmed requested minimum env coverage and identified reserved/not-yet-consumed envs.
+- Command: `rg -n "password|secret|token|postgres://|redis://" .env.example docs/ENVIRONMENT.md README.md DEPLOYMENT_GUIDE.md`
+- Result: pass
+- Notes: Reviewed examples/placeholders; no real secrets committed.
+- Command: `git diff -- .env.example README.md DEPLOYMENT_GUIDE.md docs/ENVIRONMENT.md PLANS.md`
+- Result: pass
+- Notes: Reviewed documentation-only changes.
+
+### Documentation Updates
+- File: `docs/ENVIRONMENT.md`
+- Change: Added canonical environment variable reference, dev/staging/production requirements, reserved variable notes, and secret handling checklist.
+- File: `.env.example`
+- Change: Expanded safe local development template and points production/staging details to `docs/ENVIRONMENT.md`.
+- File: `README.md`
+- Change: Replaced split auth env section with canonical environment docs pointer and secret warning.
+- File: `DEPLOYMENT_GUIDE.md`
+- Change: Replaced inline production env example with pointer to canonical environment docs and safe production categories.
+
+### Checklist Updates
+- File: `PLANS.md`
+- Change: Added and completed active plan for this environment documentation audit.
+
+### Continuation Notes
+No blockers. Recommended next batch: if desired, implement runtime support for currently reserved deployment-contract variables (`CORS_ALLOWED_ORIGINS`, `TRUST_PROXY`, `LOG_LEVEL`, `RATE_LIMIT_STORE`, `TERMINAL_TOKEN_SECRET`, `ENTITLEMENT_SNAPSHOT_SECRET`, `VITE_APP_ENV`) and add tests for their behavior.
