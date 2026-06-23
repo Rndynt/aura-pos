@@ -6,6 +6,9 @@
 // Base repository and error handling
 export * from './BaseRepository';
 
+// Auth repositories
+export * from './auth';
+
 // Catalog repositories
 export * from './catalog';
 

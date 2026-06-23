@@ -11064,3 +11064,109 @@ Next recommended batch: start P5/P6 on payment/order DTO and shared pricing sour
 ### Continuation Notes
 This batch is complete. Recommended next batch: run broader API regression tests if desired (`pnpm --filter @pos/api test`) before deployment because this refactor changes server bootstrap order even though targeted compatibility checks passed.
 
+
+## Plan: Auth Me Application Profile Port
+
+### Source
+- Tasklist: User request with 5 auth/profile refactor tasks
+- User request: Move `/api/auth/me` profile reads behind an application port/use case, add infrastructure adapter, keep response shape, and add tests.
+- Date started: 2026-06-23
+- Current status: Implemented and validated
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active user tasklist
+- [x] Relevant docs (docs list inspected; no behavior docs required updates)
+- [x] Relevant source files (`apps/api/src/bootstrap/auth.ts`, application/infrastructure package patterns, existing bootstrap tests)
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: `/api/auth/me` handler orchestration.
+- Files inspected: `apps/api/src/bootstrap/auth.ts`, `apps/api/src/__tests__/bootstrap.test.ts`.
+- Findings: Handler previously queried `"user"` directly.
+- Tasks: Delegate session profile mapping to `GetCurrentAuthUserProfile`.
+- Risks: Response compatibility.
+- Validation: API bootstrap route test and API type-check passed.
+
+#### Database/Schema Workstream
+- Scope: Auth user profile reader.
+- Files inspected: `apps/api/src/bootstrap/auth.ts`, infrastructure repository patterns.
+- Findings: No schema change needed; existing `"user"` fields are sufficient.
+- Tasks: Add Drizzle/raw SQL reader adapter for `tenant_id`, `username`, and `role`.
+- Risks: Drizzle raw row typing.
+- Validation: API type-check passed.
+
+#### Tests/Validation Workstream
+- Scope: Use case behavior and handler compatibility.
+- Files inspected: Existing application tests and API bootstrap tests.
+- Findings: Use case tests best cover unauthenticated and custom-field variants without DB dependency.
+- Tasks: Add unauthenticated/no-custom-fields/full-profile use case tests.
+- Risks: None remaining.
+- Validation: Targeted use case test, API bootstrap test, API type-check passed.
+
+#### Documentation Workstream
+- Scope: Plan/checklist synchronization.
+- Files inspected: `README.md`, `docs/` list.
+- Findings: Public response shape stayed compatible; no README/API docs change required.
+- Tasks: Update `PLANS.md`.
+- Risks: None.
+- Validation: N/A.
+
+### Execution Order
+1. Create application use case/port for auth session profile reads.
+2. Create infrastructure Drizzle/raw SQL adapter for `"user"` custom fields.
+3. Refactor `/api/auth/me` handler to call application use case only after session resolution.
+4. Add use case tests for requested scenarios.
+5. Run targeted tests and type-check.
+
+### Progress
+#### Completed
+- [x] Application auth profile use case and port.
+  - Files changed: `packages/application/auth/GetCurrentAuthUserProfile.ts`, `packages/application/auth/index.ts`, `packages/application/auth/ports/index.ts`, `packages/application/index.ts`
+  - Validation: Targeted use case test and API type-check passed.
+  - Docs updated: `PLANS.md`
+- [x] Infrastructure profile reader adapter.
+  - Files changed: `packages/infrastructure/repositories/auth/DrizzleAuthUserProfileReader.ts`, `packages/infrastructure/repositories/auth/index.ts`, `packages/infrastructure/repositories/index.ts`
+  - Validation: API type-check passed.
+  - Docs updated: `PLANS.md`
+- [x] `/api/auth/me` handler refactor with compatible response shape.
+  - Files changed: `apps/api/src/bootstrap/auth.ts`
+  - Validation: API bootstrap test and API type-check passed.
+  - Docs updated: `PLANS.md`
+- [x] Tests for unauthenticated session, no custom fields, and full tenant/role profile.
+  - Files changed: `packages/application/auth/__tests__/GetCurrentAuthUserProfile.test.ts`
+  - Validation: Targeted use case test passed.
+  - Docs updated: `PLANS.md`
+
+#### Partially Completed
+- [ ] None.
+
+#### Blocked
+- [ ] None.
+
+#### Not Attempted
+- [ ] None.
+
+### Validation Log
+- Command: `pnpm exec tsx --tsconfig packages/application/tsconfig.json --test packages/application/auth/__tests__/GetCurrentAuthUserProfile.test.ts`
+- Result: pass
+- Notes: Covers unauthenticated session, user without custom profile fields, and user with tenant/role/username fields.
+- Command: `pnpm --filter @pos/api test:file src/__tests__/bootstrap.test.ts`
+- Result: pass
+- Notes: Confirms `/api/auth/me` compatibility and Better Auth wildcard ordering.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: Confirms API integration with application use case and infrastructure adapter.
+
+### Documentation Updates
+- File: `PLANS.md`
+- Change: Added this execution plan and validation log.
+
+### Checklist Updates
+- File: `PLANS.md`
+- Change: Marked all user-requested tasks completed after validation.
+
+### Continuation Notes
+No continuation needed for this batch. A future hardening batch could add direct adapter tests around Drizzle row mapping if a test database fixture is available.
