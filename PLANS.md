@@ -10860,3 +10860,110 @@ Continue with running required baseline commands and writing baseline-report.md.
 
 ### Continuation Notes
 Next safe task in the roadmap is P0.3 Dependency Boundary Audit. Start by auditing imports and documenting violations in `roadmap/architecture-production-hardening/dependency-boundary-audit.md`; do not mix that audit into this baseline commit.
+
+## Plan: P0.3 Dependency Boundary Audit
+
+### Source
+- Tasklist: `roadmap/architecture-production-hardening/tasklist.md` (Task P0.3 Dependency Boundary Audit)
+- User request: Buat dependency boundary audit minimal untuk API/container/controllers/routes/middleware/application/domain/infrastructure/offline/POS web dengan prioritas P0 direct DB, pricing duplication, controller orchestration, dan type escape payment/order/sync.
+- Date started: 2026-06-23
+- Current status: Completed for requested minimal audit scope; implementation fixes not attempted in this documentation-only batch.
+
+### Goal
+Document concrete dependency-boundary violations and map each to the hardening phase without changing runtime behavior.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (`roadmap/architecture-production-hardening/tasklist.md`)
+- [x] Relevant docs/reports (`roadmap/architecture-production-hardening/baseline-report.md` context via active plan)
+- [x] Relevant source files in requested minimal audit scope
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: API entrypoint, container, HTTP controllers/routes/middleware.
+- Files inspected: `apps/api/src/index.ts`, `apps/api/src/container.ts`, controllers/routes/middleware under `apps/api/src/http/`.
+- Findings: Direct DB imports and `container.db` usage remain in HTTP/bootstrap; order/payment/sync controllers still contain orchestration/type escapes.
+- Tasks: Documented violations V-001 through V-010 and V-015.
+- Risks: No runtime change in this batch.
+- Validation: Markdown review and git diff.
+
+#### Frontend/UI Workstream
+- Scope: POS terminal source, especially payment/order lifecycle helpers and application imports.
+- Files inspected: `apps/pos-terminal-web/src/features/pos-core/services/posPaymentAmountService.ts`, entitlement/business flow imports from POS web.
+- Findings: Type escape in active-order amount display helper; frontend imports application package for entitlement/business-flow contracts.
+- Tasks: Documented V-012 and V-016.
+- Risks: No runtime change in this batch.
+- Validation: Markdown review.
+
+#### Offline Workstream
+- Scope: Offline local order creation/pricing and outbox retry state.
+- Files inspected: `packages/offline/src/localOrderService.ts`, `packages/offline/src/outbox.ts`.
+- Findings: Offline pricing duplicates server pricing and ignores selected options; outbox retry status cannot distinguish retryable vs terminal failed.
+- Tasks: Documented V-011 and V-014.
+- Risks: No runtime change in this batch.
+- Validation: Markdown review.
+
+#### Application/Domain/Infrastructure Workstream
+- Scope: Package boundary imports and payment/order mapping.
+- Files inspected: `packages/application/`, `packages/domain/`, `packages/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository.ts`.
+- Findings: Domain/application mostly clean in minimal audit; infrastructure payment adapter has many type escapes and imports application mapper internals.
+- Tasks: Documented V-013 and positive notes.
+- Risks: No runtime change in this batch.
+- Validation: Markdown review.
+
+#### Documentation Workstream
+- Scope: Create requested audit document and update execution plan.
+- Files inspected: `roadmap/architecture-production-hardening/tasklist.md`, `PLANS.md`.
+- Findings: P0.3 defines required format; user requested the same violation fields.
+- Tasks: Created `dependency-boundary-audit.md`; appended P0.3 plan section.
+- Risks: Source checklist not checked off because this batch creates the audit but does not run broader fixes.
+- Validation: `git diff --check`.
+
+### Execution Order
+1. [x] Inspect required startup/context docs and requested source areas.
+2. [x] Search for direct DB/Drizzle imports, `container.db`, pricing duplication, controller orchestration, and type escape markers.
+3. [x] Create dependency-boundary audit in required format.
+4. [x] Update PLANS.md with honest progress.
+5. [x] Run documentation diff validation and commit.
+
+### Progress
+
+#### Completed
+- [x] Task P0.3 Dependency Boundary Audit documentation.
+  - Files changed: `roadmap/architecture-production-hardening/dependency-boundary-audit.md`, `PLANS.md`
+  - Validation: `git diff --check`
+  - Docs updated: New audit document and execution plan.
+
+#### Partially Completed
+- [ ] Boundary fixes.
+  - Completed: Violations identified and mapped to phases.
+  - Remaining: Implement code refactors in P2/P3/P4/P5/P6/P8/P11.
+  - Reason: User requested audit document, not implementation fixes.
+
+#### Blocked
+- [ ] None.
+
+#### Not Attempted
+- [ ] Automated boundary lint rule.
+  - Reason: Recommended follow-up after audit; not part of requested documentation creation.
+
+### Validation Log
+- Command: `git diff --check`
+- Result: pass
+- Notes: Documentation diff has no whitespace errors.
+
+### Documentation Updates
+- File: `roadmap/architecture-production-hardening/dependency-boundary-audit.md`
+- Change: Created P0.3 dependency boundary audit with violations and fix phases.
+- File: `PLANS.md`
+- Change: Added completed P0.3 execution plan section.
+
+### Checklist Updates
+- File: `roadmap/architecture-production-hardening/tasklist.md`
+- Change: Not modified; checklist remains source reference.
+
+### Continuation Notes
+Next recommended batch: start P5/P6 on payment/order DTO and shared pricing source-of-truth, then P4 split `POSPaymentController`, `OrdersController`, and `SyncController` into typed handlers.
