@@ -4,6 +4,7 @@ export type ApiConfig = {
   baseDomain: string;
   isProduction: boolean;
   extraTrustedOrigins: string[];
+  autoMigrateOnBoot: boolean;
 };
 
 export function parseTrustedOrigins(value = ''): string[] {
@@ -26,5 +27,6 @@ export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     baseDomain: env.BASE_DOMAIN || 'aurapos.my.id',
     isProduction: env.NODE_ENV === 'production',
     extraTrustedOrigins: parseTrustedOrigins(env.EXTRA_TRUSTED_ORIGINS || ''),
+    autoMigrateOnBoot: env.API_AUTO_MIGRATE_ON_BOOT === 'true',
   };
 }

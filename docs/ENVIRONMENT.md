@@ -26,6 +26,7 @@ Notes:
 | `NODE_ENV` | API/server | `development` | `production` or `staging` per host convention | `production` | Controls production-only behavior in API middleware and auth helpers. |
 | `PORT` | API/server | Optional, default `5000` | Required/host-provided | Required/host-provided | API listen port. |
 | `DATABASE_URL` | API/server | Required | Required | Required | PostgreSQL connection string. Use local/test credentials in local dev only. |
+| `API_AUTO_MIGRATE_ON_BOOT` | API/server | Optional, default unset/`false`; may be `true` for disposable local DBs | Must be unset/`false` | Must be unset/`false`; `true` is rejected | Boot-time migration opt-in for non-production only. Production migrations are explicit via `pnpm db:migrate`. |
 | `REDIS_URL` | API/server | Optional for one-process dev | Required for multi-instance staging | Required for production | Used for distributed cache/pubsub. Local dev may omit it to use process-local fallback. |
 | `BETTER_AUTH_SECRET` | API/server secret | Required placeholder local secret | Required secret | Required secret | Must be a strong random value, at least 32 characters. Rotate per environment. |
 | `BETTER_AUTH_URL` | API/server | `http://localhost:5000` | Public staging API/auth URL | Public production API/auth URL | Base URL for better-auth trusted origin/callback behavior. |
@@ -60,6 +61,7 @@ VITE_APP_ENV=development
 
 Recommended local behavior:
 
+- Run migrations explicitly with `pnpm db:migrate`. For disposable local development databases only, `API_AUTO_MIGRATE_ON_BOOT=true` can opt into boot-time migrations; do not rely on this in staging or production.
 - Omit `REDIS_URL` for simple one-process development unless you are testing distributed cache/pubsub behavior.
 - Use local placeholder secrets only. Never reuse local placeholders in staging or production.
 - Use `CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000` if/when CORS origin enforcement is wired to this variable.
@@ -91,6 +93,7 @@ Staging requirements:
 - Use staging-only secrets.
 - Configure staging frontend origins separately from production.
 - Validate migrations, auth callbacks, tenant resolution, cache/pubsub, and POS browser API connectivity before promoting to production.
+- Keep `API_AUTO_MIGRATE_ON_BOOT` unset/`false`; run `pnpm db:migrate` explicitly as a deployment step before starting the API.
 
 ## Production
 
@@ -120,6 +123,7 @@ Production requirements:
 - Use strong, unique secrets per environment and rotate on suspected exposure.
 - Keep `VITE_*` values non-secret because they are visible to browser users.
 - Restrict browser origins to the actual deployed frontend domains.
+- Keep `API_AUTO_MIGRATE_ON_BOOT` unset/`false`; production boot rejects `API_AUTO_MIGRATE_ON_BOOT=true` and never auto-runs migrations by default.
 
 ## Additional supported API variables
 

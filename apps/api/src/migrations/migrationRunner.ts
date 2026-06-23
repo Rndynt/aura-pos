@@ -260,3 +260,22 @@ export async function runDbMigrations(log: MigrationLogger): Promise<MigrationRu
 
   return summary;
 }
+export async function runMigrationCli() {
+  const logger: MigrationLogger = (message, source = 'migrate') => {
+    console.log(source ? `[${source}] ${message}` : message);
+  };
+
+  try {
+    await runDbMigrations(logger);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+}
+
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
+const modulePath = fileURLToPath(import.meta.url);
+
+if (invokedPath === modulePath) {
+  await runMigrationCli();
+}

@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node dist/index.js",
     "type-check": "tsc --noEmit",
     "seed": "tsx src/seed.ts",
+    "db:migrate": "tsx src/migrations/migrationRunner.ts",
     "test": "tsx --test src/__tests__/**/*.test.ts",
     "test:file": "tsx --test",
     "check:order-query-plans": "tsx src/scripts/checkOrderQueryPlans.ts"

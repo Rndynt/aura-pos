@@ -35,6 +35,9 @@ pnpm --filter @pos/web dev           # Admin/Web app: http://localhost:3000
 # Build for production
 pnpm build
 
+# Apply database migrations explicitly before starting or restarting API instances
+pnpm db:migrate
+
 # Start production server
 pnpm start
 
@@ -189,15 +192,27 @@ Do not commit `.env.production`. Configure production values in the deployment p
 
 ### Database Setup
 ```bash
-# Push schema to database
+# Apply committed SQL migrations explicitly (required for staging/production)
+pnpm db:migrate
+
+# Push schema directly to a local/dev database only
 pnpm db:push
 
 # Generate database types
 pnpm db:generate
 
-# Seed demo data
+# Seed demo data for local/dev only
 pnpm db:seed
 ```
+
+### Production Migration and Rollback Policy
+
+- API startup defaults to **no automatic database migration on boot**. `pnpm start` evaluates the boot policy and skips migrations unless explicitly opted in for non-production.
+- Run production migrations as an explicit, observable deployment step with `pnpm db:migrate` before starting new API instances.
+- Do not set `API_AUTO_MIGRATE_ON_BOOT=true` in production; the API rejects this combination when `NODE_ENV=production`. The flag is only for disposable local/non-production environments where automatic boot migration is acceptable.
+- Before running `pnpm db:migrate` in production, take a verified database backup/snapshot and record the current application version/commit SHA.
+- Rollback procedure: stop or pause rollout traffic, restore the verified pre-migration database snapshot when schema/data changes must be reverted, redeploy the previous known-good application version, then run smoke tests for auth, tenant resolution, order creation, and payment recording. Existing SQL migrations are forward migrations and do not provide automatic down-migration files, so database rollback is operational backup/restore unless a migration-specific reverse script has been reviewed and tested.
+- For zero-downtime releases, use backward-compatible migrations first, deploy code second, and remove obsolete columns/data only in a later release after all instances have been upgraded.
 
 ---
 

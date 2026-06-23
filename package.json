@@ -21,6 +21,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "db:push": "drizzle-kit push",
+    "db:migrate": "pnpm --filter @pos/api db:migrate",
     "db:seed": "tsx --tsconfig apps/api/tsconfig.json apps/api/src/seed.ts",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",

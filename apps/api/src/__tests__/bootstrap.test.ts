@@ -5,6 +5,7 @@ import http from 'node:http';
 import express from 'express';
 import { createCorsMiddleware, isOriginAllowed } from '../bootstrap/cors';
 import { loadApiConfig, parseTrustedOrigins } from '../bootstrap/env';
+import { evaluateBootMigrationPolicy } from '../bootstrap/migrations';
 import { registerAuthRoutes } from '../bootstrap/auth';
 
 process.env.DATABASE_URL ||= 'postgres://user:pass@127.0.0.1:5432/aurapos_test';
@@ -43,6 +44,47 @@ describe('API bootstrap CORS parsing', () => {
     assert.equal(config.port, 5050);
     assert.equal(config.isProduction, true);
     assert.deepEqual(config.extraTrustedOrigins, ['https://admin.example.com', 'https://pos.example.com']);
+    assert.equal(config.autoMigrateOnBoot, false);
+  });
+
+  it('keeps boot-time migrations disabled by default in production', () => {
+    const config = loadApiConfig({
+      DATABASE_URL: 'postgres://user:pass@127.0.0.1:5432/db',
+      NODE_ENV: 'production',
+    });
+
+    const policy = evaluateBootMigrationPolicy(config);
+
+    assert.equal(config.autoMigrateOnBoot, false);
+    assert.equal(policy.shouldRun, false);
+    assert.match(policy.reason, /skipping boot-time DB migrations/);
+  });
+
+  it('rejects API_AUTO_MIGRATE_ON_BOOT in production', () => {
+    const config = loadApiConfig({
+      DATABASE_URL: 'postgres://user:pass@127.0.0.1:5432/db',
+      NODE_ENV: 'production',
+      API_AUTO_MIGRATE_ON_BOOT: 'true',
+    });
+
+    assert.equal(config.autoMigrateOnBoot, true);
+    assert.throws(
+      () => evaluateBootMigrationPolicy(config),
+      /API_AUTO_MIGRATE_ON_BOOT=true is not allowed when NODE_ENV=production/,
+    );
+  });
+
+  it('allows API_AUTO_MIGRATE_ON_BOOT only for non-production development opt-in', () => {
+    const config = loadApiConfig({
+      DATABASE_URL: 'postgres://user:pass@127.0.0.1:5432/db',
+      NODE_ENV: 'development',
+      API_AUTO_MIGRATE_ON_BOOT: 'true',
+    });
+
+    const policy = evaluateBootMigrationPolicy(config);
+
+    assert.equal(config.autoMigrateOnBoot, true);
+    assert.equal(policy.shouldRun, true);
   });
 
   it('allows production base-domain and env allowlist origins but rejects LAN origins', async () => {
