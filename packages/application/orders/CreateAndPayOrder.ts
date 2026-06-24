@@ -49,12 +49,70 @@ export interface CreateAndPayOrderInput {
 }
 
 export interface CreateAndPayOrderOutput {
-  order: any;
-  payment: any;
+  order: PersistedOrderResult;
+  payment: PersistedPaymentResult;
   idempotent_replay?: boolean;
   remainingAmount: number;
-  inventory_sync_error?: any;
+  inventory_sync_error?: unknown;
 }
+
+export type PersistedOrderResult = {
+  id: string;
+  tenant_id?: string;
+  order_number?: string;
+  items?: unknown[];
+  tax_amount?: number;
+  service_charge_amount?: number;
+  discount_amount?: number;
+  total_amount?: number;
+  paid_amount?: number;
+  payment_status?: string;
+  customer_name?: string;
+  table_number?: string;
+  created_at?: Date;
+  updated_at?: Date;
+  tenantId?: string | null;
+  outletId?: string | null;
+  orderTypeId?: string | null;
+  salesChannel?: string | null;
+  orderNumber?: string;
+  orderDate?: Date;
+  status?: string;
+  subtotal?: number | string;
+  taxAmount?: number | string;
+  serviceCharge?: number | string;
+  discountAmount?: number | string;
+  total?: number | string;
+  paidAmount?: number | string;
+  paymentStatus?: string;
+  customerName?: string | null;
+  tableNumber?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+  closedAt?: Date | null;
+};
+
+export type PersistedPaymentResult = {
+  id: string;
+  order_id?: string;
+  payment_method?: string;
+  payment_status?: string;
+  transaction_ref?: string;
+  paid_at?: Date;
+  tenantId?: string | null;
+  outletId?: string | null;
+  orderId?: string;
+  paymentFlow?: string;
+  paymentKind?: string;
+  paymentMethod?: string;
+  amount?: number | string;
+  receivedAmount?: number | string | null;
+  changeAmount?: number | string | null;
+  status?: string;
+  paidAt?: Date | null;
+  createdAt?: Date;
+  referenceNote?: string | null;
+};
 
 export class CreateAndPayOrder {
   constructor(private readonly repository: CreateAndPayOrderRepositoryPort) {}

@@ -56,6 +56,13 @@ export interface UpdateOrderPersistenceData {
   notes?: string;
 }
 
+type PersistedOrderForEdit = Order & {
+  paymentStatus?: Order['payment_status'];
+  payment_status?: Order['payment_status'];
+};
+
+type CodedError = Error & { code?: string };
+
 export interface IOrderRepository {
   findById(orderId: string, tenantId?: string): Promise<Order | null>;
   getEditLockState?(orderId: string, tenantId: string): Promise<{
@@ -98,27 +105,29 @@ export class UpdateOrder {
       }
 
       const lockState = await this.orderRepository.getEditLockState?.(input.order_id, input.tenant_id);
+      const editableOrder: PersistedOrderForEdit = order;
+      const existingOrderItems = Array.isArray(editableOrder.items) ? editableOrder.items : [];
+      const paymentStatus = editableOrder.paymentStatus ?? editableOrder.payment_status;
       const hasKitchenTicket = lockState?.hasKitchenTicket ?? false;
       const hasFiredKitchenItems =
         lockState?.hasFiredKitchenItems ??
-        (Array.isArray((order as any).items) &&
-          (order as any).items.some((item: any) =>
+        existingOrderItems.some((item) =>
             ['preparing', 'ready', 'delivered'].includes(String(item.status ?? '').toLowerCase())
-          ));
+          );
 
       assertCanPerformOrderAction({
         businessProfile: 'core_standard',
         entitlements: [],
         action: 'UPDATE_DRAFT_ITEMS',
-        orderOperationalStatus: (order as any).status,
-        paymentStatus: (order as any).paymentStatus ?? (order as any).payment_status,
+        orderOperationalStatus: editableOrder.status,
+        paymentStatus,
         hasKitchenTicket,
         hasFiredKitchenItems,
       });
 
-      if (['paid', 'refunded', 'voided'].includes(String((order as any).paymentStatus ?? (order as any).payment_status ?? '').toLowerCase())) {
-        const error = new Error('Pesanan sudah aktif atau sudah dikirim ke dapur dan tidak bisa diedit dari keranjang.');
-        (error as any).code = 'ORDER_NOT_EDITABLE';
+      if (['paid', 'refunded', 'voided'].includes(String(paymentStatus ?? '').toLowerCase())) {
+        const error: CodedError = new Error('Pesanan sudah aktif atau sudah dikirim ke dapur dan tidak bisa diedit dari keranjang.');
+        error.code = 'ORDER_NOT_EDITABLE';
         throw error;
       }
 
@@ -166,7 +175,7 @@ export class UpdateOrder {
       });
 
       // Prepare order updates (only include defined fields to avoid Drizzle issues with undefined)
-      const orderUpdates: Record<string, any> = {
+      const orderUpdates: UpdateOrderPersistenceData = {
         subtotal: subtotal.toString(),
         taxAmount: taxAmount.toString(),
         serviceCharge: serviceChargeAmount.toString(),
@@ -233,7 +242,7 @@ export class UpdateOrder {
         pricing,
       };
     } catch (error) {
-      if (error instanceof Error && (error as any).code) {
+      if (error instanceof Error && (error as CodedError).code) {
         throw error;
       }
       throw new Error(`Failed to update order: ${error instanceof Error ? error.message : 'Unknown error'}`);
