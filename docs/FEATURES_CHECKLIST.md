@@ -181,11 +181,12 @@
 
 ## ⚠️ Known Limitations
 
-### TypeScript/React 19 Compatibility
-- **Impact**: IDE type checking warnings only, no runtime issues
-- **Files**: OrderTypeSelectionDialog.tsx, OrderQueuePanel.tsx
-- **Workaround**: Using `@ts-nocheck` directives
-- **Status**: Non-blocking, component renders correctly
+### P5 TypeScript Cleanup Status
+- [x] `CartPanel.tsx`: removed `@ts-nocheck` and validated with `pnpm --filter @pos/terminal-web type-check`.
+- [x] `MobileCartDrawer.tsx`: removed `@ts-nocheck` and validated with `pnpm --filter @pos/terminal-web type-check`.
+- [x] `OrderTypeSelectionDialog.tsx`: removed `@ts-nocheck` and validated with `pnpm --filter @pos/terminal-web type-check`; no shadcn/React wrapper was required.
+- [x] `OrderQueuePanel.tsx`: removed `@ts-nocheck` and validated with `pnpm --filter @pos/terminal-web type-check`; no shadcn/React wrapper was required.
+- [ ] Remaining POS cleanup outside this batch: `DraftOrdersSheet.tsx` and `ProductOptionsDialog.tsx` still use `@ts-nocheck` and should be handled one file at a time.
 
 ---
 

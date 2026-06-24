@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { CartItem as CartItemType, PaymentMethod, OrderType, ItemDiscount } from "@/hooks/useCart";
 import type { OrderType as DomainOrderType } from "@pos/domain/orders/types";
 import { CartItem } from "./CartItem";

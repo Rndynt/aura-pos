@@ -13506,3 +13506,101 @@ Category use-case migration checklist is complete for this batch. Future hardeni
 
 ### Continuation Notes
 Next safest batch: extract inventory/outlets persistence-heavy route internals into typed query handlers/application use cases while keeping factories free of raw `db` dependencies.
+
+## Plan: P5 POS critical cart/order component type-check cleanup
+
+### Source
+- Tasklist: `docs/FEATURES_CHECKLIST.md` TypeScript/React 19 compatibility known limitation plus user-specified critical file list
+- User request: Remove `// @ts-nocheck` from `CartPanel.tsx`, `MobileCartDrawer.tsx`, `OrderTypeSelectionDialog.tsx`, and `OrderQueuePanel.tsx`; run type-check; fix explicit types without `any`/`as any`; update P5 checklist honestly after each file.
+- Date started: 2026-06-24
+- Current status: Completed for the four requested critical files
+
+### Goal
+Remove type-check bypasses from the highest-risk POS cart/order UI files without changing UI/POS behavior, and validate them with the POS terminal TypeScript check.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (`docs/FEATURES_CHECKLIST.md`)
+- [x] Relevant docs (`docs/aura-pos-tasklist-en.md`, `docs/replit-agent-pos-tasks.md` references discovered by search)
+- [x] Relevant source files (`CartPanel.tsx`, `MobileCartDrawer.tsx`, `OrderTypeSelectionDialog.tsx`, `OrderQueuePanel.tsx`)
+
+### Workstreams
+
+#### Frontend/UI Workstream
+- Scope: POS cart, mobile cart drawer, order type selection dialog, and order queue panel type-check bypass cleanup.
+- Files inspected: `apps/pos-terminal-web/src/components/pos/CartPanel.tsx`, `apps/pos-terminal-web/src/components/pos/MobileCartDrawer.tsx`, `apps/pos-terminal-web/src/components/pos/OrderTypeSelectionDialog.tsx`, `apps/pos-terminal-web/src/components/pos/OrderQueuePanel.tsx`.
+- Findings: The requested components were already typed sufficiently; removing the first-line `// @ts-nocheck` directives did not surface TypeScript errors.
+- Tasks: Remove bypass comments and validate with `pnpm --filter @pos/terminal-web type-check`.
+- Risks: Remaining POS components outside this requested P5 batch still have `// @ts-nocheck` (`DraftOrdersSheet.tsx`, `ProductOptionsDialog.tsx`).
+- Validation: `pnpm --filter @pos/terminal-web type-check` passed.
+
+#### Tests/Validation Workstream
+- Scope: Static validation only, per user instruction not to change UI/POS behavior without validation.
+- Files inspected: `apps/pos-terminal-web/package.json`.
+- Findings: POS terminal type-check command is `tsc --noEmit`.
+- Tasks: Run terminal web type-check after removing directives.
+- Risks: No runtime/browser smoke was run because no UI behavior changed.
+- Validation: `pnpm --filter @pos/terminal-web type-check` passed.
+
+#### Documentation Workstream
+- Scope: P5 checklist/status documentation honesty.
+- Files inspected: `docs/FEATURES_CHECKLIST.md`, P5/P5.1 roadmap reports.
+- Findings: `docs/FEATURES_CHECKLIST.md` still claimed the React 19 workaround used `@ts-nocheck` for `OrderTypeSelectionDialog.tsx` and `OrderQueuePanel.tsx`.
+- Tasks: Update the known limitation to record the four requested files as cleaned and validated.
+- Risks: Historical docs may still mention older tasks; they were not changed because this batch only updates the active P5 checklist status.
+- Validation: Documentation updated after type-check pass.
+
+### Execution Order
+1. Read required context and P5 checklist references.
+2. Remove `// @ts-nocheck` from each requested critical file.
+3. Run POS terminal type-check.
+4. Update P5 checklist/status documentation honestly.
+5. Re-run/record validation and commit.
+
+### Progress
+
+#### Completed
+- [x] `CartPanel.tsx` type-check bypass removed.
+  - Files changed: `apps/pos-terminal-web/src/components/pos/CartPanel.tsx`
+  - Validation: `pnpm --filter @pos/terminal-web type-check` passed.
+  - Docs updated: `docs/FEATURES_CHECKLIST.md`
+- [x] `MobileCartDrawer.tsx` type-check bypass removed.
+  - Files changed: `apps/pos-terminal-web/src/components/pos/MobileCartDrawer.tsx`
+  - Validation: `pnpm --filter @pos/terminal-web type-check` passed.
+  - Docs updated: `docs/FEATURES_CHECKLIST.md`
+- [x] `OrderTypeSelectionDialog.tsx` type-check bypass removed.
+  - Files changed: `apps/pos-terminal-web/src/components/pos/OrderTypeSelectionDialog.tsx`
+  - Validation: `pnpm --filter @pos/terminal-web type-check` passed.
+  - Docs updated: `docs/FEATURES_CHECKLIST.md`
+- [x] `OrderQueuePanel.tsx` type-check bypass removed.
+  - Files changed: `apps/pos-terminal-web/src/components/pos/OrderQueuePanel.tsx`
+  - Validation: `pnpm --filter @pos/terminal-web type-check` passed.
+  - Docs updated: `docs/FEATURES_CHECKLIST.md`
+
+#### Partially Completed
+- [ ] None.
+
+#### Blocked
+- [ ] None.
+
+#### Not Attempted
+- [ ] Remaining POS `// @ts-nocheck` cleanup outside requested critical files.
+  - Reason: User explicitly scoped this batch to four critical files first.
+
+### Validation Log
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: Pass
+- Notes: No shadcn/React compatibility wrapper was needed; TypeScript accepted the existing typed component usage after removing the bypass comments.
+
+### Documentation Updates
+- File: `docs/FEATURES_CHECKLIST.md`
+- Change: Replaced stale `@ts-nocheck` workaround limitation with an honest completed cleanup status for the four requested files and noted remaining out-of-scope POS bypass files.
+
+### Checklist Updates
+- File: `docs/FEATURES_CHECKLIST.md`
+- Change: P5 known limitation now records `[x]` entries for each requested file after passing type-check.
+
+### Continuation Notes
+Next safest continuation is to remove `// @ts-nocheck` from remaining POS components one at a time, starting with `ProductOptionsDialog.tsx`, then `DraftOrdersSheet.tsx`, with `pnpm --filter @pos/terminal-web type-check` after each file.
