@@ -499,11 +499,14 @@ Task:
 
 - [x] Route mounting hanya menerima `app`, `container/modules`, `config`.
 - [x] Tidak boleh instantiate repository di route mounting.
+- [x] `apps/api/src/http/routes/index.ts` tidak lagi mengimpor DB langsung; dependency tables berasal dari composition container.
+- [x] Inventory sync retry job dipindahkan ke bootstrap jobs module agar route mounting tidak memulai background job tersembunyi.
 
 Acceptance criteria:
 
 - [x] Semua route existing tetap mounted.
 - [x] Route mounting pendek dan mudah dibaca.
+- [x] Validated with `pnpm --filter @pos/api type-check` on 2026-06-24.
 
 ## Task P2.5 — Extract Startup Checks & Migration Policy
 

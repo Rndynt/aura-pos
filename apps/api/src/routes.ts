@@ -2,7 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { tenantAuthGuard, tenantMiddleware } from "./http/middleware/tenant";
 import { errorHandler } from "./http/middleware/errorHandler";
-import routes from "./http/routes";
+import { createApiRouter } from "./http/routes";
+import type { ApiConfig } from "./bootstrap/env";
+import type { AppContainer } from "./composition/createAppContainer";
 import { startCacheInvalidationSubscriber } from "./services/cacheInvalidation";
 import {
   createCfdModule,
@@ -16,11 +18,14 @@ import {
 
 export { CFD_MAX_PAYLOAD_BYTES, cfdMessageSchema };
 
-type RegisterRoutesDependencies = CfdModuleDependencies;
+export interface RegisterRoutesDependencies extends CfdModuleDependencies {
+  container: AppContainer;
+  config: ApiConfig;
+}
 
 export async function registerRoutes(
   app: Express,
-  dependencies: RegisterRoutesDependencies = {},
+  dependencies: RegisterRoutesDependencies,
 ): Promise<Server> {
   startCacheInvalidationSubscriber();
   const cfdModule = createCfdModule(dependencies);
@@ -48,7 +53,10 @@ export async function registerRoutes(
     });
   });
 
-  app.use('/api', routes);
+  app.use('/api', createApiRouter({
+    container: dependencies.container,
+    config: dependencies.config,
+  }));
   // JSON 404 catch-all — prevents unmatched /api/* routes from falling through to Vite's
   // HTML SPA fallback, which would cause "Unexpected token '<'" JSON parse errors on the client.
   app.use('/api', (_req, res) => {

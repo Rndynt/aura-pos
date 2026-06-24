@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from 'express';
-import { db } from '@pos/infrastructure/database';
+import type { ApiConfig } from '../../bootstrap/env';
+import type { AppContainer } from '../../composition/createAppContainer';
 import * as TenantsController from '../controllers/TenantsController';
 import catalogRoutes from './catalog';
 import ordersRoutes from './orders';
@@ -16,6 +17,17 @@ import posRoutes from './pos';
 import { outletMiddleware } from '../middleware/outlet';
 import { apiLimiter, registerLimiter, kdsLimiter, orderLimiter } from '../middleware/rateLimiter';
 
+export interface ApiRouterDependencies {
+  container: AppContainer;
+  config: ApiConfig;
+}
+
+export function createApiRouter({ container: {
+  listTables,
+  updateTableStatus,
+  tableCommands,
+  seatingOrderQueries,
+}, config: _config }: ApiRouterDependencies): Router {
 const router = Router();
 
 // express-rate-limit v8 publishes Express 5-flavoured handler types while this
@@ -37,7 +49,12 @@ router.use('/catalog', catalogRoutes);
 router.use('/orders', asExpress4Handler(orderLimiter), ordersRoutes);
 router.use('/tenants', tenantsRoutes);
 router.get('/me/entitlements', TenantsController.getMyEntitlements);
-router.use('/tables', createTablesRouter(db));
+router.use('/tables', createTablesRouter({
+  listTables,
+  updateTableStatus,
+  tableCommands,
+  seatingOrderQueries,
+}));
 router.use('/sync', syncRoutes);
 router.use('/terminals', terminalsRoutes);
 router.use('/kds', asExpress4Handler(kdsLimiter), kdsRoutes);
@@ -50,4 +67,5 @@ router.get('/health', (_req, res) => {
   res.json({ success: true, timestamp: new Date().toISOString() });
 });
 
-export default router;
+return router;
+}

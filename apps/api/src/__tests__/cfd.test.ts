@@ -10,6 +10,8 @@ process.env.DATABASE_URL ||= 'postgres://user:pass@127.0.0.1:5432/aurapos_test';
 process.env.BETTER_AUTH_SECRET ||= 'test-secret-with-at-least-32-characters';
 
 const { registerRoutes } = await import('../routes');
+const { createAppContainer } = await import('../composition/createAppContainer');
+const { loadApiConfig } = await import('../bootstrap/env');
 
 type TestServer = {
   baseUrl: string;
@@ -30,6 +32,8 @@ async function buildServer(): Promise<TestServer> {
   }));
 
   const server = await registerRoutes(app, {
+    container: createAppContainer(),
+    config: loadApiConfig(),
     requireCfdToken: async (req) => {
       const header = req.headers['x-cfd-key'];
       const token = Array.isArray(header) ? header[0] : header;

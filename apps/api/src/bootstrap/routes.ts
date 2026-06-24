@@ -1,11 +1,16 @@
 import type { Express } from 'express';
+import type { ApiConfig } from './env';
+import type { AppContainer } from '../composition/createAppContainer';
 
-export async function mountApiRoutes(app: Express) {
+export interface MountApiRoutesDependencies {
+  app: Express;
+  container: AppContainer;
+  config: ApiConfig;
+}
+
+export async function mountApiRoutes({ app, container, config }: MountApiRoutesDependencies) {
   const { registerRoutes } = await import('../routes');
-  const server = await registerRoutes(app);
-  const { startInventorySyncRetryJob } = await import('../jobs/inventorySyncRetryJob');
-  startInventorySyncRetryJob();
-  return server;
+  return registerRoutes(app, { container, config });
 }
 
 export async function mountWebRoutes(app: Express, server: Awaited<ReturnType<typeof mountApiRoutes>>) {
