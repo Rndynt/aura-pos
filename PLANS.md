@@ -12657,3 +12657,56 @@ Create the type-safety inventory and remove the safest critical runtime type esc
 
 ### Continuation Notes
 Continue with `packages/application/orders/UpdateOrder.ts` and `packages/infrastructure/repositories/orders/KitchenTicketRepository.ts`. Use shared status unions/discriminated errors and add/update focused lifecycle/status tests before changing business behavior.
+
+## Plan: UpdateOrder canonical pricing engine alignment
+
+### Source
+- Tasklist: User request to replace manual UpdateOrder pricing with `calculateOrderPricing()`.
+- User request: Update `packages/application/orders/UpdateOrder.ts` pricing, preserve DB mapper fields, and add/update tests for modifiers/options, tax, service charge, discount if supported.
+- Date started: 2026-06-24
+- Current status: Implemented and validated
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Relevant source files (`UpdateOrder`, `CreateOrder`, pricing engine, create-and-pay repository, existing tests)
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: Application-layer UpdateOrder pricing behavior.
+- Files inspected: packages/application/orders/UpdateOrder.ts, packages/application/orders/CreateOrder.ts
+- Findings: UpdateOrder manually accumulated subtotal/tax/service/total and did not pass option groups to pricing engine.
+- Tasks: Replace manual calculation with canonical pricing result and preserve persistence mapper shape.
+- Risks: Persisted item subtotal and selected option shape must remain compatible with repository modifier insertion.
+- Validation: Application tests and type-check.
+
+#### Tests/Validation Workstream
+- Scope: UpdateOrder unit/regression coverage.
+- Files inspected: packages/application/orders/__tests__/UpdateOrder.lifecycleLocks.test.ts, packages/core/pricing/orderPricing.ts
+- Findings: Existing UpdateOrder tests only cover edit locks.
+- Tasks: Add pricing coverage for modifiers/options, tax, service charge, and zero discount persistence.
+- Risks: Tests are tsx scripts using node assert, not a test runner.
+- Validation: `pnpm --filter @pos/application test`, `pnpm --filter @pos/application type-check`.
+
+### Progress
+#### Completed
+- [x] Task: Replace manual UpdateOrder pricing with canonical `calculateOrderPricing()` output.
+  - Files changed: packages/application/orders/UpdateOrder.ts
+  - Validation: `pnpm --filter @pos/application type-check` pass; `pnpm --filter @pos/application test` pass
+  - Docs updated: PLANS.md
+- [x] Task: Add UpdateOrder pricing regression coverage for selected options/groups, tax, service charge, and zero discount persistence.
+  - Files changed: packages/application/orders/__tests__/UpdateOrder.pricing.test.ts, packages/application/package.json
+  - Validation: `pnpm --filter @pos/application type-check` pass; `pnpm --filter @pos/application test` pass
+  - Docs updated: PLANS.md
+
+### Validation Log
+- Command: `pnpm --filter @pos/application type-check`
+- Result: Pass
+- Notes: TypeScript compilation completed without errors.
+- Command: `pnpm --filter @pos/application test`
+- Result: Pass
+- Notes: Existing application tests plus new UpdateOrder pricing regression passed.
+
+### Continuation Notes
+No remaining work for this request. Future UpdateOrder discount input support should add non-zero discount tests once the use case accepts discounts.

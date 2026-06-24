@@ -3,10 +3,10 @@
  * Updates an existing order with new items and recalculates pricing
  */
 
-import type { Order, OrderItem, SelectedOption } from '@pos/domain/orders/types';
+import type { Order, OrderItem, SelectedOption, SelectedOptionGroup } from '@pos/domain/orders/types';
 import type { PriceCalculation } from '@pos/domain/pricing/types';
-import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE } from '@pos/core/pricing';
-import { calculateSelectedOptionsDelta, flattenSelectedOptions } from '../catalog';
+import { DEFAULT_TAX_RATE, DEFAULT_SERVICE_CHARGE_RATE, calculateOrderPricing } from '@pos/core/pricing';
+import { flattenSelectedOptions } from '../catalog';
 import { assertCanPerformOrderAction } from '../business-flows';
 
 export interface UpdateOrderItemInput {
@@ -17,13 +17,8 @@ export interface UpdateOrderItemInput {
   variant_id?: string;
   variant_name?: string;
   variant_price_delta?: number;
-  selected_options?: Array<{
-    group_id: string;
-    group_name: string;
-    option_id: string;
-    option_name: string;
-    price_delta: number;
-  }>;
+  selected_options?: SelectedOption[];
+  selected_option_groups?: SelectedOptionGroup[];
   notes?: string;
 }
 
@@ -132,20 +127,28 @@ export class UpdateOrder {
         throw new Error('Order must contain at least one item');
       }
 
+      const taxRate = input.tax_rate ?? DEFAULT_TAX_RATE;
+      const serviceChargeRate = input.service_charge_rate ?? DEFAULT_SERVICE_CHARGE_RATE;
+      const pricingResult = calculateOrderPricing({
+        items: input.items,
+        tax_rate: taxRate,
+        service_charge_rate: serviceChargeRate,
+      });
+      const subtotal = pricingResult.order_subtotal;
+      const taxAmount = pricingResult.tax_amount;
+      const serviceChargeAmount = pricingResult.service_charge_amount;
+      const discountAmount = pricingResult.total_discount;
+      const totalAmount = pricingResult.total_amount;
+
       // Calculate new pricing
-      const orderItems: OrderItem[] = [];
-      let subtotal = 0;
-
-      for (const itemInput of input.items) {
+      const orderItems: OrderItem[] = input.items.map((itemInput, index) => {
         const variantDelta = itemInput.variant_price_delta ?? 0;
-        const optionsDelta = calculateSelectedOptionsDelta(itemInput.selected_options, undefined);
+        const flattenedOptions = flattenSelectedOptions(
+          itemInput.selected_options,
+          itemInput.selected_option_groups
+        );
 
-        const flattenedOptions = flattenSelectedOptions(itemInput.selected_options, undefined);
-
-        const itemPrice = itemInput.base_price + variantDelta + optionsDelta;
-        const itemSubtotal = itemPrice * itemInput.quantity;
-
-        const orderItem: OrderItem = {
+        return {
           id: crypto.randomUUID(),
           product_id: itemInput.product_id,
           product_name: itemInput.product_name,
@@ -154,29 +157,20 @@ export class UpdateOrder {
           variant_name: itemInput.variant_name,
           variant_price_delta: variantDelta,
           selected_options: flattenedOptions,
-          selected_option_groups: undefined,
+          selected_option_groups: itemInput.selected_option_groups,
           quantity: itemInput.quantity,
-          item_subtotal: itemSubtotal,
+          item_subtotal: pricingResult.items[index].item_subtotal,
           notes: itemInput.notes,
           status: 'pending',
         };
-
-        orderItems.push(orderItem);
-        subtotal += itemSubtotal;
-      }
-
-      const taxRate = input.tax_rate ?? DEFAULT_TAX_RATE;
-      const serviceChargeRate = input.service_charge_rate ?? DEFAULT_SERVICE_CHARGE_RATE;
-
-      const taxAmount = subtotal * taxRate;
-      const serviceChargeAmount = subtotal * serviceChargeRate;
-      const totalAmount = subtotal + taxAmount + serviceChargeAmount;
+      });
 
       // Prepare order updates (only include defined fields to avoid Drizzle issues with undefined)
       const orderUpdates: Record<string, any> = {
         subtotal: subtotal.toString(),
         taxAmount: taxAmount.toString(),
         serviceCharge: serviceChargeAmount.toString(),
+        discountAmount: discountAmount.toString(),
         total: totalAmount.toString(),
       };
 
@@ -204,6 +198,7 @@ export class UpdateOrder {
         variant_name: item.variant_name,
         variant_price_delta: item.variant_price_delta,
         selected_options: item.selected_options,
+        selected_option_groups: item.selected_option_groups,
         notes: item.notes,
         item_subtotal: item.item_subtotal,  // REQUIRED BY REPOSITORY
         status: item.status,
@@ -226,8 +221,8 @@ export class UpdateOrder {
         item_subtotal: 0,
         order_subtotal: subtotal,
         discounts: [],
-        total_discount: 0,
-        subtotal_after_discount: subtotal,
+        total_discount: discountAmount,
+        subtotal_after_discount: pricingResult.subtotal_after_discount,
         tax_amount: taxAmount,
         service_charge_amount: serviceChargeAmount,
         total_amount: totalAmount,

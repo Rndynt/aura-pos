@@ -44,7 +44,7 @@
   },
   "scripts": {
     "type-check": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --tsconfig tsconfig.json orders/__tests__/orderLifecycleDtoMapper.test.ts && tsx --tsconfig tsconfig.json orders/__tests__/UpdateOrder.lifecycleLocks.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/resolveBusinessProfile.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/orderActionPolicy.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/orderActionPermissions.test.ts && tsx --tsconfig tsconfig.json orders/__tests__/paymentFlow.test.ts && tsx --tsconfig tsconfig.json payments/__tests__/SubmitPOSPayment.test.ts && tsx --tsconfig tsconfig.json sync/__tests__/syncUseCases.test.ts && tsx --tsconfig tsconfig.json terminals/__tests__/ManageTerminals.test.ts"
+    "test": "tsx --tsconfig tsconfig.json orders/__tests__/orderLifecycleDtoMapper.test.ts && tsx --tsconfig tsconfig.json orders/__tests__/UpdateOrder.lifecycleLocks.test.ts && tsx --tsconfig tsconfig.json orders/__tests__/UpdateOrder.pricing.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/resolveBusinessProfile.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/orderActionPolicy.test.ts && tsx --tsconfig tsconfig.json business-flows/__tests__/orderActionPermissions.test.ts && tsx --tsconfig tsconfig.json orders/__tests__/paymentFlow.test.ts && tsx --tsconfig tsconfig.json payments/__tests__/SubmitPOSPayment.test.ts && tsx --tsconfig tsconfig.json sync/__tests__/syncUseCases.test.ts && tsx --tsconfig tsconfig.json terminals/__tests__/ManageTerminals.test.ts"
   },
   "keywords": [
     "application",
