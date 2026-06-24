@@ -12531,3 +12531,129 @@ Ensure the HTTP layer cannot access `container.db` or other raw shared compositi
 
 ### Continuation Notes
 No remaining `container.db` or HTTP `container.*Repository` singleton accesses were found in this batch. Continue future route migrations by adding typed composition handlers/use cases instead of exposing repositories or shared deps.
+
+## Plan: Type Safety Inventory and Critical Runtime DTO Batch
+
+### Source
+- Tasklist: roadmap/architecture-production-hardening/tasklist.md + user-provided type-safety execution request
+- User request: inventory audit, group type escapes, start critical runtime order/payment/sync/POS services, add shared DTOs, remove `as any` with typed mappers/unions, run type-check/tests after small batch
+- Date started: 2026-06-24
+- Current status: Partially implemented; first critical runtime DTO batch validated
+
+### Goal
+Create the type-safety inventory and remove the safest critical runtime type escapes without changing business behavior.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: application order lifecycle DTO mapper
+- Files inspected: packages/application/orders/mappers/orderLifecycleDtoMapper.ts, packages/application/orders/index.ts
+- Findings: lifecycle mapper accepted broad `Record<string, any>` despite stable camelCase/snake_case DTO shape.
+- Tasks: migrated mapper to shared `OrderLifecycleDto` types.
+- Risks: remaining order use cases still contain runtime type escapes.
+- Validation: package and root type-check passed.
+
+#### Database/Schema Workstream
+- Scope: sync repository tenant/outlet scoped query helper
+- Files inspected: packages/infrastructure/repositories/sync/DrizzleSyncOfflineOrderRepository.ts
+- Findings: scoped helper used `any` for Drizzle columns.
+- Tasks: replaced with `AnyPgColumn` and `SQL[]` return type.
+- Risks: broader order repositories still contain Drizzle query-builder casts.
+- Validation: infrastructure and root type-check passed.
+
+#### Frontend/UI Workstream
+- Scope: POS core services only
+- Files inspected: apps/pos-terminal-web/src/features/pos-core/services/posLifecycleService.ts, posPaymentAmountService.ts, posPrinterService.ts
+- Findings: runtime DTO reads and receipt print payload used `as any`.
+- Tasks: introduced shared lifecycle DTO and typed receipt payload usage.
+- Risks: tests-only casts remain in POS core service tests.
+- Validation: terminal-web type-check/test passed.
+
+#### Tests/Validation Workstream
+- Scope: relevant package checks and root type-check
+- Files inspected: package scripts for domain/application/infrastructure/terminal-web
+- Findings: relevant package tests available for application and POS terminal web.
+- Tasks: ran relevant type-checks/tests and root `pnpm type-check`.
+- Risks: full build/test not run in this batch because user requested type-check and relevant tests after small batch.
+- Validation: all attempted commands passed.
+
+#### Documentation Workstream
+- Scope: architecture hardening roadmap inventory and plan tracking
+- Files inspected: roadmap/architecture-production-hardening/tasklist.md, PLANS.md
+- Findings: requested inventory file did not exist.
+- Tasks: created `roadmap/architecture-production-hardening/type-safety-inventory.md` and appended this plan entry.
+- Risks: source tasklist checkbox not marked complete because broader P5 remains partial.
+- Validation: documentation reviewed in diff.
+
+#### Security/Tenant Isolation Workstream
+- Scope: tenant/outlet scoping in sync repository
+- Files inspected: packages/infrastructure/repositories/sync/DrizzleSyncOfflineOrderRepository.ts
+- Findings: behavior already scoped tenant/outlet; type helper could be made safer without behavior change.
+- Tasks: preserved exact predicate behavior with typed Drizzle columns.
+- Risks: no new tenant/auth/RBAC behavior changed.
+- Validation: infrastructure type-check passed.
+
+### Progress
+
+#### Completed
+- [x] Create type-safety inventory file grouped by requested risk categories.
+  - Files changed: roadmap/architecture-production-hardening/type-safety-inventory.md
+  - Validation: documentation diff + root type-check
+  - Docs updated: roadmap/architecture-production-hardening/type-safety-inventory.md
+- [x] Add shared DTOs for order lifecycle, payment command, selected options, and sync payload.
+  - Files changed: packages/domain/orders/dtos.ts, packages/domain/orders/index.ts
+  - Validation: domain/application/terminal-web/root type-check
+  - Docs updated: roadmap/architecture-production-hardening/type-safety-inventory.md
+- [x] Remove first critical runtime `as any` casts from POS core services and order lifecycle mapper.
+  - Files changed: packages/application/orders/mappers/orderLifecycleDtoMapper.ts, apps/pos-terminal-web/src/features/pos-core/services/posLifecycleService.ts, apps/pos-terminal-web/src/features/pos-core/services/posPaymentAmountService.ts, apps/pos-terminal-web/src/features/pos-core/services/posPrinterService.ts
+  - Validation: application and terminal-web tests passed
+  - Docs updated: roadmap/architecture-production-hardening/type-safety-inventory.md
+- [x] Replace sync scoped tenant/outlet helper column `any` with typed Drizzle columns.
+  - Files changed: packages/infrastructure/repositories/sync/DrizzleSyncOfflineOrderRepository.ts
+  - Validation: infrastructure and root type-check passed
+  - Docs updated: roadmap/architecture-production-hardening/type-safety-inventory.md
+
+#### Partially Completed
+- [ ] Remove all critical runtime order/payment/sync type escapes.
+  - Completed: first safe DTO-focused batch.
+  - Remaining: order use cases, order repositories, kitchen ticket repository, order number sequence, tests-only fixtures.
+  - Reason: avoiding broad behavior change without focused tests per remaining file.
+
+#### Blocked
+- [ ] None.
+  - Blocker: n/a
+  - Required next step: n/a
+
+#### Not Attempted
+- [ ] Full P5 type escape removal outside requested critical runtime scope.
+  - Reason: user requested starting from specific critical runtime paths; broader UI/RBAC/API casts require separate focused batches.
+
+### Validation Log
+- Command: pnpm --filter @pos/domain type-check && pnpm --filter @pos/application type-check && pnpm --filter @pos/infrastructure type-check && pnpm --filter @pos/terminal-web type-check
+- Result: pass
+- Notes: validated after first DTO/runtime cast batch.
+- Command: pnpm --filter @pos/application test && pnpm --filter @pos/terminal-web test
+- Result: pass
+- Notes: relevant order lifecycle/payment and POS core/flow tests passed.
+- Command: pnpm type-check
+- Result: pass
+- Notes: Turbo type-check passed for all 10 packages.
+
+### Documentation Updates
+- File: roadmap/architecture-production-hardening/type-safety-inventory.md
+- Change: added inventory, grouping, remediation status, validation, and next batch.
+
+### Checklist Updates
+- File: roadmap/architecture-production-hardening/type-safety-inventory.md
+- Change: created as the active inventory/checklist for P5 type-safety work.
+
+### Continuation Notes
+Continue with `packages/application/orders/UpdateOrder.ts` and `packages/infrastructure/repositories/orders/KitchenTicketRepository.ts`. Use shared status unions/discriminated errors and add/update focused lifecycle/status tests before changing business behavior.

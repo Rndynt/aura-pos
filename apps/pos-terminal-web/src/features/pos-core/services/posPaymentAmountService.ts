@@ -11,7 +11,7 @@ export type POSActiveOrderPaymentAmountResult =
   | { ok: false; amount: 0; reason: string };
 
 export function getPOSOrderDisplayNumber(order: POSLifecycleOrder): string {
-  return String((order as any).order_number ?? (order as any).orderNumber ?? order.id);
+  return String(order.order_number ?? order.orderNumber ?? order.id);
 }
 
 export function resolvePOSActiveOrderPaymentAmount(
