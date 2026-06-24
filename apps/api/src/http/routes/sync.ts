@@ -3,25 +3,38 @@
  * Offline batch sync endpoints for terminals.
  */
 
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import * as SyncController from '../controllers/SyncController';
 import { requireCashier, requireManager } from '../middleware/rbac';
 
-const router = Router();
+export interface SyncRouterDependencies {
+  syncOfflineOrders: RequestHandler;
+  listSyncBatches: RequestHandler;
+  listSyncConflicts: RequestHandler;
+  resolveConflict: RequestHandler;
+  listSyncEvents: RequestHandler;
+}
 
-// POST /api/sync/offline-orders — batch sync offline orders from terminal
-router.post('/offline-orders', requireCashier, SyncController.syncOfflineOrders);
+export function createSyncRouter(deps: SyncRouterDependencies): Router {
+  const router = Router();
 
-// GET /api/sync/batches — list recent sync batches (admin/debug)
-router.get('/batches', requireManager, SyncController.listSyncBatches);
+  // POST /api/sync/offline-orders — batch sync offline orders from terminal
+  router.post('/offline-orders', requireCashier, deps.syncOfflineOrders);
 
-// GET /api/sync/conflicts — list recent sync conflicts
-router.get('/conflicts', requireManager, SyncController.listSyncConflicts);
+  // GET /api/sync/batches — list recent sync batches (admin/debug)
+  router.get('/batches', requireManager, deps.listSyncBatches);
 
-// PATCH /api/sync/conflicts/:id/resolve — resolve or ignore a conflict (Sprint 5)
-router.patch('/conflicts/:id/resolve', requireManager, SyncController.resolveConflict);
+  // GET /api/sync/conflicts — list recent sync conflicts
+  router.get('/conflicts', requireManager, deps.listSyncConflicts);
 
-// GET /api/sync/events — per-item sync audit log
-router.get('/events', requireManager, SyncController.listSyncEvents);
+  // PATCH /api/sync/conflicts/:id/resolve — resolve or ignore a conflict (Sprint 5)
+  router.patch('/conflicts/:id/resolve', requireManager, deps.resolveConflict);
 
-export default router;
+  // GET /api/sync/events — per-item sync audit log
+  router.get('/events', requireManager, deps.listSyncEvents);
+
+  return router;
+}
+
+const defaultSyncRouter = createSyncRouter(SyncController);
+export default defaultSyncRouter;

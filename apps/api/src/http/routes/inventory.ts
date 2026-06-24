@@ -24,7 +24,10 @@ import { DrizzleInventoryBalanceRepository, DrizzleInventoryProductStockReader, 
 import { DrizzleUnitOfWork } from '@pos/infrastructure/unit-of-work';
 import { ensureProductBalanceForOutlet, ensureTrackedProductBalancesForOutlet } from '@pos/application/inventory';
 
-const router = Router();
+export interface InventoryRouterDependencies {}
+
+export function createInventoryRouter(_deps: InventoryRouterDependencies = {}): Router {
+  const router = Router();
 
 const balanceRepo = new DrizzleInventoryBalanceRepository();
 const productReader = new DrizzleInventoryProductStockReader();
@@ -577,4 +580,7 @@ router.get('/report', asyncHandler(async (req, res) => {
   });
 }));
 
-export default router;
+  return router;
+}
+
+export default createInventoryRouter();

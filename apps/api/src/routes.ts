@@ -53,7 +53,7 @@ export async function registerRoutes(
     });
   });
 
-  app.use('/api', createApiRouter({
+  app.use('/api', await createApiRouter({
     container: dependencies.container,
     config: dependencies.config,
   }));

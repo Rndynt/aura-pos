@@ -13433,3 +13433,76 @@ Continue by adding `packages/application/catalog/ports/CategoryRepositoryPort.ts
 
 ### Continuation Notes
 Category use-case migration checklist is complete for this batch. Future hardening can add API-level integration tests against the Express catalog routes if a test database fixture is available.
+
+## Plan: High-risk Route Factory Migration Batch 1
+
+### Source
+- Tasklist: User request to prioritize `inventoryRoutes`, `outletsRoutes`, `kdsRoutes`, `syncRoutes`, `terminalsRoutes`, and `tenantsRoutes` route factories.
+- User request: Convert high-risk routes to factories, do not accept raw `db`, wire `createApiRouter()` from container, and add a minimal route factory test before next migration batch.
+- Date started: 2026-06-24
+- Current status: Batch 1 implemented and validated with focused API tests/type-check.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (user prompt)
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: High-risk Express route construction and API router composition.
+- Files inspected: apps/api/src/http/routes/index.ts, inventory.ts, outlets.ts, kds.ts, sync.ts, terminals.ts, tenants.ts, apps/api/src/http/controllers/TerminalsController.ts.
+- Findings: Several high-risk routes exported singleton routers; KDS already had a factory but API router consumed its default singleton.
+- Tasks: Convert routes to `create*Router(deps)` factories and wire API router to factory calls.
+- Risks: Inventory/outlets still contain legacy module-level infrastructure access inside route module internals; their factory boundary now avoids accepting raw DB but deeper extraction remains a next-batch task.
+- Validation: pnpm --filter @pos/api exec tsx --test src/__tests__/terminals-route-factory.test.ts; pnpm --filter @pos/api type-check.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Ensure route factory migration does not relax RBAC/tenant middleware.
+- Files inspected: apps/api/src/http/routes/terminals.ts, sync.ts, tenants.ts, index.ts.
+- Findings: Existing route-level RBAC wrappers are preserved.
+- Tasks: Preserve `requireCashier`, `requireManager`, tenant middleware ordering, KDS limiter, and public tenant/KDS bypass behavior.
+- Risks: No behavior change intended.
+- Validation: Focused route factory test and type-check.
+
+### Progress
+#### Completed
+- [x] Converted terminal, sync, tenant, inventory, and outlet routes to factory exports.
+  - Files changed: apps/api/src/http/routes/terminals.ts, apps/api/src/http/routes/sync.ts, apps/api/src/http/routes/tenants.ts, apps/api/src/http/routes/inventory.ts, apps/api/src/http/routes/outlets.ts.
+  - Validation: pnpm --filter @pos/api type-check.
+  - Docs updated: PLANS.md.
+- [x] Updated API router composition to invoke high-risk route factories and pass terminal dependencies from the container.
+  - Files changed: apps/api/src/http/routes/index.ts, apps/api/src/routes.ts, apps/api/src/composition/createAppContainer.ts, apps/api/src/composition/modules/terminalsModule.ts.
+  - Validation: pnpm --filter @pos/api type-check.
+  - Docs updated: PLANS.md.
+- [x] Added minimal factory test for terminals route.
+  - Files changed: apps/api/src/__tests__/terminals-route-factory.test.ts.
+  - Validation: pnpm --filter @pos/api exec tsx --test src/__tests__/terminals-route-factory.test.ts.
+  - Docs updated: PLANS.md.
+
+#### Partially Completed
+- [ ] Extract legacy inventory/outlet raw database usage from route internals into typed query handlers/use cases.
+  - Completed: Factories do not accept raw `db`; singleton factory exports preserved for compatibility.
+  - Remaining: Move module-internal raw persistence calls behind typed handlers/application services.
+  - Reason: User requested minimal route factory test before next migration batch; deeper persistence extraction is safer as a follow-up batch.
+
+### Validation Log
+- Command: pnpm --filter @pos/api exec tsx --test src/__tests__/terminals-route-factory.test.ts
+- Result: pass
+- Notes: Confirms a high-risk route factory uses injected handlers.
+- Command: pnpm --filter @pos/api type-check
+- Result: pass
+- Notes: Confirms async API router composition and factory typings compile.
+
+### Documentation Updates
+- File: PLANS.md
+- Change: Added this active plan with completed/partial status and validation log.
+
+### Checklist Updates
+- File: PLANS.md
+- Change: Marked batch-1 route factory migration tasks complete and raw route-internal persistence extraction partial.
+
+### Continuation Notes
+Next safest batch: extract inventory/outlets persistence-heavy route internals into typed query handlers/application use cases while keeping factories free of raw `db` dependencies.

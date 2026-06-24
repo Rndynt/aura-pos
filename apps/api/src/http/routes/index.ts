@@ -2,16 +2,18 @@ import { Router, type RequestHandler } from 'express';
 import type { ApiConfig } from '../../bootstrap/env';
 import type { AppContainer } from '../../composition/createAppContainer';
 import * as TenantsController from '../controllers/TenantsController';
+import * as SyncController from '../controllers/SyncController';
+import { createTerminalsController } from '../controllers/TerminalsController';
 import catalogRoutes from './catalog';
 import ordersRoutes from './orders';
-import tenantsRoutes from './tenants';
+import { createTenantsRouter, getTenantBySlug } from './tenants';
 import { createTablesRouter } from './tables';
 import registrationRoutes from './registration';
-import syncRoutes from './sync';
-import terminalsRoutes from './terminals';
-import kdsRoutes from './kds';
-import outletsRoutes from './outlets';
-import inventoryRoutes from './inventory';
+import { createSyncRouter } from './sync';
+import { createTerminalsRouter } from './terminals';
+import { createKdsRouter } from './kds';
+import { createOutletsRouter } from './outlets';
+import { createInventoryRouter } from './inventory';
 import inventoryAdvancedRoutes from './inventory-advanced';
 import posRoutes from './pos';
 import { outletMiddleware } from '../middleware/outlet';
@@ -22,12 +24,13 @@ export interface ApiRouterDependencies {
   config: ApiConfig;
 }
 
-export function createApiRouter({ container: {
+export async function createApiRouter({ container: {
   listTables,
   updateTableStatus,
   tableCommands,
   seatingOrderQueries,
-}, config: _config }: ApiRouterDependencies): Router {
+  manageTerminals,
+}, config: _config }: ApiRouterDependencies): Promise<Router> {
 const router = Router();
 
 // express-rate-limit v8 publishes Express 5-flavoured handler types while this
@@ -47,7 +50,12 @@ router.use(outletMiddleware);
 // ── Tenant-scoped ─────────────────────────────────────────────────────────────
 router.use('/catalog', catalogRoutes);
 router.use('/orders', asExpress4Handler(orderLimiter), ordersRoutes);
-router.use('/tenants', tenantsRoutes);
+router.use('/tenants', createTenantsRouter({
+  getTenantBySlug,
+  registerTenant: TenantsController.registerTenant,
+  getTenantProfile: TenantsController.getTenantProfile,
+  getTenantEntitlements: TenantsController.getTenantEntitlements,
+}));
 router.get('/me/entitlements', TenantsController.getMyEntitlements);
 router.use('/tables', createTablesRouter({
   listTables,
@@ -55,11 +63,11 @@ router.use('/tables', createTablesRouter({
   tableCommands,
   seatingOrderQueries,
 }));
-router.use('/sync', syncRoutes);
-router.use('/terminals', terminalsRoutes);
-router.use('/kds', asExpress4Handler(kdsLimiter), kdsRoutes);
-router.use('/outlets', outletsRoutes);
-router.use('/inventory', inventoryRoutes);
+router.use('/sync', createSyncRouter(SyncController));
+router.use('/terminals', createTerminalsRouter(createTerminalsController({ manageTerminals })));
+router.use('/kds', asExpress4Handler(kdsLimiter), await createKdsRouter());
+router.use('/outlets', createOutletsRouter());
+router.use('/inventory', createInventoryRouter());
 router.use('/inventory', inventoryAdvancedRoutes);
 router.use('/pos', posRoutes);
 

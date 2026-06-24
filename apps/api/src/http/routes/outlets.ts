@@ -8,7 +8,10 @@ import { cacheKeys, getCacheJson, setCacheJson } from '../../services/distribute
 import { invalidateOutletCache } from '../../services/cacheInvalidation';
 import { getEffectiveEntitlementMap } from '../../services/tenantEntitlements';
 
-const router = Router();
+export interface OutletsRouterDependencies {}
+
+export function createOutletsRouter(_deps: OutletsRouterDependencies = {}): Router {
+  const router = Router();
 
 const MAX_FREE_OUTLETS = 1;
 const OUTLET_CACHE_TTL_SECONDS = 60;
@@ -247,4 +250,7 @@ router.put('/:outletId/product-configs/:productId', requireManager, asyncHandler
   res.json({ config });
 }));
 
-export default router;
+  return router;
+}
+
+export default createOutletsRouter();

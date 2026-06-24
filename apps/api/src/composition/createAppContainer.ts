@@ -7,6 +7,7 @@ import { createPaymentsModule, type PaymentsModule } from './modules/paymentsMod
 import { createSyncModule, type SyncModule } from './modules/syncModule';
 import { createKitchenModule, type KitchenModule } from './modules/kitchenModule';
 import { createSeatingModule, type SeatingModule } from './modules/seatingModule';
+import { createTerminalsModule, type TerminalsModule } from './modules/terminalsModule';
 
 /**
  * Public API dependency container exposed to HTTP controllers/handlers.
@@ -22,7 +23,8 @@ export type ApiUseCaseContainer = CatalogModule
   & PaymentsModule
   & SyncModule
   & KitchenModule
-  & SeatingModule;
+  & SeatingModule
+  & TerminalsModule;
 
 export type AppContainer = ApiUseCaseContainer;
 
@@ -43,6 +45,7 @@ export function createAppContainer(): ApiUseCaseContainer {
     createKitchenTicket: orders.createKitchenTicket,
   });
   const seating = createSeatingModule(shared);
+  const terminals = createTerminalsModule(shared);
 
   return {
     ...inventory,
@@ -52,5 +55,6 @@ export function createAppContainer(): ApiUseCaseContainer {
     ...sync,
     ...kitchen,
     ...seating,
+    ...terminals,
   };
 }

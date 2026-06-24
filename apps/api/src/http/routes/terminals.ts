@@ -3,22 +3,34 @@
  * Terminal registry CRUD.
  */
 
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import * as TerminalsController from '../controllers/TerminalsController';
 import { requireCashier, requireManager } from '../middleware/rbac';
 
-const router = Router();
+export interface TerminalsRouterDependencies {
+  registerTerminal: RequestHandler;
+  listTerminals: RequestHandler;
+  heartbeatTerminal: RequestHandler;
+  deactivateTerminal: RequestHandler;
+}
 
-// POST /api/terminals/register — find-or-create terminal (idempotent)
-router.post('/register', requireCashier, TerminalsController.registerTerminal);
+export function createTerminalsRouter(deps: TerminalsRouterDependencies): Router {
+  const router = Router();
 
-// GET /api/terminals — list all terminals for tenant
-router.get('/', TerminalsController.listTerminals);
+  // POST /api/terminals/register — find-or-create terminal (idempotent)
+  router.post('/register', requireCashier, deps.registerTerminal);
 
-// PATCH /api/terminals/:id/heartbeat — update last_seen_at
-router.patch('/:id/heartbeat', requireCashier, TerminalsController.heartbeatTerminal);
+  // GET /api/terminals — list all terminals for tenant
+  router.get('/', deps.listTerminals);
 
-// PATCH /api/terminals/:id/deactivate — soft-deactivate terminal
-router.patch('/:id/deactivate', requireManager, TerminalsController.deactivateTerminal);
+  // PATCH /api/terminals/:id/heartbeat — update last_seen_at
+  router.patch('/:id/heartbeat', requireCashier, deps.heartbeatTerminal);
 
-export default router;
+  // PATCH /api/terminals/:id/deactivate — soft-deactivate terminal
+  router.patch('/:id/deactivate', requireManager, deps.deactivateTerminal);
+
+  return router;
+}
+
+const defaultTerminalsRouter = createTerminalsRouter(TerminalsController);
+export default defaultTerminalsRouter;

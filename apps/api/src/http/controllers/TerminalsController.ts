@@ -10,7 +10,7 @@ import { db } from '../../composition/modules/httpApplicationBoundaryModule';
 import { DrizzleTerminalRepository } from '@pos/infrastructure/repositories/terminals/DrizzleTerminalRepository';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 
-const manageTerminals = new ManageTerminals(new DrizzleTerminalRepository(db));
+const defaultManageTerminals = new ManageTerminals(new DrizzleTerminalRepository(db));
 
 const mapTerminalError = (error: unknown): never => {
   if (error instanceof TerminalNotFoundError) {
@@ -27,7 +27,7 @@ const mapTerminalError = (error: unknown): never => {
  * Find-or-create a terminal for this tenant by terminal_code (upsert).
  * Called on app startup so the terminal is always registered before syncing.
  */
-export const registerTerminal = asyncHandler(async (req: Request, res: Response) => {
+const createRegisterTerminalHandler = (manageTerminals: ManageTerminals) => asyncHandler(async (req: Request, res: Response) => {
   const bodySchema = z.object({
     terminal_code: z.string().min(1).max(128),
     name: z.string().max(255).optional().default('Cashier'),
@@ -58,7 +58,7 @@ export const registerTerminal = asyncHandler(async (req: Request, res: Response)
  * PATCH /api/terminals/:id/heartbeat
  * Update last_seen_at for the terminal. Called periodically by the frontend.
  */
-export const heartbeatTerminal = asyncHandler(async (req: Request, res: Response) => {
+const createHeartbeatTerminalHandler = (manageTerminals: ManageTerminals) => asyncHandler(async (req: Request, res: Response) => {
   try {
     const terminal = await manageTerminals.heartbeat({
       tenantId: req.tenantId!,
@@ -76,7 +76,7 @@ export const heartbeatTerminal = asyncHandler(async (req: Request, res: Response
  * GET /api/terminals
  * List all terminals for tenant.
  */
-export const listTerminals = asyncHandler(async (req: Request, res: Response) => {
+const createListTerminalsHandler = (manageTerminals: ManageTerminals) => asyncHandler(async (req: Request, res: Response) => {
   try {
     const terminals = await manageTerminals.list({ tenantId: req.tenantId!, outletId: req.outletId ?? null });
     res.json({ success: true, data: { terminals } });
@@ -89,7 +89,7 @@ export const listTerminals = asyncHandler(async (req: Request, res: Response) =>
  * PATCH /api/terminals/:id/deactivate
  * Soft-deactivate a terminal — it will be blocked from future syncs.
  */
-export const deactivateTerminal = asyncHandler(async (req: Request, res: Response) => {
+const createDeactivateTerminalHandler = (manageTerminals: ManageTerminals) => asyncHandler(async (req: Request, res: Response) => {
   try {
     const terminal = await manageTerminals.deactivate({
       tenantId: req.tenantId!,
@@ -102,3 +102,20 @@ export const deactivateTerminal = asyncHandler(async (req: Request, res: Respons
     mapTerminalError(error);
   }
 });
+
+
+export function createTerminalsController(deps: { manageTerminals: ManageTerminals }) {
+  return {
+    registerTerminal: createRegisterTerminalHandler(deps.manageTerminals),
+    heartbeatTerminal: createHeartbeatTerminalHandler(deps.manageTerminals),
+    listTerminals: createListTerminalsHandler(deps.manageTerminals),
+    deactivateTerminal: createDeactivateTerminalHandler(deps.manageTerminals),
+  };
+}
+
+export const {
+  registerTerminal,
+  heartbeatTerminal,
+  listTerminals,
+  deactivateTerminal,
+} = createTerminalsController({ manageTerminals: defaultManageTerminals });
