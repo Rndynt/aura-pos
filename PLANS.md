@@ -13042,3 +13042,108 @@ Make API route mounting a side-effect-light bootstrap step with explicit depende
 
 ### Continuation Notes
 Continue future architecture hardening by moving remaining individual route modules that directly import `@pos/infrastructure/database` behind composition modules/use cases, one bounded context at a time.
+
+## Plan: Inventory Type-Safety Runtime Any Audit
+
+### Source
+- Tasklist: User request to create/update `roadmap/architecture-production-hardening/type-safety-inventory.md`, classify `any`/`as any`, remediate runtime critical order/payment/sync and POS frontend critical areas, add shared DTO/mapper types, and run `pnpm type-check` after small batches.
+- User request: Indonesian checklist in current turn.
+- Date started: 2026-06-24
+- Current status: Partially implemented; frontend POS critical runtime casts in selected flow files remediated and full workspace type-check passed.
+
+### Goal
+Reduce high-risk runtime `any`/`as any` usage in POS order/payment lifecycle paths by centralizing DTO normalization in shared mappers and documenting remaining backend critical work honestly.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active type-safety inventory
+- [x] Relevant docs (`docs/ORDER_LIFECYCLE.md`, `docs/dev/SYNC_PROTOCOL.md`)
+- [x] Relevant source files in POS core/services and POS flows
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: Runtime critical order/payment/sync inventory.
+- Files inspected: `packages/application/orders/*`, `packages/infrastructure/repositories/orders/*`, `packages/infrastructure/repositories/payments/*`, `packages/infrastructure/repositories/sync/*` via targeted `rg`.
+- Findings: Backend application/repository runtime `any` remains in UpdateOrder, CreateOrder, RecordPayment, CreateAndPayOrder, KitchenTicketRepository, OrderRepository, and orderNumberSequence.
+- Tasks: Document and prioritize remaining backend runtime critical items.
+- Risks: Repository return `any` and status casts remain a runtime critical follow-up.
+- Validation: Full `pnpm type-check` passed after frontend mapper batch.
+
+#### Frontend/UI Workstream
+- Scope: POS critical flows under `apps/pos-terminal-web/src/features/pos-flows/*`.
+- Files inspected: restaurant/retail POS flow hooks and restaurant lifecycle panel.
+- Findings: Runtime casts were used for order DTO display, product hydration, local draft restore, and order mutation result extraction.
+- Tasks: Add typed mapper helpers and replace runtime casts in restaurant and retail critical flows.
+- Risks: No UI behavior intentionally changed; mapper preserves camelCase/snake_case compatibility.
+- Validation: POS terminal type-check and full workspace type-check passed.
+
+#### Documentation Workstream
+- Scope: Type-safety inventory and execution plan.
+- Files inspected: `roadmap/architecture-production-hardening/type-safety-inventory.md`, `PLANS.md`.
+- Findings: Existing inventory needed frontend POS critical continuation and current validation results.
+- Tasks: Updated classification, remediation notes, validation, and next recommended backend order.
+- Risks: Remaining backend critical tasks are explicitly not marked complete.
+- Validation: Manual review.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Ensure POS flow changes do not weaken tenant/auth handling.
+- Files inspected: changed POS flow files.
+- Findings: Tenant source remains `useTenant()`; no tenant header fallback or hardcoded tenant IDs added.
+- Tasks: None beyond review.
+- Risks: Backend tenant/auth/RBAC casts are not part of this batch.
+- Validation: Type-check only.
+
+### Progress
+
+#### Completed
+- [x] Task: Update type-safety inventory with classifications and current remediation status.
+  - Files changed: `roadmap/architecture-production-hardening/type-safety-inventory.md`
+  - Validation: `pnpm type-check`
+  - Docs updated: `roadmap/architecture-production-hardening/type-safety-inventory.md`, `PLANS.md`
+- [x] Task: Add POS frontend typed DTO/mapper helpers for order lifecycle display, order mutation results, local draft narrowing, and product hydration.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-core/mappers/orderToCart.ts`
+  - Validation: `pnpm --filter @pos/terminal-web type-check`, `pnpm type-check`
+  - Docs updated: `roadmap/architecture-production-hardening/type-safety-inventory.md`, `PLANS.md`
+- [x] Task: Remove runtime `as any`/`: any` from critical restaurant and retail POS flow files in scope.
+  - Files changed: `apps/pos-terminal-web/src/features/pos-flows/restaurant/useRestaurantTableServicePOSFlow.ts`, `apps/pos-terminal-web/src/features/pos-flows/retail/useRetailStandardPOSFlow.ts`, `apps/pos-terminal-web/src/features/pos-flows/restaurant/RestaurantOrderLifecyclePanel.tsx`
+  - Validation: `pnpm --filter @pos/terminal-web type-check`, `pnpm type-check`
+  - Docs updated: `roadmap/architecture-production-hardening/type-safety-inventory.md`, `PLANS.md`
+
+#### Partially Completed
+- [ ] Task: Full runtime critical backend remediation.
+  - Completed: Inventory classification and frontend POS critical mapper batch.
+  - Remaining: `packages/application/orders/*` and `packages/infrastructure/repositories/orders/*` runtime critical casts/return types.
+  - Reason: Safe batch boundary after POS frontend critical flow migration and full workspace validation.
+
+#### Blocked
+- [ ] Task: None.
+  - Blocker: N/A
+  - Required next step: N/A
+
+#### Not Attempted
+- [ ] Task: Backend order repository/application cast removal.
+  - Reason: Larger backend persistence/use-case migration should be handled in next small validated batch.
+
+### Validation Log
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: pass
+- Notes: POS frontend compiles after mapper migration.
+- Command: `pnpm type-check`
+- Result: pass
+- Notes: Turbo ran 10 package type-check tasks successfully.
+
+### Documentation Updates
+- File: `roadmap/architecture-production-hardening/type-safety-inventory.md`
+- Change: Updated classifications, POS frontend remediation notes, offline cache notes, validation log, and next recommended backend batch.
+- File: `PLANS.md`
+- Change: Added this active execution plan.
+
+### Checklist Updates
+- File: `roadmap/architecture-production-hardening/type-safety-inventory.md`
+- Change: Source audit/checklist updated with current partial/completed status.
+
+### Continuation Notes
+Continue with `packages/application/orders/UpdateOrder.ts`, then `packages/infrastructure/repositories/orders/KitchenTicketRepository.ts`, then `packages/infrastructure/repositories/orders/OrderRepository.ts`; run `pnpm type-check` after each small backend migration batch.

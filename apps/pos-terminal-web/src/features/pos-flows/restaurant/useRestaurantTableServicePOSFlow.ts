@@ -22,7 +22,8 @@ import {
   cartToOrderPayload,
   fetchOrderForPOS,
   getLocalDraftItems,
-  getProductsById,
+  getPOSOrderIdentity,
+  hydrateCartItemProductImages,
   isTrueServerDraft,
   type POSLifecycleOrder,
   usePOSActiveOrderPayment,
@@ -102,11 +103,7 @@ export function useRestaurantTableServicePOSFlow() {
         }
         cart.clearCart();
         cart.loadOrder(fullOrder);
-        const productsMap = getProductsById(products as any[]);
-        cart.items.forEach((item: any) => {
-          const fullProduct = productsMap.get(item.product.id);
-          if (fullProduct) item.product.image_url = fullProduct.image_url;
-        });
+        hydrateCartItemProductImages(cart.items, products);
         toast({ title: "Draft dimuat", description: `Draft #${fullOrder.orderNumber} siap dibayar.` });
       } catch (error) {
         toast({ title: "Gagal memuat draft", description: error instanceof Error ? error.message : "Draft tidak dapat dimuat", variant: "destructive" });
@@ -219,8 +216,7 @@ export function useRestaurantTableServicePOSFlow() {
     try {
       const payload = buildOrderPayload();
       const orderResult = await createOrderMutation.mutateAsync(payload);
-      const orderId = String((orderResult.order as any)?.id ?? "");
-      const orderNumber = String((orderResult.order as any)?.order_number ?? (orderResult.order as any)?.orderNumber ?? orderId);
+      const { id: orderId, orderNumber } = getPOSOrderIdentity(orderResult);
       if (!orderId) throw new Error("Order aktif tidak memiliki id");
       if (!isOnline) {
         const terminal = await getOrCreateTerminalIdentity(tenantId);
@@ -255,7 +251,7 @@ export function useRestaurantTableServicePOSFlow() {
     sendToCFD(buildPaymentCFDPayload({ tenantName, orderNumber: pendingOrderForPayment?.orderNumber || cart.orderNumber || "", total: pendingOrderForPayment?.totalAmount || cart.total, items: cart.items.map(toCFDItem), subtotal: cart.subtotal, tax: cart.tax, serviceCharge: cart.serviceCharge, customerName: cart.customerName || undefined }, method));
   };
 
-  const handlePaymentMethodConfirm = async (paymentMethod: PaymentMethod, cashReceived?: number, partialAmount?: number, paymentDetails?: any) => {
+  const handlePaymentMethodConfirm = async (paymentMethod: PaymentMethod, cashReceived?: number, partialAmount?: number, paymentDetails?: import("@pos/domain/orders").POSPaymentCommandDto) => {
     if (!pendingOrderForPayment) {
       toast({ title: "Gunakan Kirim ke Dapur", description: "Flow restoran tidak membuat pembayaran fresh retail. Bayar dari pesanan aktif setelah service.", variant: "destructive" });
       return;
@@ -274,7 +270,7 @@ export function useRestaurantTableServicePOSFlow() {
         partialAmount,
         paymentDetails,
       }, {
-        submitPayment: (payload: any) => submitPOSPaymentMutation.mutateAsync(payload),
+        submitPayment: (payload) => submitPOSPaymentMutation.mutateAsync(payload),
       });
       await refetchOpenOrders();
       toast({ title: result.messageTitle, description: result.messageDescription });
@@ -290,10 +286,10 @@ export function useRestaurantTableServicePOSFlow() {
     }
   };
 
-  const handleResumeLocalDraft = (draft: any) => {
+  const handleResumeLocalDraft = (draft: import("@pos/offline").LocalDraftOrder) => {
     cart.clearCart();
     cart.setCustomerName(draft.customerName || "");
-    getLocalDraftItems(draft).forEach((item: any) => item?.product && cart.addItem(item.product, item.variant, item.selectedOptions || [], item.quantity || 1));
+    getLocalDraftItems(draft).forEach((item) => item.product && cart.addItem(item.product, item.variant, item.selectedOptions || [], item.quantity || 1));
     toast({ title: "Draft lokal dimuat", description: `Draft LOCAL-${String(draft.id).slice(0, 8)} siap dibayar.` });
   };
 
@@ -336,7 +332,7 @@ export function useRestaurantTableServicePOSFlow() {
     orderDiscountAmount: cart.orderDiscountAmount,
   };
 
-  const restaurantActiveOrders = ((openOrdersData as any)?.orders || []) as POSLifecycleOrder[];
+  const restaurantActiveOrders = openOrdersData?.orders ?? [];
 
   return { policy: RESTAURANT_TABLE_SERVICE_FLOW_POLICY, isOnline, tables: tablesData?.tables || [], tablesLoading, tablesError, activeOrders: restaurantActiveOrders, openOrdersLoading, products, productsLoading, productsError, handleAddToCart, selectedProduct, setSelectedProduct, handleVariantAdd, cartPanelProps, isMobile, mobileCartOpen, setMobileCartOpen, combinedDraftOpen, setCombinedDraftOpen, handleResumeLocalDraft, payActiveOrder, paymentMethodDialogOpen, setPaymentMethodDialogOpen, handleCFDMethodChange, handlePaymentMethodConfirm, pendingOrderForPayment, setPendingOrderForPayment, hasPartialPayment, hasMultiPayment, hasSplitBill, isProcessingQuickCharge, cart };
 }

@@ -1,36 +1,45 @@
-# Type Safety Inventory — Inventory Audit
+# Type Safety Inventory — Runtime Any Audit
 
 Tanggal: 2026-06-24
 
-Scope batch ini mengikuti area critical runtime yang diminta:
+Scope audit mengikuti area critical runtime yang diminta:
 
-- `packages/application/orders/*`
 - `packages/infrastructure/repositories/orders/*`
 - `packages/infrastructure/repositories/payments/*`
 - `packages/infrastructure/repositories/sync/*`
+- `packages/application/orders/*`
 - `apps/pos-terminal-web/src/features/pos-core/services/*`
+- `apps/pos-terminal-web/src/features/pos-flows/*`
 
 ## Kelompok Type Escape
 
 ### Critical order/payment/sync
 
-Status: partially remediated in this batch.
+Status: partially remediated.
+
+Remediasi sebelumnya yang masih berlaku:
 
 - `packages/application/orders/mappers/orderLifecycleDtoMapper.ts`
-  - Sebelumnya memakai `Record<string, any>` dan item callback `any` untuk lifecycle DTO.
-  - Remediasi: memakai shared `OrderLifecycleDto`, `OrderLifecycleDtoFields`, dan `OrderLifecycleLockState` dari `@pos/domain/orders`.
+  - Memakai shared `OrderLifecycleDto`, `OrderLifecycleDtoFields`, dan `OrderLifecycleLockState` dari `@pos/domain/orders` untuk lifecycle DTO.
 - `packages/infrastructure/repositories/sync/DrizzleSyncOfflineOrderRepository.ts`
-  - Sebelumnya memakai generic column `{ tenantId: any; outletId?: any }` pada tenant/outlet scoped query helper.
-  - Remediasi: helper memakai `AnyPgColumn` dan mengembalikan `SQL[]`, menjaga tenant/outlet predicate tetap typed.
+  - Helper tenant/outlet scoped query memakai `AnyPgColumn` dan mengembalikan `SQL[]`.
 - `apps/pos-terminal-web/src/features/pos-core/services/posPaymentAmountService.ts`
-  - Sebelumnya memakai cast `as any` untuk membaca nomor order camelCase/snake_case.
-  - Remediasi: memakai `POSLifecycleOrder` yang berbasis shared `OrderLifecycleDto`.
+  - Membaca amount dan order number melalui `POSLifecycleOrder` berbasis shared `OrderLifecycleDto`.
 - `apps/pos-terminal-web/src/features/pos-core/services/posLifecycleService.ts`
-  - Sebelumnya memakai cast `as any` untuk remaining amount camelCase/snake_case.
-  - Remediasi: memakai field shared DTO `remainingAmount` / `remaining_amount`.
+  - Membaca remaining amount camelCase/snake_case melalui shared DTO.
 - `apps/pos-terminal-web/src/features/pos-core/services/posPrinterService.ts`
-  - Sebelumnya mengirim payload receipt dengan cast `as any`.
-  - Remediasi: fungsi print/enqueue memakai `ReceiptPrintPayload`.
+  - Fungsi print/enqueue memakai `ReceiptPrintPayload`.
+
+Remediasi batch ini:
+
+- `apps/pos-terminal-web/src/features/pos-core/mappers/orderToCart.ts`
+  - Menambahkan typed POS mapper untuk order mutation result, active order display summary, restaurant active-order predicate, local draft item guard, dan product image hydration.
+- `apps/pos-terminal-web/src/features/pos-flows/restaurant/useRestaurantTableServicePOSFlow.ts`
+  - Menghapus runtime `as any` untuk product hydration, create-order identity extraction, payment submit dependency, local draft resume, dan open orders normalization.
+- `apps/pos-terminal-web/src/features/pos-flows/retail/useRetailStandardPOSFlow.ts`
+  - Menghapus runtime `as any` untuk product hydration, saved-order update amount/order-number extraction, payment submit dependency, payment details, dan local draft resume.
+- `apps/pos-terminal-web/src/features/pos-flows/restaurant/RestaurantOrderLifecyclePanel.tsx`
+  - Menghapus `as any` render reads dengan shared active-order predicate dan display summary mapper.
 
 Remaining critical order/payment/sync escapes to address in later batches:
 
@@ -46,17 +55,28 @@ Remaining critical order/payment/sync escapes to address in later batches:
 
 ### Tenant/auth/RBAC
 
-Status: not changed in this batch.
+Status: inventoried, not changed in this batch.
 
-No tenant/auth/RBAC source files were modified in this batch beyond preserving typed tenant/outlet scoping in sync repository query predicates.
+No tenant/auth/RBAC source files were modified in this batch. POS flow changes preserve existing tenant source from `useTenant()` and do not add tenant headers or hardcoded tenant IDs.
 
-### Frontend DTO normalization
+### Frontend API DTO normalization
 
-Status: partially remediated in this batch.
+Status: partially remediated.
 
-- Shared order lifecycle DTO now lives in `packages/domain/orders/dtos.ts`.
-- POS lifecycle/payment amount services consume this DTO instead of ad-hoc `as any` casts.
-- Shared payment command, selected options, and offline sync payload DTO shells were added for subsequent migrations.
+- Shared order lifecycle DTO lives in `packages/domain/orders/dtos.ts`.
+- Shared payment command, selected options, and offline sync payload DTO shells are available for continued migration.
+- POS frontend flow mappers now centralize:
+  - order lifecycle display summary normalization,
+  - active restaurant order filtering,
+  - create/update order identity and total extraction,
+  - local draft item runtime narrowing before cart resume.
+
+### Offline cache serialization
+
+Status: partially remediated.
+
+- Local draft resume now accepts `LocalDraftOrder` from `@pos/offline` and narrows `unknown[]` items through `getLocalDraftItems()` before adding them back to cart.
+- Remaining offline sync payload serialization casts should be audited in `packages/infrastructure/repositories/sync/*` and offline outbox code in a later batch.
 
 ### Tests-only
 
@@ -66,34 +86,27 @@ Remaining tests-only type escapes are currently limited to test data factories/a
 
 - `apps/pos-terminal-web/src/features/pos-core/services/__tests__/*`
 - `packages/application/orders/__tests__/UpdateOrder.lifecycleLocks.test.ts`
+- `packages/application/orders/__tests__/UpdateOrder.pricing.test.ts`
 
 These are lower risk than runtime casts, but should be replaced with typed fixtures once runtime DTO migration stabilizes.
 
-### Low-risk UI rendering
+## Shared DTO/Mapper Status
 
-Status: not changed in this batch.
-
-This audit batch focused on POS core service runtime and order/payment/sync repository/application code. Broader UI rendering casts outside `apps/pos-terminal-web/src/features/pos-core/services/*` were not audited in this batch.
-
-## Shared DTOs Added
-
-- Order lifecycle DTO and derived lifecycle fields.
-- POS payment command DTO.
-- Selected options DTO wrapper for order item normalization.
-- Offline sync order payload DTO.
+- Order lifecycle DTO: implemented in `packages/domain/orders/dtos.ts`.
+- Payment command DTO: implemented in `packages/domain/orders/dtos.ts` and `packages/domain/payments/PaymentCommand.ts`.
+- Selected options DTO wrapper: implemented in `packages/domain/orders/dtos.ts`.
+- Offline sync order payload DTO: implemented in `packages/domain/orders/dtos.ts`.
+- POS frontend order lifecycle/payment/local-draft mappers: implemented in `apps/pos-terminal-web/src/features/pos-core/mappers/orderToCart.ts`.
 
 ## Validation
 
-- `pnpm --filter @pos/domain type-check`
-- `pnpm --filter @pos/application type-check`
-- `pnpm --filter @pos/infrastructure type-check`
-- `pnpm --filter @pos/terminal-web type-check`
-- `pnpm --filter @pos/application test`
-- `pnpm --filter @pos/terminal-web test`
-- `pnpm type-check`
-
-All validation commands above passed on 2026-06-24.
+- `pnpm --filter @pos/terminal-web type-check` — passed on 2026-06-24 after POS flow mapper batch.
+- `pnpm type-check` — passed on 2026-06-24 after POS flow mapper batch.
 
 ## Next Recommended Batch
 
-Continue with `packages/application/orders/UpdateOrder.ts` and `packages/infrastructure/repositories/orders/KitchenTicketRepository.ts`, because they still contain critical lifecycle/status casts and can be migrated to discriminated status unions with focused tests.
+Continue with runtime backend critical files in this order:
+
+1. `packages/application/orders/UpdateOrder.ts` — lifecycle lock/status casts affect order edit safety.
+2. `packages/infrastructure/repositories/orders/KitchenTicketRepository.ts` — kitchen ticket status casts affect fulfillment runtime state.
+3. `packages/infrastructure/repositories/orders/OrderRepository.ts` — order/payment status casts and repository return `any` affect the highest-volume order persistence path.
