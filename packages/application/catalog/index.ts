@@ -43,3 +43,16 @@ export {
   flattenSelectedOptions,
 } from './pricing';
 export type { ProductDraft, ProductFilters, ProductRepositoryPort } from './ports';
+
+export { ListCategories } from './ListCategories';
+export type { ListCategoriesInput, ListCategoriesOutput } from './ListCategories';
+export { CreateCategory } from './CreateCategory';
+export type { CreateCategoryInput, CreateCategoryOutput } from './CreateCategory';
+export { RenameCategory } from './RenameCategory';
+export type { RenameCategoryInput } from './RenameCategory';
+export { DeleteCategory } from './DeleteCategory';
+export type { DeleteCategoryInput } from './DeleteCategory';
+export { ReorderCategories } from './ReorderCategories';
+export type { ReorderCategoriesInput } from './ReorderCategories';
+export type { CategoryRepositoryPort, ProductCategoryRecord, ProductCategoryListItem, CreateProductCategoryData } from './ports/CategoryRepositoryPort';
+export { CategoryRepositoryError } from './ports/CategoryRepositoryPort';

@@ -13317,3 +13317,119 @@ Remove every HTTP import of `apps/api/src/composition/modules/httpDatabaseBounda
 
 ### Continuation Notes
 Continue by extracting the new composition shim surface into narrow application use cases/repository ports per bounded context, starting with `apps/api/src/http/helpers/inventoryEntitlement.ts`, then inventory routes, then category/catalog/tenant/outlet/terminal handlers.
+
+## Plan: Category Application Use Cases and Tenant-Scoped Repository
+
+### Source
+- Tasklist: User-provided 6-item category architecture checklist.
+- User request: Implement List/Create/Rename/Delete/Reorder category use cases, repository port, Drizzle adapter, move legacy bootstrap, slim CategoryController, add tenant-scoped tests.
+- Date started: 2026-06-24
+- Current status: In progress
+
+### Goal
+Move catalog category operations out of HTTP handlers into application use cases backed by a tenant-scoped repository port and Drizzle infrastructure adapter, preserving legacy product.category bootstrap through an explicit policy and adding tests for tenant isolation.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active user tasklist
+- [x] Relevant source files: CategoryController, catalog schema, application catalog exports, infrastructure catalog repositories
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: `CategoryController` and composition wiring.
+- Files inspected: `apps/api/src/http/controllers/CategoryController.ts`, `apps/api/src/http/routes/catalog.ts`, `apps/api/src/composition/modules/httpApplicationBoundaryModule.ts`.
+- Findings: Controller currently performs Drizzle queries, transaction logic, and legacy bootstrap directly.
+- Tasks: Controller should parse input, resolve `tenantId`, call use cases, and shape responses.
+- Risks: Preserve response shape for frontend compatibility.
+- Validation: API type-check and tests.
+
+#### Database/Schema Workstream
+- Scope: `product_categories` and `products.category` legacy string column.
+- Files inspected: `packages/infrastructure/db/schema/catalog.schema.ts`.
+- Findings: Master category table has tenant/name unique key and display_order; products still keep legacy category string.
+- Tasks: Drizzle adapter must filter every query/mutation by tenant and keep product legacy string synchronized for rename/delete.
+- Risks: Reorder must reject cross-tenant/missing IDs.
+- Validation: repository/use-case tests.
+
+#### Tests/Validation Workstream
+- Scope: Tenant-scoped category list/create/rename/delete/reorder.
+- Files inspected: existing application tests.
+- Findings: Application package test script is explicit list of tests.
+- Tasks: Add standalone catalog use-case tests and include in package test script.
+- Risks: Avoid real DB dependency by testing use cases with an in-memory port.
+- Validation: package test, API type-check, workspace type-check if feasible.
+
+### Execution Order
+1. Define repository port and application use cases.
+2. Implement Drizzle adapter in infrastructure.
+3. Wire controller to use cases via adapter.
+4. Add tenant-scoped tests.
+5. Validate and update plan.
+
+### Progress
+#### Completed
+- [ ] Task: Pending implementation.
+  - Files changed:
+  - Validation:
+  - Docs updated:
+
+### Continuation Notes
+Continue by adding `packages/application/catalog/ports/CategoryRepositoryPort.ts`, use cases, and `packages/infrastructure/repositories/catalog/CategoryRepository.ts`.
+
+### Progress Update — 2026-06-24
+#### Completed
+- [x] Task: Create category application use cases.
+  - Files changed: `packages/application/catalog/ListCategories.ts`, `CreateCategory.ts`, `RenameCategory.ts`, `DeleteCategory.ts`, `ReorderCategories.ts`, `packages/application/catalog/index.ts`.
+  - Validation: `pnpm --filter @pos/application type-check`, `pnpm --filter @pos/application test`.
+  - Docs updated: `PLANS.md`.
+- [x] Task: Define category repository port.
+  - Files changed: `packages/application/catalog/ports/CategoryRepositoryPort.ts`, `packages/application/catalog/ports/index.ts`.
+  - Validation: `pnpm --filter @pos/application type-check`.
+  - Docs updated: `PLANS.md`.
+- [x] Task: Implement Drizzle category adapter in infrastructure.
+  - Files changed: `packages/infrastructure/repositories/catalog/CategoryRepository.ts`, `packages/infrastructure/repositories/catalog/index.ts`.
+  - Validation: `pnpm --filter @pos/infrastructure type-check`.
+  - Docs updated: `PLANS.md`.
+- [x] Task: Move legacy product.category bootstrap to explicit use-case/repository policy.
+  - Files changed: `packages/application/catalog/ListCategories.ts`, `packages/infrastructure/repositories/catalog/CategoryRepository.ts`.
+  - Validation: `pnpm --filter @pos/application test`.
+  - Docs updated: `PLANS.md`.
+- [x] Task: Slim `CategoryController` to parse request, resolve tenant, call use cases, and return responses.
+  - Files changed: `apps/api/src/http/controllers/CategoryController.ts`.
+  - Validation: `pnpm --filter @pos/api type-check`, `pnpm check:boundaries`.
+  - Docs updated: `PLANS.md`.
+- [x] Task: Add tenant-scoped category list/create/rename/delete/reorder tests.
+  - Files changed: `packages/application/catalog/__tests__/categoryUseCases.test.ts`, `packages/application/package.json`.
+  - Validation: `pnpm --filter @pos/application test`.
+  - Docs updated: `PLANS.md`.
+
+#### Blocked
+- [ ] Task: None.
+  - Blocker: N/A
+  - Required next step: N/A
+
+### Validation Log
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass.
+- Notes: Application use cases and ports compile.
+- Command: `pnpm --filter @pos/infrastructure type-check`
+- Result: pass.
+- Notes: Drizzle category adapter compiles.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass.
+- Notes: Slim CategoryController compiles against use cases and adapter.
+- Command: `pnpm --filter @pos/application test`
+- Result: pass.
+- Notes: Existing application tests plus new category tenant-scope tests pass.
+- Command: `pnpm check:boundaries`
+- Result: pass.
+- Notes: Boundary validator scanned 586 source files.
+
+### Documentation Updates
+- File: `PLANS.md`
+- Change: Added and completed category application use-case migration plan.
+
+### Continuation Notes
+Category use-case migration checklist is complete for this batch. Future hardening can add API-level integration tests against the Express catalog routes if a test database fixture is available.
