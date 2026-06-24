@@ -34,8 +34,8 @@ Notes:
 | `TRUST_PROXY` | API/server | Optional, default `false`; may be `false`, `true`, or a non-negative hop count such as `1` | Required behind proxy | Required behind proxy | Enforced by API bootstrap as Express `trust proxy`. If unset in production, the API uses safe default `false`; set explicitly when deployed behind a trusted reverse proxy. |
 | `LOG_LEVEL` | API/server | Optional (`debug`/`info`) | Recommended (`info`) | Recommended (`info`/`warn`) | Runtime log verbosity. **Reserved/not currently enforced by code**. |
 | `RATE_LIMIT_STORE` | API/server | Optional (`memory`) | Required (`redis`) when rate limiting is enabled | Required (`redis`) when rate limiting is enabled | Use Redis-backed rate limiting outside single-process dev. **Reserved/not currently enforced by code**. |
-| `TERMINAL_TOKEN_SECRET` | API/server secret | Required placeholder local secret before terminal token features are enabled | Required secret | Required secret | Secret for POS terminal/device tokens. **Reserved/not currently enforced by code**. |
-| `ENTITLEMENT_SNAPSHOT_SECRET` | API/server secret | Required placeholder local secret before signed entitlement snapshots are enabled | Required secret | Required secret | Secret for signed entitlement snapshots. **Reserved/not currently enforced by code**. |
+| `TERMINAL_TOKEN_SECRET` | API/server secret | Required placeholder local secret before terminal token features are enabled | Required secret | Required secret | Secret for POS terminal/device tokens. Must be at least 32 characters when terminal token features are enabled. **Reserved/not currently enforced by code**. |
+| `ENTITLEMENT_SNAPSHOT_SECRET` | API/server secret | Required placeholder local secret before signed entitlement snapshots are enabled | Required secret | Required secret | Secret for signed entitlement snapshots. Must be at least 32 characters when signed entitlement snapshot features are enabled. **Reserved/not currently enforced by code**. |
 | `VITE_API_URL` | POS frontend/browser | `http://localhost:5000` | Staging API URL | Production API URL | Browser-visible API base URL; do not put secrets here. |
 | `VITE_APP_ENV` | POS frontend/browser | `development` | `staging` | `production` | Browser-visible app environment label. **Reserved/not currently consumed by code**. |
 
@@ -55,6 +55,8 @@ PORT=5000
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/aurapos_dev
 BETTER_AUTH_SECRET=local-dev-secret-change-me-at-least-32-chars
 BETTER_AUTH_URL=http://localhost:5000
+TERMINAL_TOKEN_SECRET=local-terminal-token-secret-change-me-32chars-min
+ENTITLEMENT_SNAPSHOT_SECRET=local-entitlement-snapshot-secret-change-me-32chars-min
 VITE_API_URL=http://localhost:5000
 VITE_APP_ENV=development
 ```
@@ -64,7 +66,7 @@ Recommended local behavior:
 - Leave `TRUST_PROXY` unset/`false` when calling the API directly. Use `TRUST_PROXY=1` or `TRUST_PROXY=true` only when local traffic goes through a trusted reverse proxy.
 - Run migrations explicitly with `pnpm db:migrate`. For disposable local development databases only, `API_AUTO_MIGRATE_ON_BOOT=true` can opt into boot-time migrations; do not rely on this in staging or production.
 - Omit `REDIS_URL` for simple one-process development unless you are testing distributed cache/pubsub behavior.
-- Use local placeholder secrets only. Never reuse local placeholders in staging or production.
+- Use local placeholder secrets only. Never reuse local placeholders in staging or production. The terminal token and signed entitlement snapshot placeholders are deliberately local-only examples; replace them with strong unique values before enabling those features outside local development.
 - Use `CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000` to explicitly allow local browser clients beyond the built-in development localhost exceptions.
 
 ## Staging
@@ -82,8 +84,8 @@ CORS_ALLOWED_ORIGINS=https://pos-staging.example.com,https://admin-staging.examp
 TRUST_PROXY=true
 LOG_LEVEL=info
 RATE_LIMIT_STORE=redis
-TERMINAL_TOKEN_SECRET=<generate-a-unique-staging-terminal-secret>
-ENTITLEMENT_SNAPSHOT_SECRET=<generate-a-unique-staging-entitlement-secret>
+TERMINAL_TOKEN_SECRET=<generate-a-unique-staging-terminal-secret-at-least-32-chars>
+ENTITLEMENT_SNAPSHOT_SECRET=<generate-a-unique-staging-entitlement-secret-at-least-32-chars>
 VITE_API_URL=https://api-staging.example.com
 VITE_APP_ENV=staging
 ```
@@ -112,8 +114,8 @@ CORS_ALLOWED_ORIGINS=https://pos.example.com,https://admin.example.com
 TRUST_PROXY=true
 LOG_LEVEL=info
 RATE_LIMIT_STORE=redis
-TERMINAL_TOKEN_SECRET=<generate-a-unique-production-terminal-secret>
-ENTITLEMENT_SNAPSHOT_SECRET=<generate-a-unique-production-entitlement-secret>
+TERMINAL_TOKEN_SECRET=<generate-a-unique-production-terminal-secret-at-least-32-chars>
+ENTITLEMENT_SNAPSHOT_SECRET=<generate-a-unique-production-entitlement-secret-at-least-32-chars>
 VITE_API_URL=https://api.example.com
 VITE_APP_ENV=production
 ```
@@ -122,7 +124,7 @@ Production requirements:
 
 - Store secrets in the deployment platform secret manager, not in files committed to Git.
 - Require Redis for multi-instance API deployments so cache invalidation, CFD state, order queue/pubsub, and related features are instance-safe.
-- Use strong, unique secrets per environment and rotate on suspected exposure.
+- Use strong, unique secrets per environment and rotate on suspected exposure. `BETTER_AUTH_SECRET`, `TERMINAL_TOKEN_SECRET`, and `ENTITLEMENT_SNAPSHOT_SECRET` must each be at least 32 characters when their related features are enabled.
 - Keep `VITE_*` values non-secret because they are visible to browser users.
 - Restrict browser origins to the actual deployed frontend domains.
 - Set `TRUST_PROXY` explicitly (`true` or a hop count like `1`) for trusted reverse-proxy deployments; leaving it unset defaults to `false` and will not trust forwarded client/protocol headers.
