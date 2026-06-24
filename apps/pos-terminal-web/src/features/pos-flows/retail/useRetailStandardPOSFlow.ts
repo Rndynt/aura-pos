@@ -18,7 +18,9 @@ import {
   cartToOrderPayload,
   fetchOrderForPOS,
   getLocalDraftItems,
-  getProductsById,
+  getPOSOrderIdentity,
+  getPOSOrderTotal,
+  hydrateCartItemProductImages,
   isTrueServerDraft,
   type POSLifecycleOrder,
   usePOSActiveOrderPayment,
@@ -93,11 +95,7 @@ export function useRetailStandardPOSFlow() {
         }
         cart.clearCart();
         cart.loadOrder(fullOrder);
-        const productsMap = getProductsById(products as any[]);
-        cart.items.forEach((item: any) => {
-          const fullProduct = productsMap.get(item.product.id);
-          if (fullProduct) item.product.image_url = fullProduct.image_url;
-        });
+        hydrateCartItemProductImages(cart.items, products);
         toast({ title: "Draft dimuat", description: `Draft #${fullOrder.orderNumber} siap dibayar.` });
       } catch (error) {
         toast({ title: "Gagal memuat draft", description: error instanceof Error ? error.message : "Draft tidak dapat dimuat", variant: "destructive" });
@@ -205,10 +203,10 @@ export function useRetailStandardPOSFlow() {
     sendToCFD(buildPaymentCFDPayload({ tenantName, orderNumber: pendingOrderForPayment?.orderNumber || cart.orderNumber || "", total: pendingOrderForPayment?.totalAmount || cart.total, items: cart.items.map(toCFDItem), subtotal: cart.subtotal, tax: cart.tax, serviceCharge: cart.serviceCharge, customerName: cart.customerName || undefined }, method));
   };
 
-  const handlePaymentMethodConfirm = async (paymentMethod: PaymentMethod, cashReceived?: number, partialAmount?: number, paymentDetails?: any) => {
+  const handlePaymentMethodConfirm = async (paymentMethod: PaymentMethod, cashReceived?: number, partialAmount?: number, paymentDetails?: import("@pos/domain/orders").POSPaymentCommandDto) => {
     setIsProcessingQuickCharge(true);
     const dependencies = {
-      submitPayment: (payload: any) => submitPOSPaymentMutation.mutateAsync(payload),
+      submitPayment: (payload: import("@/features/pos-core").SubmitPOSPaymentRequest) => submitPOSPaymentMutation.mutateAsync(payload),
     };
 
     try {
@@ -245,12 +243,12 @@ export function useRetailStandardPOSFlow() {
       const mode = continueOrderId ? "SAVED_ORDER" : "FRESH_CART";
       if (continueOrderId) {
         const updateResult = await updateOrderMutation.mutateAsync({ orderId: continueOrderId, ...buildOrderPayload() });
-        const totalAmount = Number((updateResult.order as any)?.total ?? (updateResult.pricing as any)?.total_amount ?? cart.total);
+        const totalAmount = getPOSOrderTotal(updateResult, cart.total);
         const result = await submitPOSPayment({
           mode,
           clientPaymentSessionId: paymentSessionIdRef.current ?? (paymentSessionIdRef.current = createClientPaymentSessionId()),
           orderId: continueOrderId,
-          orderNumber: (updateResult.order as any)?.order_number ?? continueOrderId,
+          orderNumber: getPOSOrderIdentity(updateResult).orderNumber || continueOrderId,
           totalAmount,
           paymentMethod,
           cashReceived,
@@ -314,10 +312,10 @@ export function useRetailStandardPOSFlow() {
     }
   };
 
-  const handleResumeLocalDraft = (draft: any) => {
+  const handleResumeLocalDraft = (draft: import("@pos/offline").LocalDraftOrder) => {
     cart.clearCart();
     cart.setCustomerName(draft.customerName || "");
-    getLocalDraftItems(draft).forEach((item: any) => item?.product && cart.addItem(item.product, item.variant, item.selectedOptions || [], item.quantity || 1));
+    getLocalDraftItems(draft).forEach((item) => item.product && cart.addItem(item.product, item.variant, item.selectedOptions || [], item.quantity || 1));
     toast({ title: "Draft lokal dimuat", description: `Draft LOCAL-${String(draft.id).slice(0, 8)} siap dibayar.` });
   };
 
