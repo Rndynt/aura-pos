@@ -9,7 +9,7 @@
 import { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { asyncHandler, createError } from '../middleware/errorHandler';
-import { db, tenants } from '../../composition/modules/httpDatabaseBoundaryModule';
+import { db, tenants } from '../../composition/modules/httpApplicationBoundaryModule';
 import { ENTITLEMENT_CATALOG } from '@pos/application/entitlements';
 import { resolveBusinessProfileFromBusinessType, resolveBusinessProfileSource } from '@pos/application/business-flows';
 import {

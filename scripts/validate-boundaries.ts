@@ -260,7 +260,24 @@ function checkApi(relPath: string, specifiers: string[]): Violation[] {
       relPath.startsWith('apps/api/src/http/') &&
       (matchesPattern(spec, '@pos/infrastructure/database') ||
         matchesPattern(spec, '@pos/infrastructure/db/schema'));
-    if (!isFrontendApp && !isHttpInfraDatabaseImport) return [];
+    const isHttpLegacyDatabaseBoundaryImport =
+      relPath.startsWith('apps/api/src/http/') &&
+      spec.includes('composition/modules/httpDatabaseBoundaryModule');
+    if (!isFrontendApp && !isHttpInfraDatabaseImport && !isHttpLegacyDatabaseBoundaryImport) return [];
+
+    if (isHttpLegacyDatabaseBoundaryImport) {
+      return [{
+        rule: 'Rule 4 — API HTTP database boundary',
+        file: relPath,
+        importSpecifier: spec,
+        reason:
+          `apps/api/src/http must not import the legacy httpDatabaseBoundaryModule. ` +
+          `HTTP handlers must call typed application use cases/handlers instead of the old database boundary.`,
+        suggestedFix:
+          `Extract the needed database access behind an application port and infrastructure adapter, ` +
+          `then inject a typed use case/handler through the API composition container.`,
+      }];
+    }
 
     if (isHttpInfraDatabaseImport) {
       return [{

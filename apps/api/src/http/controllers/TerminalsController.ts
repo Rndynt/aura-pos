@@ -6,7 +6,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { ManageTerminals, TerminalNotFoundError } from '@pos/application/terminals';
-import { db } from '../../composition/modules/httpDatabaseBoundaryModule';
+import { db } from '../../composition/modules/httpApplicationBoundaryModule';
 import { DrizzleTerminalRepository } from '@pos/infrastructure/repositories/terminals/DrizzleTerminalRepository';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 

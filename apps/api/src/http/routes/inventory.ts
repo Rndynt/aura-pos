@@ -13,7 +13,7 @@
  */
 
 import { Router } from 'express';
-import { db, products, inventoryMovements } from '../../composition/modules/httpDatabaseBoundaryModule';
+import { db, products, inventoryMovements } from '../../composition/modules/httpApplicationBoundaryModule';
 import { eq, and, desc, asc, gte, lte, sql } from 'drizzle-orm';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { z } from 'zod';

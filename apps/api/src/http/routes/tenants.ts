@@ -5,7 +5,7 @@
 
 import { Router } from 'express';
 import * as TenantsController from '../controllers/TenantsController';
-import { db, tenants } from '../../composition/modules/httpDatabaseBoundaryModule';
+import { db, tenants } from '../../composition/modules/httpApplicationBoundaryModule';
 import { eq } from 'drizzle-orm';
 
 const router = Router();

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import type { AppContainer } from "../../composition/createAppContainer";
-import type { InsertTable } from '../../composition/modules/httpDatabaseBoundaryModule';
+import type { InsertTable } from '../../composition/modules/httpApplicationBoundaryModule';
 import { requireEntitlement } from "../middleware/entitlementGuard";
 
 const VALID_TABLE_STATUSES = ["available", "occupied", "reserved", "maintenance", "cleaning"] as const;

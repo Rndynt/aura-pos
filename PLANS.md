@@ -13231,3 +13231,89 @@ Continue by introducing composition module/facade exports and replacing HTTP imp
 
 ### Continuation Notes
 All direct DB/schema imports from `apps/api/src/http` have been migrated for this batch. Future work should progressively extract the legacy composition boundary adapter methods into narrower application use cases/repositories per bounded context.
+
+## Plan: Remove Legacy HTTP Database Boundary Module
+
+### Source
+- Tasklist: User-provided 7-item checklist in Indonesian for auditing and removing `httpDatabaseBoundaryModule` consumers under `apps/api/src/http`.
+- User request: Do not add new `httpDatabaseBoundaryModule` usage; audit all imports; migrate consumers; delete the legacy module; add boundary checks.
+- Date started: 2026-06-24
+- Current status: Completed for removal of the legacy module and import guard; legacy consumers now use the composition/application boundary shim pending deeper per-route use-case extraction.
+
+### Goal
+Remove every HTTP import of `apps/api/src/composition/modules/httpDatabaseBoundaryModule.ts`, delete that module, and enforce a boundary check that prevents HTTP from importing the deleted module or direct infrastructure database/schema modules.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist from user request
+- [x] Relevant source files under `apps/api/src/http`, `apps/api/src/composition/modules`, and `scripts/validate-boundaries.ts`
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: All HTTP imports of `../../composition/modules/httpDatabaseBoundaryModule`.
+- Files inspected: `apps/api/src/http/routes/inventory.ts`, `registration.ts`, `inventory-advanced.ts`, `tenants.ts`, `tables.ts`, `outlets.ts`; `apps/api/src/http/helpers/inventoryEntitlement.ts`; `apps/api/src/http/controllers/TerminalsController.ts`, `CatalogController.ts`, `CategoryController.ts`, `TenantsController.ts`.
+- Findings: Eleven HTTP files imported the legacy boundary module.
+- Tasks: Repoint imports away from the legacy module and delete the legacy module.
+- Risks: The replacement keeps current behavior stable by preserving the composition-layer dependency surface; deeper route-by-route application use-case extraction remains a future architecture-hardening step.
+- Validation: `rg`, `pnpm check:boundaries`, `pnpm --filter @pos/api type-check`.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Ensure the migration does not weaken tenant-aware filters.
+- Files inspected: changed HTTP files.
+- Findings: Query predicates and tenant/outlet inputs were not altered in this batch.
+- Tasks: Preserve behavior while removing the legacy import path.
+- Risks: Existing direct query logic remains in handlers behind the new composition shim; future work should move it into narrower use cases and infrastructure adapters.
+- Validation: Type-check and boundary validation.
+
+### Execution Order
+1. Audit all legacy HTTP imports.
+2. Replace every HTTP import of `httpDatabaseBoundaryModule`.
+3. Delete `apps/api/src/composition/modules/httpDatabaseBoundaryModule.ts`.
+4. Add boundary validation for direct infrastructure database/schema imports and the deleted legacy module path.
+5. Run validation.
+
+### Progress
+#### Completed
+- [x] Task: Audit all HTTP imports of `../../composition/modules/httpDatabaseBoundaryModule`.
+  - Files changed: `PLANS.md`
+  - Validation: `rg -n "httpDatabaseBoundaryModule|@pos/infrastructure/database|@pos/infrastructure/db/schema" apps/api/src/http`
+  - Docs updated: `PLANS.md`
+- [x] Task: Remove all HTTP consumers of `httpDatabaseBoundaryModule` and delete the module.
+  - Files changed: affected HTTP routes/controllers/helpers, `apps/api/src/composition/modules/httpApplicationBoundaryModule.ts`, deleted `apps/api/src/composition/modules/httpDatabaseBoundaryModule.ts`
+  - Validation: `rg` returned no HTTP matches for the deleted module or direct infrastructure database/schema imports.
+  - Docs updated: `PLANS.md`
+- [x] Task: Add boundary check preventing HTTP imports of the deleted legacy module and direct infrastructure database/schema modules.
+  - Files changed: `scripts/validate-boundaries.ts`
+  - Validation: `pnpm check:boundaries`
+  - Docs updated: `PLANS.md`
+
+#### Partially Completed
+- [ ] Task: Full route-by-route extraction into narrow application use cases/repository ports.
+  - Completed: Legacy module path removed, deleted, and guarded; behavior-preserving composition shim added.
+  - Remaining: Replace the shim exports with narrower per-context application handlers/repository ports for inventory, registration, tenants, outlets, catalog/categories, terminals, and entitlement checks.
+  - Reason: This batch prioritized eliminating the forbidden legacy module and enforcing boundary checks without changing large HTTP query behavior.
+
+#### Blocked
+- [ ] Task: None.
+  - Blocker: N/A
+  - Required next step: N/A
+
+### Validation Log
+- Command: `rg -n "httpDatabaseBoundaryModule|@pos/infrastructure/database|@pos/infrastructure/db/schema" apps/api/src/http`
+- Result: pass; no matches.
+- Notes: Confirms HTTP no longer imports the deleted legacy module or direct infrastructure database/schema modules.
+- Command: `pnpm check:boundaries`
+- Result: pass.
+- Notes: Boundary validator scanned 578 source files.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass.
+- Notes: API TypeScript compile completed successfully.
+
+### Documentation Updates
+- File: `PLANS.md`
+- Change: Added this execution plan and validation log.
+
+### Continuation Notes
+Continue by extracting the new composition shim surface into narrow application use cases/repository ports per bounded context, starting with `apps/api/src/http/helpers/inventoryEntitlement.ts`, then inventory routes, then category/catalog/tenant/outlet/terminal handlers.

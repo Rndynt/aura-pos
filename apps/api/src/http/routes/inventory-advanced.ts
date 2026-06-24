@@ -27,7 +27,7 @@
  */
 
 import { Router } from 'express';
-import { db, products, inventoryBalances } from '../../composition/modules/httpDatabaseBoundaryModule';
+import { db, products, inventoryBalances } from '../../composition/modules/httpApplicationBoundaryModule';
 import { eq, and } from 'drizzle-orm';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { z } from 'zod';
