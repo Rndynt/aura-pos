@@ -151,7 +151,7 @@ export default function LandingPage() {
             Kelola transaksi, produk, pesanan, dan laporan dari satu platform yang cepat dan mudah.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2.5 mb-12 max-w-xs sm:max-w-none mx-auto">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2.5 mb-10 max-w-xs sm:max-w-none mx-auto">
             <a href="/register" className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm text-center transition-colors shadow-lg shadow-blue-900/40">
               Mulai Gratis Sekarang →
             </a>
@@ -160,14 +160,52 @@ export default function LandingPage() {
             </a>
           </div>
 
-          {/* Hero mockup - desktop */}
-          <div className="relative justify-center hidden sm:flex">
-            <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-white to-transparent z-10" />
-            <DeviceMockup type="laptop" src="/mockup-assets/pos-desktop" displayWidth={760} />
+          {/* ── Mobile hero: floating UI chips (no iframe) ── */}
+          <div className="sm:hidden pb-10 flex flex-col items-center gap-3 w-full max-w-sm mx-auto">
+            {/* Order card */}
+            <div className="w-full bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl p-3 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-base flex-shrink-0">☕</div>
+              <div className="flex-1 min-w-0 text-left">
+                <div className="text-[11px] text-slate-400">Pesanan #A-042 · Meja 03</div>
+                <div className="text-xs font-semibold text-white">Americano × 2, Nasi Goreng × 1</div>
+              </div>
+              <div className="flex-shrink-0">
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">LUNAS</span>
+              </div>
+            </div>
+            {/* Payment row */}
+            <div className="w-full flex gap-2">
+              <div className="flex-1 bg-white/10 border border-white/10 rounded-xl p-3 text-center">
+                <div className="text-[10px] text-slate-400 mb-0.5">Total Hari Ini</div>
+                <div className="text-sm font-black text-white">Rp 2.450.000</div>
+              </div>
+              <div className="flex-1 bg-white/10 border border-white/10 rounded-xl p-3 text-center">
+                <div className="text-[10px] text-slate-400 mb-0.5">Transaksi</div>
+                <div className="text-sm font-black text-white">47 order</div>
+              </div>
+              <div className="flex-1 bg-white/10 border border-white/10 rounded-xl p-3 text-center">
+                <div className="text-[10px] text-slate-400 mb-0.5">Produk Aktif</div>
+                <div className="text-sm font-black text-white">124</div>
+              </div>
+            </div>
+            {/* Quick charge chip */}
+            <div className="w-full bg-blue-600/30 border border-blue-500/30 rounded-xl p-3 flex items-center justify-between">
+              <div className="text-left">
+                <div className="text-[10px] text-blue-300">Quick Charge</div>
+                <div className="text-sm font-bold text-white">Rp 135.420</div>
+              </div>
+              <div className="flex gap-1.5">
+                <span className="px-2 py-1 rounded-lg bg-white/10 text-[10px] text-slate-300 font-medium">Cash</span>
+                <span className="px-2 py-1 rounded-lg bg-white/10 text-[10px] text-slate-300 font-medium">QRIS</span>
+                <span className="px-2 py-1 rounded-lg bg-blue-500/40 text-[10px] text-blue-200 font-bold">Bayar →</span>
+              </div>
+            </div>
           </div>
-          {/* Hero mockup - mobile: phone frame */}
-          <div className="flex sm:hidden justify-center pb-4">
-            <DeviceMockup type="phone" src="/mockup-assets/pos-desktop" displayWidth={180} />
+
+          {/* ── Desktop hero: laptop mockup ── */}
+          <div className="relative justify-center hidden sm:flex">
+            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white to-transparent z-10" />
+            <DeviceMockup type="laptop" src="/mockup-assets/pos-desktop" displayWidth={780} />
           </div>
         </div>
       </section>
