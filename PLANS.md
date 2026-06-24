@@ -12924,3 +12924,121 @@ Memindahkan direct DB/Drizzle access dari HTTP middleware berisiko tinggi ke app
 
 ### Continuation Notes
 Continue with `routes/outlets.ts` next because it is tenant-owned management data with direct CRUD and staff assignment writes, then `routes/inventory.ts` due inventory integrity, then `routes/kds.ts`, followed by Category/Catalog/Terminals controllers.
+
+## Plan: P2.4 Explicit Route Dependencies and Job Bootstrap
+
+### Source
+- Tasklist: roadmap/architecture-production-hardening/tasklist.md P2.4
+- User request: Refactor route mounting to accept explicit app/container/config deps, remove DB import from route registry, inject tables dependencies, and move inventory retry job start out of route mounting.
+- Date started: 2026-06-24
+- Current status: Implemented and validated
+
+### Goal
+Make API route mounting a side-effect-light bootstrap step with explicit dependencies from the composition layer, and keep infrastructure DB imports out of the HTTP route registry.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: apps/api bootstrap/routes and HTTP route registry.
+- Files inspected: apps/api/src/bootstrap/routes.ts, apps/api/src/bootstrap/createApp.ts, apps/api/src/routes.ts, apps/api/src/http/routes/index.ts, apps/api/src/http/routes/tables.ts.
+- Findings: `mountApiRoutes(app)` imported `registerRoutes` and route mounting started the inventory retry job.
+- Tasks: Added explicit dependency object, passed container/config through bootstrap, and moved job startup to bootstrap job module.
+- Risks: Middleware ordering preserved; route paths unchanged.
+- Validation: `pnpm --filter @pos/api type-check` passed.
+
+#### Database/Schema Workstream
+- Scope: DB dependency flow for tables route.
+- Files inspected: apps/api/src/composition/createAppContainer.ts, apps/api/src/composition/types.ts, packages/application/seating/*, packages/infrastructure/repositories/seating/TableRepository.ts.
+- Findings: tables router instantiated repositories from injected `db`; repository creation now lives in composition module.
+- Tasks: Added seating module with table use cases/repository-backed operations.
+- Risks: Raw DB no longer exposed to the route registry for tables.
+- Validation: Type-check passed.
+
+#### Frontend/UI Workstream
+- Scope: Not applicable.
+- Files inspected: None.
+- Findings: Backend-only change.
+- Tasks: None.
+- Risks: None.
+- Validation: Not applicable.
+
+#### Tests/Validation Workstream
+- Scope: API type safety and route dependency compilation.
+- Files inspected: apps/api/src/__tests__/cfd.test.ts.
+- Findings: direct `registerRoutes` tests need explicit container/config dependencies.
+- Tasks: Updated CFD test server setup to pass composition dependencies.
+- Risks: None after type-check.
+- Validation: `pnpm --filter @pos/api type-check` passed.
+
+#### Documentation Workstream
+- Scope: PLANS.md and P2.4 checklist honesty.
+- Files inspected: PLANS.md, roadmap/architecture-production-hardening/tasklist.md.
+- Findings: P2.4 can remain complete after implementation and validation.
+- Tasks: Updated plan and checklist details.
+- Risks: Some individual route modules still import DB directly outside the specific route registry/index refactor and should be addressed in future route-by-route hardening.
+- Validation: Manual review.
+
+#### Security/Tenant Isolation Workstream
+- Scope: tables tenant/outlet ownership checks during refactor.
+- Files inspected: apps/api/src/http/routes/tables.ts.
+- Findings: Existing tenant/outlet checks were preserved.
+- Tasks: Preserved tenantId/outletId filtering and currentOrder ownership validation.
+- Risks: None identified.
+- Validation: Type-check plus code review.
+
+### Progress
+
+#### Completed
+- [x] Task: Make `mountApiRoutes` receive explicit `app`, `container`, and `config`.
+  - Files changed: apps/api/src/bootstrap/routes.ts, apps/api/src/bootstrap/createApp.ts, apps/api/src/routes.ts
+  - Validation: `pnpm --filter @pos/api type-check`
+  - Docs updated: roadmap/architecture-production-hardening/tasklist.md, PLANS.md
+- [x] Task: Remove DB import from HTTP route registry and inject tables dependencies.
+  - Files changed: apps/api/src/http/routes/index.ts, apps/api/src/http/routes/tables.ts, apps/api/src/composition/createAppContainer.ts, apps/api/src/composition/modules/seatingModule.ts
+  - Validation: `pnpm --filter @pos/api type-check`
+  - Docs updated: roadmap/architecture-production-hardening/tasklist.md, PLANS.md
+- [x] Task: Move inventory retry job startup out of route mounting.
+  - Files changed: apps/api/src/bootstrap/jobs.ts, apps/api/src/bootstrap/createApp.ts, apps/api/src/bootstrap/routes.ts
+  - Validation: `pnpm --filter @pos/api type-check`
+  - Docs updated: roadmap/architecture-production-hardening/tasklist.md, PLANS.md
+
+#### Partially Completed
+- [ ] Task: Route-by-route removal of direct DB imports in every individual route module.
+  - Completed: Removed direct DB import from the global route registry and tables route path requested in this batch.
+  - Remaining: `inventory`, `inventory-advanced`, `tenants`, `outlets`, and `registration` route modules still import DB directly and should be handled in future bounded-context refactors.
+  - Reason: User specifically targeted route registry/index and tables dependency injection for this batch.
+
+#### Blocked
+- [ ] Task: None.
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+- [ ] Task: Broader route-module DB decoupling outside P2.4 tables path.
+  - Reason: Keep batch focused on requested route registry/tables/job bootstrap changes.
+
+### Validation Log
+- Command: `pnpm --filter @pos/api type-check`
+- Result: Pass
+- Notes: Validated API TypeScript after route/bootstrap composition refactor.
+
+### Documentation Updates
+- File: roadmap/architecture-production-hardening/tasklist.md
+- Change: Added implementation/validation notes for P2.4.
+- File: PLANS.md
+- Change: Updated active P2.4 execution plan to completed/validated.
+
+### Checklist Updates
+- File: roadmap/architecture-production-hardening/tasklist.md
+- Change: Kept P2.4 checked because requested work was completed and validated.
+
+### Continuation Notes
+Continue future architecture hardening by moving remaining individual route modules that directly import `@pos/infrastructure/database` behind composition modules/use cases, one bounded context at a time.

@@ -1,10 +1,6 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
-import { Database } from "@pos/infrastructure/database";
-import { TableRepository } from "@pos/infrastructure/repositories/seating/TableRepository";
-import { OrderRepository } from "@pos/infrastructure/repositories/orders/OrderRepository";
-import { ListTables } from "@pos/application/seating/ListTables";
-import { UpdateTableStatus } from "@pos/application/seating/UpdateTableStatus";
+import type { AppContainer } from "../../composition/createAppContainer";
 import type { InsertTable } from "@pos/infrastructure/db/schema";
 import { requireEntitlement } from "../middleware/entitlementGuard";
 
@@ -40,10 +36,16 @@ const updateTableStatusBodySchema = z.object({
   currentOrderId: z.string().min(1).optional(),
 });
 
-export function createTablesRouter(db: Database): Router {
+export interface TablesRouterDependencies {
+  listTables: AppContainer["listTables"];
+  updateTableStatus: AppContainer["updateTableStatus"];
+  tableCommands: AppContainer["tableCommands"];
+  seatingOrderQueries: AppContainer["seatingOrderQueries"];
+}
+
+export function createTablesRouter(dependencies: TablesRouterDependencies): Router {
   const router = Router();
-  const tableRepository = new TableRepository(db);
-  const orderRepository = new OrderRepository(db);
+  const { listTables, updateTableStatus, tableCommands, seatingOrderQueries } = dependencies;
 
   router.use(requireEntitlement('restaurant_table_service'));
 
@@ -58,7 +60,6 @@ export function createTablesRouter(db: Database): Router {
         });
       }
 
-      const listTables = new ListTables(tableRepository);
       const result = await listTables.execute({
         tenantId,
         status: parsedQuery.data.status,
@@ -86,7 +87,7 @@ export function createTablesRouter(db: Database): Router {
 
       const { tableNumber, tableName, floor, capacity } = parsedBody.data;
 
-      const newTable = await tableRepository.create({
+      const newTable = await tableCommands.create({
         tenantId,
         tableNumber,
         tableName,
@@ -121,7 +122,7 @@ export function createTablesRouter(db: Database): Router {
 
       const { status, currentOrderId } = parsedBody.data;
 
-      const existingTable = await tableRepository.findById(id, tenantId);
+      const existingTable = await tableCommands.findById(id, tenantId);
       if (!existingTable || (req.outletId && existingTable.outletId !== req.outletId)) {
         return res.status(404).json({
           success: false,
@@ -130,7 +131,7 @@ export function createTablesRouter(db: Database): Router {
       }
 
       if (currentOrderId) {
-        const order = await orderRepository.findById(currentOrderId, tenantId);
+        const order = await seatingOrderQueries.findById(currentOrderId, tenantId);
         if (!order || (req.outletId && order.outletId !== req.outletId)) {
           return res.status(400).json({
             success: false,
@@ -139,7 +140,6 @@ export function createTablesRouter(db: Database): Router {
         }
       }
 
-      const updateTableStatus = new UpdateTableStatus(tableRepository);
       const updated = await updateTableStatus.execute({
         tenantId,
         tableId: id,

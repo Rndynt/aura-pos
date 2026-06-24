@@ -9,12 +9,15 @@ import { registerReadinessRoutes } from './readiness';
 import { mountApiRoutes, mountWebRoutes } from './routes';
 import { runStartupChecks } from './startupChecks';
 import { handleBootMigrationPolicy } from './migrations';
+import { createAppContainer } from '../composition/createAppContainer';
+import { startBootstrapJobs } from './jobs';
 
 export async function createApiApp(config: ApiConfig) {
   runStartupChecks(config);
   await handleBootMigrationPolicy(config);
 
   const app = express();
+  const container = createAppContainer();
 
   app.use(compression({ threshold: 1024, level: 6 }) as unknown as RequestHandler);
   app.set('trust proxy', config.trustProxy);
@@ -43,7 +46,8 @@ export async function createApiApp(config: ApiConfig) {
     next();
   });
 
-  const server = await mountApiRoutes(app);
+  const server = await mountApiRoutes({ app, container, config });
+  startBootstrapJobs();
   app.use(createErrorHandlingMiddleware());
   await mountWebRoutes(app, server);
 
