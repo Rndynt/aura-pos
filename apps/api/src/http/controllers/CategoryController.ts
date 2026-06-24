@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { db } from '@pos/infrastructure/database';
-import { productCategories, products } from '@pos/infrastructure/db/schema';
+import { db, productCategories, products } from '../../composition/modules/httpDatabaseBoundaryModule';
 import { and, eq, asc, sql } from 'drizzle-orm';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 

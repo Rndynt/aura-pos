@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import { db } from '@pos/infrastructure/database';
-import { outlets, userOutletAssignments, insertOutletSchema, outletProductConfigs } from '@pos/infrastructure/db/schema';
+import { db, outlets, userOutletAssignments, insertOutletSchema, outletProductConfigs } from '../../composition/modules/httpDatabaseBoundaryModule';
 import { eq, and, count, inArray } from 'drizzle-orm';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { z } from 'zod';

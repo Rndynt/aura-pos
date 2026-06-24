@@ -256,7 +256,25 @@ function checkApi(relPath: string, specifiers: string[]): Violation[] {
     const isFrontendApp =
       matchesPattern(spec, 'apps/pos-terminal-web') ||
       spec.includes('/apps/pos-terminal-web');
-    if (!isFrontendApp) return [];
+    const isHttpInfraDatabaseImport =
+      relPath.startsWith('apps/api/src/http/') &&
+      (matchesPattern(spec, '@pos/infrastructure/database') ||
+        matchesPattern(spec, '@pos/infrastructure/db/schema'));
+    if (!isFrontendApp && !isHttpInfraDatabaseImport) return [];
+
+    if (isHttpInfraDatabaseImport) {
+      return [{
+        rule: 'Rule 4 — API HTTP database boundary',
+        file: relPath,
+        importSpecifier: spec,
+        reason:
+          `apps/api/src/http must not import database or schema modules directly. ` +
+          `'${spec}' bypasses the composition/application boundary.`,
+        suggestedFix:
+          `Inject a use case, repository-backed handler, or bounded-context dependency ` +
+          `from apps/api/src/composition instead of importing @pos/infrastructure from HTTP code.`,
+      }];
+    }
 
     return [{
       rule: 'Rule 4 — API app role',

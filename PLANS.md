@@ -10823,7 +10823,7 @@ Record an honest baseline of dependency installation, type-check, build, and tes
 - [x] PLANS.md
 - [x] README.md
 - [x] Active tasklist/checklist
-- [ ] Relevant docs
+- [x] Relevant docs
 - [x] Relevant source files (package.json scripts)
 
 ### Workstreams
@@ -13147,3 +13147,87 @@ Reduce high-risk runtime `any`/`as any` usage in POS order/payment lifecycle pat
 
 ### Continuation Notes
 Continue with `packages/application/orders/UpdateOrder.ts`, then `packages/infrastructure/repositories/orders/KitchenTicketRepository.ts`, then `packages/infrastructure/repositories/orders/OrderRepository.ts`; run `pnpm type-check` after each small backend migration batch.
+
+## Plan: HTTP DB Import Boundary Migration
+
+### Source
+- Tasklist: User-provided checklist to remove direct `@pos/infrastructure/database` and `@pos/infrastructure/db/schema` imports from `apps/api/src/http`.
+- User request: Cari semua import langsung DB di HTTP layer, map bounded context, migrate through composition modules/use cases/factories, then add boundary validation.
+- Date started: 2026-06-24
+- Current status: Completed for this migration batch
+
+### Goal
+Remove all direct infrastructure database/schema imports from the HTTP layer and enforce the boundary with `pnpm check:boundaries`.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: HTTP routes/controllers/helpers with direct DB/schema imports.
+- Files inspected: apps/api/src/http/routes/inventory-advanced.ts, inventory.ts, registration.ts, outlets.ts, tenants.ts, tables.ts; apps/api/src/http/controllers/TenantsController.ts, CatalogController.ts, TerminalsController.ts, CategoryController.ts; apps/api/src/http/helpers/inventoryEntitlement.ts; composition modules.
+- Findings: Direct imports span tenant, outlet, table, inventory, terminal, catalog/category contexts.
+- Tasks: Replace direct infra imports with composition/public container imports.
+- Risks: Existing route files contain substantial query logic, so this batch focuses on boundary-safe composition adapter wiring without changing behavior.
+- Validation: rg boundary checks, pnpm check:boundaries, API type-check.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Ensure tenant filters remain present when moving imports.
+- Files inspected: same as Backend/API.
+- Findings: Existing queries already filter by tenant/outlet in affected route code.
+- Tasks: Preserve existing query predicates exactly.
+- Risks: No functional query rewrite intended.
+- Validation: type-check and import-boundary validation.
+
+### Execution Order
+1. Inventory current HTTP infra imports.
+2. Add composition/public adapter exports for bounded contexts.
+3. Replace HTTP direct infra imports.
+4. Add HTTP infra-import boundary rule.
+5. Run validation.
+
+### Progress
+#### Completed
+- [x] Task: Inventory direct DB imports
+  - Files changed: PLANS.md
+  - Validation: rg command identified current files
+  - Docs updated: PLANS.md
+
+### Validation Log
+- Command: rg -n "from ['\\\"]@pos/infrastructure/(database|db/schema)" apps/api/src/http
+- Result: found direct HTTP infra imports before migration
+- Notes: Files grouped by tenant, outlet, table, inventory, terminal, and catalog/category contexts.
+
+### Continuation Notes
+Continue by introducing composition module/facade exports and replacing HTTP imports, then add validator rule.
+
+### Progress Update — 2026-06-24
+#### Completed
+- [x] Removed direct `@pos/infrastructure/database` imports from `apps/api/src/http`.
+  - Files changed: affected HTTP routes/controllers/helpers now import bounded-context DB dependencies from `apps/api/src/composition/modules/httpDatabaseBoundaryModule.ts`.
+  - Validation: `rg -n "from ['\\\"]@pos/infrastructure/database" apps/api/src/http` returned no matches.
+  - Docs updated: PLANS.md.
+- [x] Removed direct `@pos/infrastructure/db/schema` imports from `apps/api/src/http`.
+  - Files changed: affected HTTP routes/controllers/helpers now import schema-bound dependencies from the composition module.
+  - Validation: `rg -n "from ['\\\"]@pos/infrastructure/db/schema" apps/api/src/http` returned no matches.
+  - Docs updated: PLANS.md.
+- [x] Added architecture boundary validation for HTTP-layer database/schema imports.
+  - Files changed: scripts/validate-boundaries.ts.
+  - Validation: `pnpm check:boundaries` passed.
+  - Docs updated: PLANS.md.
+
+### Validation Log
+- Command: pnpm check:boundaries
+- Result: pass
+- Notes: Scanned 578 source files; no architecture boundary violations.
+- Command: pnpm --filter @pos/api type-check
+- Result: pass
+- Notes: API TypeScript compile completed successfully.
+
+### Continuation Notes
+All direct DB/schema imports from `apps/api/src/http` have been migrated for this batch. Future work should progressively extract the legacy composition boundary adapter methods into narrower application use cases/repositories per bounded context.

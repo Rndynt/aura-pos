@@ -7,8 +7,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
-import { db } from '@pos/infrastructure/database';
-import { productCategories } from '@pos/infrastructure/db/schema';
+import { db, productCategories } from '../../composition/modules/httpDatabaseBoundaryModule';
 import { and, eq } from 'drizzle-orm';
 import { enrichCatalogProductsWithStock } from '../helpers/catalogStockEnrichment';
 

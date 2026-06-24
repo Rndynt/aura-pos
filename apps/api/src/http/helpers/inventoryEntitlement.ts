@@ -1,6 +1,6 @@
 import { requireEntitlement as requireCatalogEntitlement, type EntitlementCode } from '@pos/application/entitlements';
 import { loadTenantEntitlementContext } from '../../services/tenantEntitlements';
-import { db } from '@pos/infrastructure/database';
+import { db } from '../../composition/modules/httpDatabaseBoundaryModule';
 import { createError } from '../middleware/errorHandler';
 
 type EntitlementDatabase = { select: (...args: any[]) => any };

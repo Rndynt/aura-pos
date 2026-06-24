@@ -5,8 +5,7 @@
 
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import { db } from '@pos/infrastructure/database';
-import { tenants } from '@pos/infrastructure/db/schema';
+import { db, tenants } from '../../composition/modules/httpDatabaseBoundaryModule';
 import { eq } from 'drizzle-orm';
 import {
   registerTenantOwner,
