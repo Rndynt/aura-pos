@@ -24,7 +24,9 @@
     "./db/schema/*": "./db/schema/*.ts",
     "./repositories/terminals/*": "./repositories/terminals/*.ts",
     "./repositories/tenant-context": "./repositories/tenant-context/index.ts",
-    "./repositories/tenant-context/*": "./repositories/tenant-context/*.ts"
+    "./repositories/tenant-context/*": "./repositories/tenant-context/*.ts",
+    "./repositories/kds": "./repositories/kds/index.ts",
+    "./repositories/kds/*": "./repositories/kds/*.ts"
   },
   "scripts": {
     "type-check": "tsc -p tsconfig.json --noEmit"

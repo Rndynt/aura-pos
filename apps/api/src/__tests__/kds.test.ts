@@ -1,8 +1,10 @@
 import '../../register-paths';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 import http from 'node:http';
 import express, { type Request, type Response } from 'express';
+import type { KdsDeviceRow, KdsRepositoryPort } from '@pos/application/kds';
 
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL ||= 'postgres://user:pass@127.0.0.1:5432/aurapos_test';
@@ -10,17 +12,29 @@ process.env.BETTER_AUTH_SECRET ||= 'test-secret-with-at-least-32-characters';
 
 const { createKdsRouter } = await import('../http/routes/kds');
 
-async function request(app: express.Express, path: string, body: unknown, method = 'PATCH') {
+function hashKey(key: string): string {
+  return createHash('sha256').update(key, 'utf8').digest('hex');
+}
+
+async function request(
+  app: express.Express,
+  path: string,
+  body?: unknown,
+  method = 'PATCH',
+  kdsKey: string | null = 'valid-kds-key',
+) {
   const server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const address = server.address();
   assert(address && typeof address === 'object');
 
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (kdsKey) headers['X-KDS-Key'] = kdsKey;
     const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json', 'X-KDS-Key': 'valid-kds-key' },
-      body: JSON.stringify(body),
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
     const responseBody = await response.json().catch(() => null);
     return { status: response.status, body: responseBody };
@@ -29,39 +43,109 @@ async function request(app: express.Express, path: string, body: unknown, method
   }
 }
 
-describe('KDS order status route', () => {
+function createRepository(options: {
+  device?: KdsDeviceRow | null;
+  validKey?: string;
+  orderMatchesOutlet?: boolean;
+} = {}): KdsRepositoryPort {
+  const validHash = hashKey(options.validKey ?? 'valid-kds-key');
+  const device = options.device === undefined
+    ? { id: 'device-1', tenantId: 'tenant-1', deviceName: 'Kitchen KDS', outletId: null, status: 'active' }
+    : options.device;
 
-  async function buildApp() {
-    let delegateCalled = false;
-    const app = express();
-    app.use(express.json());
-    app.use('/api/kds', await createKdsRouter({
-      authDependencies: {
-        auth: { api: { getSession: async () => null } },
-        authDb: { execute: async () => [] },
-      } as any,
-      ordersController: {
-        listOrders: (_req: Request, res: Response) => res.status(200).json({ success: true }),
-        updateOrderStatus: (req: Request, res: Response) => {
-          delegateCalled = true;
-          res.status(200).json({
-            success: true,
-            mode: req.query.mode,
-            tenantId: req.tenantId,
-          });
-        },
-      } as any,
-      requireKdsKey: async () => ({
-        deviceId: 'device-1',
-        tenantId: 'tenant-1',
-        deviceName: 'Kitchen KDS',
-        outletId: null,
+  return {
+    findSessionTenantByUserId: async () => ({ tenantId: 'tenant-1' }),
+    findDeviceByApiKeyHash: async (apiKeyHash) => (apiKeyHash === validHash ? device : null),
+    touchDeviceLastSeen: async () => {},
+    orderBelongsToOutlet: async () => options.orderMatchesOutlet ?? true,
+    createActivation: async () => {},
+    listDevicesByTenant: async () => [],
+    revokeDevice: async () => {},
+    pendingActivationExists: async () => false,
+    registerActivationFailure: async () => null,
+    activateDevice: async () => null,
+  };
+}
+
+async function buildApp(options: {
+  repository?: KdsRepositoryPort;
+  validateOrderOutlet?: (input: { orderId: string; tenantId: string; outletId: string }) => Promise<boolean>;
+} = {}) {
+  let delegateCalled = false;
+  const app = express();
+  app.use(express.json());
+  app.use('/api/kds', await createKdsRouter({
+    authDependencies: {
+      auth: { api: { getSession: async () => null } },
+      authDb: { execute: async () => [] },
+    } as any,
+    ordersController: {
+      listOrders: (req: Request, res: Response) => {
+        delegateCalled = true;
+        res.status(200).json({ success: true, tenantId: req.tenantId, outletId: req.outletId });
+      },
+      updateOrderStatus: (req: Request, res: Response) => {
+        delegateCalled = true;
+        res.status(200).json({
+          success: true,
+          mode: req.query.mode,
+          tenantId: req.tenantId,
+          outletId: req.outletId,
+        });
+      },
+    } as any,
+    kdsRepository: options.repository ?? createRepository(),
+    validateOrderOutlet: options.validateOrderOutlet,
+  }));
+
+  return { app, wasDelegateCalled: () => delegateCalled };
+}
+
+describe('KDS device authentication', () => {
+  it('rejects missing X-KDS-Key', async () => {
+    const { app, wasDelegateCalled } = await buildApp();
+    const response = await request(app, '/api/kds/orders', undefined, 'GET', null);
+
+    assert.equal(response.status, 401);
+    assert.equal(response.body?.success, false);
+    assert.equal(response.body?.error, 'Missing X-KDS-Key header');
+    assert.equal(wasDelegateCalled(), false);
+  });
+
+  it('rejects invalid key', async () => {
+    const { app, wasDelegateCalled } = await buildApp();
+    const response = await request(app, '/api/kds/orders', undefined, 'GET', 'wrong-key');
+
+    assert.equal(response.status, 401);
+    assert.equal(response.body?.success, false);
+    assert.equal(wasDelegateCalled(), false);
+  });
+
+  it('rejects inactive device', async () => {
+    const { app, wasDelegateCalled } = await buildApp({ repository: createRepository({ device: null }) });
+    const response = await request(app, '/api/kds/orders', undefined, 'GET');
+
+    assert.equal(response.status, 401);
+    assert.equal(response.body?.success, false);
+    assert.equal(wasDelegateCalled(), false);
+  });
+
+  it('accepts valid device with outlet and applies outlet context', async () => {
+    const { app, wasDelegateCalled } = await buildApp({
+      repository: createRepository({
+        device: { id: 'device-1', tenantId: 'tenant-1', deviceName: 'Kitchen KDS', outletId: 'outlet-1', status: 'active' },
       }),
-    }));
+    });
+    const response = await request(app, '/api/kds/orders', undefined, 'GET');
 
-    return { app, wasDelegateCalled: () => delegateCalled };
-  }
+    assert.equal(response.status, 200);
+    assert.equal(response.body?.tenantId, 'tenant-1');
+    assert.equal(response.body?.outletId, 'outlet-1');
+    assert.equal(wasDelegateCalled(), true);
+  });
+});
 
+describe('KDS order status route', () => {
   for (const status of ['completed', 'cancelled']) {
     it(`rejects ${status} updates before delegating to OrdersController`, async () => {
       const { app, wasDelegateCalled } = await buildApp();
@@ -82,5 +166,20 @@ describe('KDS order status route', () => {
     assert.equal(response.body?.mode, 'kitchen');
     assert.equal(response.body?.tenantId, 'tenant-1');
     assert.equal(wasDelegateCalled(), true);
+  });
+
+  it('denies cross-outlet order validation before delegating', async () => {
+    const { app, wasDelegateCalled } = await buildApp({
+      repository: createRepository({
+        device: { id: 'device-1', tenantId: 'tenant-1', deviceName: 'Kitchen KDS', outletId: 'outlet-1', status: 'active' },
+        orderMatchesOutlet: false,
+      }),
+    });
+    const response = await request(app, '/api/kds/orders/order-other-outlet/status', { status: 'ready' });
+
+    assert.equal(response.status, 404);
+    assert.equal(response.body?.success, false);
+    assert.equal(response.body?.code, 'ORDER_NOT_FOUND');
+    assert.equal(wasDelegateCalled(), false);
   });
 });

@@ -13936,3 +13936,88 @@ Next safest hardening batch: split the broad `HttpRouteQueries` port into smalle
 
 ### Continuation Notes
 If validation fails, continue by fixing failures directly related to registration slug availability wiring or tests; document unrelated failures separately.
+
+## Plan: KDS typed service/use case extraction
+
+### Source
+- Tasklist: User-provided KDS service/repository/test checklist
+- User request: Implement typed KDS use cases, repository port/adapter, route refactor, and auth/outlet tests
+- Date started: 2026-06-24
+- Current status: Implemented and validation attempted
+
+### Goal
+Move KDS tenant/device/outlet resolution SQL out of the Express route into typed application use cases and an infrastructure repository while preserving tenant/outlet isolation behavior.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (user prompt)
+- [x] Relevant docs (ORDER_LIFECYCLE references surfaced by search; no API behavior doc required for internal refactor)
+- [x] Relevant source files (`apps/api/src/http/routes/kds.ts`, `apps/api/src/__tests__/kds.test.ts`, KDS schema/package exports)
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: `apps/api/src/http/routes/kds.ts`
+- Files inspected: KDS route and existing KDS tests
+- Findings: Route contained direct Drizzle `sql` queries and `any[]` row casts for session/device/outlet resolution.
+- Tasks: Route now delegates KDS tenant/device/touch/outlet checks to typed use cases and repository dependency.
+- Risks: Pairing/admin KDS operations were also moved behind repository methods to fully remove route SQL import.
+- Validation: `pnpm --filter @pos/api test:file src/__tests__/kds.test.ts`
+
+#### Database/Schema Workstream
+- Scope: KDS raw SQL adapter
+- Files inspected: `packages/infrastructure/db/schema/kds.schema.ts`, auth DB usage
+- Findings: KDS table is managed through migrations/raw SQL; no full Drizzle table exists for `kds_devices`.
+- Tasks: Added `DrizzleKdsRepository` using raw SQL with typed row DTOs.
+- Risks: No schema migration required.
+- Validation: API KDS tests exercise injected repository behavior; type-check attempted.
+
+#### Tests/Validation Workstream
+- Scope: KDS auth and outlet validation tests
+- Files inspected: `apps/api/src/__tests__/kds.test.ts`
+- Findings: Existing tests bypassed real KDS key resolution through a `requireKdsKey` stub.
+- Tasks: Tests now inject a typed fake repository and cover missing key, invalid key, inactive device, valid outlet device, and cross-outlet denial.
+- Risks: No remaining KDS-specific validation risk found in this batch.
+- Validation: Targeted KDS test file passes.
+
+### Progress
+#### Completed
+- [x] Add typed KDS use cases and repository port.
+  - Files changed: `packages/application/kds/*`, `packages/application/package.json`
+  - Validation: Targeted API KDS tests pass; package type-check attempted.
+  - Docs updated: `PLANS.md`
+- [x] Add Drizzle/raw SQL infrastructure adapter with typed row DTOs.
+  - Files changed: `packages/infrastructure/repositories/kds/*`, `packages/infrastructure/package.json`
+  - Validation: Targeted API KDS tests pass; package type-check attempted.
+  - Docs updated: `PLANS.md`
+- [x] Refactor KDS route to remove direct `sql` import and call service/repository dependencies.
+  - Files changed: `apps/api/src/http/routes/kds.ts`
+  - Validation: Targeted API KDS tests pass.
+  - Docs updated: `PLANS.md`
+- [x] Add KDS key/outlet isolation tests.
+  - Files changed: `apps/api/src/__tests__/kds.test.ts`
+  - Validation: Targeted API KDS tests pass.
+  - Docs updated: `PLANS.md`
+
+### Validation Log
+- Command: pnpm --filter @pos/api test:file src/__tests__/kds.test.ts
+- Result: pass
+- Notes: Targeted KDS route tests passed.
+- Command: pnpm --filter @pos/api type-check
+- Result: pass
+- Notes: API type-check passed.
+- Command: pnpm --filter @pos/application type-check && pnpm --filter @pos/infrastructure type-check
+- Result: pass
+- Notes: Application and infrastructure package type-checks passed.
+
+### Documentation Updates
+- File: PLANS.md
+- Change: Added this execution plan and status.
+
+### Checklist Updates
+- File: User prompt tasklist (no repository checklist file provided)
+- Change: All requested bullets implemented in code and targeted tests.
+
+### Continuation Notes
+Next safest continuation is broader integration coverage for the KDS pairing/admin endpoints if deeper regression protection is needed.

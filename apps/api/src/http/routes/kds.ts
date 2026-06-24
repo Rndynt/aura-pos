@@ -7,9 +7,11 @@ import { createHash, randomInt } from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { sql } from 'drizzle-orm';
 import { fromNodeHeaders } from 'better-auth/node';
 import { nanoid } from 'nanoid';
+import { ResolveKdsDeviceByApiKey, ResolveKdsSessionTenant, TouchKdsDeviceLastSeen, ValidateKdsOrderOutlet } from '@pos/application/kds';
+import type { KdsRepositoryPort } from '@pos/application/kds';
+import { DrizzleKdsRepository } from '@pos/infrastructure/repositories/kds';
 
 export const KDS_ALLOWED_STATUSES = ['confirmed', 'preparing', 'ready', 'served'] as const;
 type KdsAllowedStatus = (typeof KDS_ALLOWED_STATUSES)[number];
@@ -49,6 +51,7 @@ type KdsAuthDependencies = {
 
 type KdsRouterDependencies = {
   authDependencies?: KdsAuthDependencies;
+  kdsRepository?: KdsRepositoryPort;
   ordersController?: typeof import('../controllers/OrdersController');
   requireKdsKey?: (req: Request, res: Response) => Promise<KdsDeviceContext | null>;
   listOrders?: KdsHandler;
@@ -66,6 +69,7 @@ async function requireSession(
   req: Request,
   res: Response,
   authDependencies: KdsAuthDependencies,
+  resolveSessionTenant: ResolveKdsSessionTenant,
 ): Promise<{ userId: string; tenantId: string } | null> {
   try {
     const session = await authDependencies.auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
@@ -73,10 +77,7 @@ async function requireSession(
       res.status(401).json({ success: false, error: 'Unauthenticated' });
       return null;
     }
-    const rows = await authDependencies.authDb.execute(
-      sql`SELECT tenant_id FROM "user" WHERE id = ${session.user.id} LIMIT 1`,
-    );
-    const tenantId = (rows as any[])[0]?.tenant_id ?? null;
+    const tenantId = await resolveSessionTenant.execute(session.user.id);
     if (!tenantId) {
       res.status(403).json({ success: false, error: 'Akun tidak terkait dengan tenant manapun' });
       return null;
@@ -92,7 +93,8 @@ async function requireSession(
 async function requireKdsKey(
   req: Request,
   res: Response,
-  authDependencies: KdsAuthDependencies,
+  resolveDeviceByApiKey: ResolveKdsDeviceByApiKey,
+  touchDeviceLastSeen: TouchKdsDeviceLastSeen,
 ): Promise<KdsDeviceContext | null> {
   const headerValue = req.headers['x-kds-key'];
   const apiKey = Array.isArray(headerValue) ? headerValue[0] : headerValue;
@@ -101,49 +103,23 @@ async function requireKdsKey(
     return null;
   }
   try {
-    const apiKeyHash = hashKdsApiKey(apiKey);
-    const rows = await authDependencies.authDb.execute(
-      sql`SELECT id, tenant_id, device_name, outlet_id
-          FROM kds_devices
-          WHERE api_key = ${apiKeyHash} AND status = 'active'
-          LIMIT 1`,
-    );
-    const device = (rows as any[])[0];
+    const device = await resolveDeviceByApiKey.execute(hashKdsApiKey(apiKey));
     if (!device) {
       res.status(401).json({ success: false, error: 'Perangkat KDS tidak valid atau tidak aktif' });
       return null;
     }
-    // Update last_seen_at in background — don't await
-    authDependencies.authDb
-      .execute(sql`UPDATE kds_devices SET last_seen_at = now() WHERE id = ${device.id}`)
-      .catch(() => {});
+    touchDeviceLastSeen.execute(device.id).catch(() => {});
     return {
       deviceId: device.id,
-      tenantId: device.tenant_id,
-      deviceName: device.device_name ?? 'KDS',
-      outletId: device.outlet_id ?? null,
+      tenantId: device.tenantId,
+      deviceName: device.deviceName ?? 'KDS',
+      outletId: device.outletId ?? null,
     };
   } catch (err) {
     console.error('[kds requireKdsKey]', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
     return null;
   }
-}
-
-async function validateOrderOutlet(
-  input: { orderId: string; tenantId: string; outletId: string },
-  authDependencies: KdsAuthDependencies,
-): Promise<boolean> {
-  const rows = await authDependencies.authDb.execute(sql`
-    SELECT id
-    FROM orders
-    WHERE id = ${input.orderId}
-      AND tenant_id = ${input.tenantId}
-      AND outlet_id = ${input.outletId}
-    LIMIT 1
-  `);
-
-  return (rows as any[]).length > 0;
 }
 
 function applyKdsDeviceContext(req: Request, device: KdsDeviceContext): void {
@@ -166,27 +142,6 @@ function hashKdsApiKey(apiKey: string): string {
   return createHash('sha256').update(apiKey, 'utf8').digest('hex');
 }
 
-async function registerKdsActivationFailure(
-  authDependencies: KdsAuthDependencies,
-  code: string,
-): Promise<{ lockedUntil: string | null } | null> {
-  const rows = await authDependencies.authDb.execute(sql`
-    UPDATE kds_devices
-    SET activation_attempts = COALESCE(activation_attempts, 0) + 1,
-        activation_locked_until = CASE
-          WHEN COALESCE(activation_attempts, 0) + 1 >= ${KDS_MAX_ACTIVATION_ATTEMPTS}
-            THEN now() + (${KDS_ACTIVATION_LOCKOUT_MINUTES} * interval '1 minute')
-          ELSE activation_locked_until
-        END
-    WHERE activation_code = ${code}
-      AND status = 'pending'
-      AND activation_expires_at > now()
-    RETURNING activation_locked_until
-  `);
-
-  const row = (rows as any[])[0];
-  return row ? { lockedUntil: row.activation_locked_until ?? null } : null;
-}
 
 export async function createKdsRouter(dependencies: KdsRouterDependencies = {}): Promise<Router> {
   const router = Router();
@@ -194,30 +149,31 @@ export async function createKdsRouter(dependencies: KdsRouterDependencies = {}):
     dependencies.authDependencies ? Promise.resolve(dependencies.authDependencies) : import('../../lib/auth'),
     dependencies.ordersController ? Promise.resolve(dependencies.ordersController) : import('../controllers/OrdersController'),
   ]);
+  const kdsRepository = dependencies.kdsRepository ?? new DrizzleKdsRepository(authDependencies.authDb);
+  const resolveSessionTenant = new ResolveKdsSessionTenant(kdsRepository);
+  const resolveDeviceByApiKey = new ResolveKdsDeviceByApiKey(kdsRepository);
+  const touchDeviceLastSeen = new TouchKdsDeviceLastSeen(kdsRepository);
+  const validateKdsOrderOutlet = new ValidateKdsOrderOutlet(kdsRepository);
   const requireKdsDevice = dependencies.requireKdsKey
-    ?? ((req: Request, res: Response) => requireKdsKey(req, res, authDependencies));
+    ?? ((req: Request, res: Response) => requireKdsKey(req, res, resolveDeviceByApiKey, touchDeviceLastSeen));
   const listOrdersHandler = dependencies.listOrders ?? ordersController.listOrders;
   const updateOrderStatusHandler = dependencies.updateOrderStatus ?? ordersController.updateOrderStatus;
   const validateOrderOutletHandler = dependencies.validateOrderOutlet
-    ?? ((input: { orderId: string; tenantId: string; outletId: string }) => validateOrderOutlet(input, authDependencies));
+    ?? ((input: { orderId: string; tenantId: string; outletId: string }) => validateKdsOrderOutlet.execute(input));
 
 // ─── Admin endpoints (require Better Auth session) ────────────────────────────
 
 /** POST /api/kds/generate-code — generate 6-digit activation code */
 router.post('/generate-code', async (req, res) => {
   try {
-    const session = await requireSession(req, res, authDependencies);
+    const session = await requireSession(req, res, authDependencies, resolveSessionTenant);
     if (!session) return;
 
     const code = generateActivationCode();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-    const expiresAtIso = expiresAt.toISOString();
     const deviceId = nanoid();
 
-    await authDependencies.authDb.execute(sql`
-      INSERT INTO kds_devices (id, tenant_id, activation_code, activation_expires_at, status, created_at)
-      VALUES (${deviceId}, ${session.tenantId}, ${code}, ${expiresAtIso}, 'pending', now())
-    `);
+    await kdsRepository.createActivation({ id: deviceId, tenantId: session.tenantId, activationCode: code, activationExpiresAt: expiresAt });
 
     res.json({ success: true, data: { code, expiresAt, deviceId } });
   } catch (err) {
@@ -229,18 +185,12 @@ router.post('/generate-code', async (req, res) => {
 /** GET /api/kds/devices — list active/pending devices for tenant */
 router.get('/devices', async (req, res) => {
   try {
-    const session = await requireSession(req, res, authDependencies);
+    const session = await requireSession(req, res, authDependencies, resolveSessionTenant);
     if (!session) return;
 
-    const rows = await authDependencies.authDb.execute(sql`
-      SELECT id, device_name, status, created_at, activated_at, last_seen_at,
-             activation_code, activation_expires_at
-      FROM kds_devices
-      WHERE tenant_id = ${session.tenantId} AND status != 'revoked'
-      ORDER BY created_at DESC
-    `);
+    const devices = await kdsRepository.listDevicesByTenant(session.tenantId);
 
-    res.json({ success: true, data: { devices: rows } });
+    res.json({ success: true, data: { devices } });
   } catch (err) {
     console.error('[kds/devices GET]', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
@@ -250,14 +200,10 @@ router.get('/devices', async (req, res) => {
 /** DELETE /api/kds/devices/:id — revoke a device */
 router.delete('/devices/:id', async (req, res) => {
   try {
-    const session = await requireSession(req, res, authDependencies);
+    const session = await requireSession(req, res, authDependencies, resolveSessionTenant);
     if (!session) return;
 
-    await authDependencies.authDb.execute(sql`
-      UPDATE kds_devices
-      SET status = 'revoked', api_key = null
-      WHERE id = ${req.params.id} AND tenant_id = ${session.tenantId}
-    `);
+    await kdsRepository.revokeDevice({ deviceId: req.params.id, tenantId: session.tenantId });
 
     res.json({ success: true });
   } catch (err) {
@@ -276,17 +222,10 @@ router.post('/check-code', kdsPairingLimiter, async (req, res) => {
       return res.status(400).json({ success: false, error: `Kode harus ${KDS_ACTIVATION_CODE_LENGTH} digit angka` });
     }
 
-    const rows = await authDependencies.authDb.execute(sql`
-      SELECT id FROM kds_devices
-      WHERE activation_code = ${rawCode}
-        AND status = 'pending'
-        AND activation_expires_at > now()
-        AND (activation_locked_until IS NULL OR activation_locked_until <= now())
-      LIMIT 1
-    `);
+    const exists = await kdsRepository.pendingActivationExists(rawCode);
 
-    if (!(rows as any[]).length) {
-      const failure = await registerKdsActivationFailure(authDependencies, rawCode);
+    if (!exists) {
+      const failure = await kdsRepository.registerActivationFailure(rawCode);
       if (failure?.lockedUntil) {
         return res.status(423).json({
           success: false,
@@ -322,25 +261,9 @@ router.post('/verify-code', kdsPairingLimiter, async (req, res) => {
     const apiKeyHash = hashKdsApiKey(apiKey);
     const name = deviceName.trim();
 
-    const rows = await authDependencies.authDb.execute(sql`
-      UPDATE kds_devices
-      SET api_key              = ${apiKeyHash},
-          device_name          = ${name},
-          status               = 'active',
-          activated_at         = now(),
-          activation_code      = null,
-          activation_expires_at = null,
-          activation_locked_until = null
-      WHERE activation_code = ${rawCode}
-        AND status = 'pending'
-        AND activation_expires_at > now()
-        AND (activation_locked_until IS NULL OR activation_locked_until <= now())
-      RETURNING id, tenant_id
-    `);
-
-    const device = (rows as any[])[0];
+    const device = await kdsRepository.activateDevice({ activationCode: rawCode, apiKeyHash, deviceName: name });
     if (!device) {
-      const failure = await registerKdsActivationFailure(authDependencies, rawCode);
+      const failure = await kdsRepository.registerActivationFailure(rawCode);
       if (failure?.lockedUntil) {
         return res.status(423).json({
           success: false,
@@ -359,7 +282,7 @@ router.post('/verify-code', kdsPairingLimiter, async (req, res) => {
         apiKey,
         deviceId: device.id,
         deviceName: name,
-        tenantId: device.tenant_id,
+        tenantId: device.tenantId,
       },
     });
   } catch (err) {

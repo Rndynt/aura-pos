@@ -43,7 +43,11 @@
     "./terminals/ports/*": "./terminals/ports/*.ts",
     "./tenant-context": "./tenant-context/index.ts",
     "./tenant-context/*": "./tenant-context/*.ts",
-    "./tenant-context/ports/*": "./tenant-context/ports/*.ts"
+    "./tenant-context/ports/*": "./tenant-context/ports/*.ts",
+    "./kds": "./kds/index.ts",
+    "./kds/*": "./kds/*.ts",
+    "./kds/ports": "./kds/ports/index.ts",
+    "./kds/ports/*": "./kds/ports/*.ts"
   },
   "scripts": {
     "type-check": "tsc -p tsconfig.json --noEmit",
