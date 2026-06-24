@@ -38,13 +38,25 @@ describe('API bootstrap CORS parsing', () => {
       PORT: '5050',
       NODE_ENV: 'production',
       BASE_DOMAIN: 'example.com',
-      EXTRA_TRUSTED_ORIGINS: 'https://admin.example.com, https://pos.example.com',
+      CORS_ALLOWED_ORIGINS: 'https://admin.example.com, https://pos.example.com',
+      EXTRA_TRUSTED_ORIGINS: 'https://legacy.example.com',
     });
 
     assert.equal(config.port, 5050);
     assert.equal(config.isProduction, true);
+    assert.deepEqual(config.corsAllowedOrigins, ['https://admin.example.com', 'https://pos.example.com']);
     assert.deepEqual(config.extraTrustedOrigins, ['https://admin.example.com', 'https://pos.example.com']);
     assert.equal(config.autoMigrateOnBoot, false);
+  });
+
+  it('falls back to deprecated EXTRA_TRUSTED_ORIGINS when CORS_ALLOWED_ORIGINS is unset', () => {
+    const config = loadApiConfig({
+      DATABASE_URL: 'postgres://user:pass@127.0.0.1:5432/db',
+      EXTRA_TRUSTED_ORIGINS: 'https://legacy.example.com',
+    });
+
+    assert.deepEqual(config.corsAllowedOrigins, ['https://legacy.example.com']);
+    assert.deepEqual(config.extraTrustedOrigins, ['https://legacy.example.com']);
   });
 
   it('keeps boot-time migrations disabled by default in production', () => {
@@ -91,7 +103,7 @@ describe('API bootstrap CORS parsing', () => {
     const config = {
       baseDomain: 'aurapos.my.id',
       isProduction: true,
-      extraTrustedOrigins: ['https://ops.example.com'],
+      corsAllowedOrigins: ['https://ops.example.com'],
     };
 
     assert.equal(isOriginAllowed('https://aurapos.my.id', config), true);
@@ -114,14 +126,37 @@ describe('API bootstrap CORS parsing', () => {
     assert.equal(isOriginAllowed('http://192.168.1.20:5173', {
       baseDomain: 'localhost',
       isProduction: false,
-      extraTrustedOrigins: [],
+      corsAllowedOrigins: [],
     }), true);
 
     assert.equal(isOriginAllowed('http://192.168.1.20:5173', {
       baseDomain: 'localhost',
       isProduction: true,
-      extraTrustedOrigins: [],
+      corsAllowedOrigins: [],
     }), false);
+  });
+
+  it('rejects empty and unknown origins', () => {
+    const config = {
+      baseDomain: 'aurapos.my.id',
+      isProduction: true,
+      corsAllowedOrigins: ['https://pos.example.com'],
+    };
+
+    assert.equal(isOriginAllowed('', config), false);
+    assert.equal(isOriginAllowed('https://unknown.example.com', config), false);
+  });
+
+  it('does not allow localhost or Replit helper origins in production unless explicitly allowlisted', () => {
+    const config = {
+      baseDomain: 'aurapos.my.id',
+      isProduction: true,
+      corsAllowedOrigins: ['https://pos.example.com'],
+    };
+
+    assert.equal(isOriginAllowed('http://localhost:5173', config), false);
+    assert.equal(isOriginAllowed('https://workspace.replit.dev', config), false);
+    assert.equal(isOriginAllowed('https://pos.example.com', config), true);
   });
 });
 

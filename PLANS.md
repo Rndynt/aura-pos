@@ -12146,3 +12146,69 @@ Review the architecture-production-hardening checklist against existing docs/sou
 
 ### Continuation Notes
 Next safest batch: implement P8.3/P9.2 outbox retry state bug with tests, or finish P2.2 CORS/env validation tests before broader controller/type refactors.
+
+## Plan: API CORS Allowed Origins Env Enforcement
+
+### Source
+- Tasklist: User-provided numbered CORS config tasks
+- User request: Use `CORS_ALLOWED_ORIGINS` as the primary API CORS allowlist, keep deprecated fallback, update docs/tests.
+- Date started: 2026-06-24
+- Current status: Implemented and validated
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] docs/ENVIRONMENT.md
+- [x] Relevant source files (`apps/api/src/bootstrap/env.ts`, `apps/api/src/bootstrap/cors.ts`, `apps/api/src/__tests__/bootstrap.test.ts`)
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: API bootstrap env and CORS middleware.
+- Files inspected: apps/api/src/bootstrap/env.ts, apps/api/src/bootstrap/cors.ts, apps/api/src/bootstrap/createApp.ts
+- Findings: CORS used `extraTrustedOrigins`; localhost/Replit exceptions were not development-gated.
+- Tasks: Add `corsAllowedOrigins`, use `CORS_ALLOWED_ORIGINS` first, keep deprecated fallback alias, gate dev helper origins to non-production.
+- Risks: Deployments relying only on localhost/Replit in production now must explicitly configure `CORS_ALLOWED_ORIGINS`.
+- Validation: `pnpm --filter @pos/api test:file src/__tests__/bootstrap.test.ts`, `pnpm --filter @pos/api type-check`.
+
+#### Documentation Workstream
+- Scope: Environment variable contract.
+- Files inspected: docs/ENVIRONMENT.md
+- Findings: `CORS_ALLOWED_ORIGINS` was documented as reserved/not enforced.
+- Tasks: Mark it as enforced and mark `EXTRA_TRUSTED_ORIGINS` deprecated fallback.
+- Risks: None.
+- Validation: Documentation reviewed with source changes.
+
+### Progress
+#### Completed
+- [x] `loadApiConfig()` now reads `CORS_ALLOWED_ORIGINS` first and falls back to deprecated `EXTRA_TRUSTED_ORIGINS`.
+  - Files changed: apps/api/src/bootstrap/env.ts
+  - Validation: API bootstrap unit test and type-check pass.
+  - Docs updated: docs/ENVIRONMENT.md
+- [x] CORS production allowlist now uses `config.corsAllowedOrigins`; development helper origins are gated to non-production.
+  - Files changed: apps/api/src/bootstrap/cors.ts
+  - Validation: API bootstrap unit test and type-check pass.
+  - Docs updated: docs/ENVIRONMENT.md
+- [x] Unit tests cover parsing, fallback, development helper origins, production allowed origin, empty origin, and unknown origin.
+  - Files changed: apps/api/src/__tests__/bootstrap.test.ts
+  - Validation: API bootstrap unit test pass.
+  - Docs updated: none.
+
+### Validation Log
+- Command: `pnpm --filter @pos/api test:file src/__tests__/bootstrap.test.ts`
+- Result: pass
+- Notes: Targeted API bootstrap tests passed.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: API TypeScript check passed.
+
+### Documentation Updates
+- File: docs/ENVIRONMENT.md
+- Change: Documented `CORS_ALLOWED_ORIGINS` as enforced primary CORS allowlist and `EXTRA_TRUSTED_ORIGINS` as deprecated fallback.
+
+### Checklist Updates
+- File: PLANS.md
+- Change: Added this execution plan with completed status.
+
+### Continuation Notes
+No remaining tasks from this CORS batch. Deployments should set `CORS_ALLOWED_ORIGINS` explicitly for production frontend domains.

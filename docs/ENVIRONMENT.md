@@ -30,7 +30,7 @@ Notes:
 | `REDIS_URL` | API/server | Optional for one-process dev | Required for multi-instance staging | Required for production | Used for distributed cache/pubsub. Local dev may omit it to use process-local fallback. |
 | `BETTER_AUTH_SECRET` | API/server secret | Required placeholder local secret | Required secret | Required secret | Must be a strong random value, at least 32 characters. Rotate per environment. |
 | `BETTER_AUTH_URL` | API/server | `http://localhost:5000` | Public staging API/auth URL | Public production API/auth URL | Base URL for better-auth trusted origin/callback behavior. |
-| `CORS_ALLOWED_ORIGINS` | API/server | Optional/local origins | Required | Required | Comma-separated browser origins allowed to call the API. **Reserved/not currently enforced by code**; current auth code also uses `EXTRA_TRUSTED_ORIGINS`. |
+| `CORS_ALLOWED_ORIGINS` | API/server | Optional/local origins | Required | Required | Primary comma-separated browser origins allowlist used by API CORS enforcement. |
 | `TRUST_PROXY` | API/server | Optional (`false`) | Required behind proxy | Required behind proxy | Set according to platform reverse proxy behavior. **Reserved/not currently enforced by code**. |
 | `LOG_LEVEL` | API/server | Optional (`debug`/`info`) | Recommended (`info`) | Recommended (`info`/`warn`) | Runtime log verbosity. **Reserved/not currently enforced by code**. |
 | `RATE_LIMIT_STORE` | API/server | Optional (`memory`) | Required (`redis`) when rate limiting is enabled | Required (`redis`) when rate limiting is enabled | Use Redis-backed rate limiting outside single-process dev. **Reserved/not currently enforced by code**. |
@@ -64,7 +64,7 @@ Recommended local behavior:
 - Run migrations explicitly with `pnpm db:migrate`. For disposable local development databases only, `API_AUTO_MIGRATE_ON_BOOT=true` can opt into boot-time migrations; do not rely on this in staging or production.
 - Omit `REDIS_URL` for simple one-process development unless you are testing distributed cache/pubsub behavior.
 - Use local placeholder secrets only. Never reuse local placeholders in staging or production.
-- Use `CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000` if/when CORS origin enforcement is wired to this variable.
+- Use `CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000` to explicitly allow local browser clients beyond the built-in development localhost exceptions.
 
 ## Staging
 
@@ -134,7 +134,7 @@ These variables are already referenced by the codebase or existing production do
 | `BASE_DOMAIN` | API/server | Main tenant subdomain base. Defaults to `aurapos.my.id`. |
 | `REPLIT_DEV_DOMAIN` | API/server | Development domain helper for Replit-like environments. |
 | `REPLIT_DOMAINS` | API/server | Additional trusted Replit origins. |
-| `EXTRA_TRUSTED_ORIGINS` | API/server | Current code-supported comma-separated extra trusted origins for auth/CORS-like trusted-origin handling. |
+| `EXTRA_TRUSTED_ORIGINS` | API/server | Deprecated fallback for CORS origins while deployments migrate to `CORS_ALLOWED_ORIGINS`; ignored when `CORS_ALLOWED_ORIGINS` is set. |
 | `ALLOW_TENANT_HEADER` | API/server | Allows non-production `x-tenant-id` fallback unless set to `false`; production requires service token. |
 | `TENANT_HEADER_SERVICE_TOKEN` | API/server secret | Service token needed for production tenant header fallback. |
 | `CACHE_REDIS_URL` | API/server | Redis fallback URL when `REDIS_URL` is unset. |

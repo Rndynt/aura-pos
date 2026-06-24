@@ -8,25 +8,27 @@ const LOCALHOST_ORIGINS = new Set([
   'http://localhost:3000',
 ]);
 
-export function isOriginAllowed(origin: string, config: Pick<ApiConfig, 'baseDomain' | 'isProduction' | 'extraTrustedOrigins'>): boolean {
+type CorsConfig = Pick<ApiConfig, 'baseDomain' | 'isProduction' | 'corsAllowedOrigins'>;
+
+export function isOriginAllowed(origin: string, config: CorsConfig): boolean {
   if (!origin) return false;
 
   const baseDomain = config.baseDomain;
-  const extraTrustedOrigins = config.extraTrustedOrigins ?? [];
-  const isLocalDev = !config.isProduction && (baseDomain === 'localhost' || baseDomain === '127.0.0.1');
+  const corsAllowedOrigins = config.corsAllowedOrigins ?? [];
+  const isDevelopment = !config.isProduction;
 
   return (
     origin.endsWith(`.${baseDomain}`) ||
     origin === `https://${baseDomain}` ||
-    LOCALHOST_ORIGINS.has(origin) ||
-    origin.endsWith('.replit.dev') ||
-    origin.endsWith('.repl.co') ||
-    extraTrustedOrigins.includes(origin) ||
-    (isLocalDev && LAN_ORIGIN_RE.test(origin))
+    corsAllowedOrigins.includes(origin) ||
+    (isDevelopment && LOCALHOST_ORIGINS.has(origin)) ||
+    (isDevelopment && origin.endsWith('.replit.dev')) ||
+    (isDevelopment && origin.endsWith('.repl.co')) ||
+    (isDevelopment && LAN_ORIGIN_RE.test(origin))
   );
 }
 
-export function createCorsMiddleware(config: Pick<ApiConfig, 'baseDomain' | 'isProduction' | 'extraTrustedOrigins'>): RequestHandler {
+export function createCorsMiddleware(config: CorsConfig): RequestHandler {
   return (req, res, next) => {
     const origin = req.headers.origin || '';
 
