@@ -1,26 +1,22 @@
 import { ORDER_ACTION_IDS, type OrderActionId } from '@pos/domain/business-flows/businessFlowActions';
+import type { OrderLifecycleDto, OrderLifecycleDtoFields, OrderLifecycleKind, OrderLifecycleLockState } from '@pos/domain/orders';
+export type { OrderLifecycleDtoFields, OrderLifecycleKind, OrderLifecycleLockState } from '@pos/domain/orders';
 
-export type OrderLifecycleKind = 'server_draft' | 'active_order' | 'active_kitchen_order' | 'paid_completed' | 'cancelled' | 'unknown';
-export interface OrderLifecycleLockState { hasKitchenTicket?: boolean; hasFiredKitchenItems?: boolean; }
-export interface OrderLifecycleDtoFields {
-  isEditableDraft: boolean; isActiveOrder: boolean; isKitchenLocked: boolean; hasKitchenTicket: boolean; hasFiredKitchenItems: boolean;
-  allowedActions: OrderActionId[]; lifecycleKind: OrderLifecycleKind; lifecycleLabel: string;
-}
 const ACTIVE_STATUSES = new Set(['confirmed', 'preparing', 'ready', 'served']);
 const PAID_OR_CLOSED_PAYMENT_STATUSES = new Set(['paid', 'refunded', 'voided']);
 const ACTIVE_PAYMENT_STATUSES = new Set(['unpaid', 'partial']);
 const FIRED_ITEM_STATUSES = new Set(['preparing', 'ready', 'delivered']);
 const KITCHEN_FULFILLMENT_STATUSES = new Set(['pending', 'preparing', 'ready', 'served']);
 function normalize(value: unknown, fallback = ''): string { return String(value ?? fallback).toLowerCase(); }
-function readPaymentStatus(order: Record<string, any>): string { return normalize(order.paymentStatus ?? order.payment_status, 'unpaid'); }
-function hasFiredItemsFromOrder(order: Record<string, any>): boolean {
-  const items = Array.isArray(order.items) ? order.items : Array.isArray(order.orderItems) ? order.orderItems : [];
-  return items.some((item: any) => FIRED_ITEM_STATUSES.has(normalize(item?.status)));
+function readPaymentStatus(order: OrderLifecycleDto): string { return normalize(order.paymentStatus ?? order.payment_status, 'unpaid'); }
+function hasFiredItemsFromOrder(order: OrderLifecycleDto): boolean {
+  const items = order.items ?? order.orderItems ?? [];
+  return items.some((item) => FIRED_ITEM_STATUSES.has(normalize(item.status)));
 }
-function hasKitchenFulfillmentStarted(order: Record<string, any>): boolean {
+function hasKitchenFulfillmentStarted(order: OrderLifecycleDto): boolean {
   return KITCHEN_FULFILLMENT_STATUSES.has(normalize(order.fulfillmentStatus ?? order.fulfillment_status ?? order.kitchenStatus ?? order.kitchen_status));
 }
-export function getOrderLifecycleDtoFields(order: Record<string, any>, lockState: OrderLifecycleLockState = {}): OrderLifecycleDtoFields {
+export function getOrderLifecycleDtoFields(order: OrderLifecycleDto, lockState: OrderLifecycleLockState = {}): OrderLifecycleDtoFields {
   const status = normalize(order.status);
   const paymentStatus = readPaymentStatus(order);
   const hasKitchenTicket = lockState.hasKitchenTicket ?? order.hasKitchenTicket === true;
@@ -40,6 +36,6 @@ export function getOrderLifecycleDtoFields(order: Record<string, any>, lockState
   const labels: Record<OrderLifecycleKind, string> = { server_draft: 'Draft server', active_order: 'Tagihan aktif', active_kitchen_order: 'Pesanan aktif dapur', paid_completed: 'Lunas/selesai', cancelled: 'Dibatalkan', unknown: 'Status tidak dikenal' };
   return { isEditableDraft, isActiveOrder, isKitchenLocked, hasKitchenTicket, hasFiredKitchenItems, allowedActions, lifecycleKind, lifecycleLabel: labels[lifecycleKind] };
 }
-export function withOrderLifecycleDtoFields<T extends Record<string, any>>(order: T, lockState?: OrderLifecycleLockState): T & OrderLifecycleDtoFields {
+export function withOrderLifecycleDtoFields<T extends OrderLifecycleDto>(order: T, lockState?: OrderLifecycleLockState): T & OrderLifecycleDtoFields {
   return { ...order, ...getOrderLifecycleDtoFields(order, lockState) };
 }

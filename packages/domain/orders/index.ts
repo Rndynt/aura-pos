@@ -8,5 +8,8 @@ export type {
   OrderItem,
   OrderPayment,
   SelectedOption,
+  SelectedOptionGroup,
   KitchenTicket,
 } from './types';
+
+export * from './dtos';

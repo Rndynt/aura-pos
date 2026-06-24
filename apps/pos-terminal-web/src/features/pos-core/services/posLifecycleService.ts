@@ -1,4 +1,6 @@
-export type POSLifecycleOrder = {
+import type { OrderLifecycleDto } from "@pos/domain/orders";
+
+export type POSLifecycleOrder = OrderLifecycleDto & {
   id: string;
   orderNumber?: string;
   order_number?: string;
@@ -109,10 +111,10 @@ export function getOrderPaidAmount(order: POSLifecycleOrder): number {
 
 export function getOrderRemainingAmount(order: POSLifecycleOrder): number | null {
   const hasExplicitRemaining =
-    (order as any).remainingAmount !== undefined ||
-    (order as any).remaining_amount !== undefined;
+    order.remainingAmount !== undefined ||
+    order.remaining_amount !== undefined;
   const explicit = hasExplicitRemaining
-    ? readOrderAmount((order as any).remainingAmount ?? (order as any).remaining_amount)
+    ? readOrderAmount(order.remainingAmount ?? order.remaining_amount)
     : null;
   if (hasExplicitRemaining) return explicit === null ? null : Math.max(0, explicit);
   const total = getOrderTotalAmount(order);

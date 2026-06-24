@@ -2,7 +2,8 @@ import type { Database } from '../../database';
 import { CreateAndPayOrder } from '@pos/application/orders/CreateAndPayOrder';
 import type { CreateAndPayOrderItemInput } from '@pos/application/orders/CreateAndPayOrder';
 import { syncBatches, syncEvents, serverSyncConflicts, orders } from '@pos/infrastructure/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, type SQL } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { ConflictType } from '@pos/application/sync/conflictTypes';
 import type { SyncBatchInput, SyncBatchOutput, SyncItemStatus, SyncOrderItemResult } from '@pos/application/sync/SyncOfflineOrder';
 import type { PullTenantChangesInput, PushOfflineOrdersInput, ResolveSyncConflictInput, ResolveSyncConflictOutput, SyncRepositoryPort } from '@pos/application/sync/ports/SyncRepositoryPort';
@@ -101,8 +102,8 @@ export class DrizzleSyncOfflineOrderRepository implements SyncRepositoryPort {
     return { conflict };
   }
 
-  private scopedConditions<T extends { tenantId: any; outletId?: any }>(table: T, tenantId: string, outletId?: string | null) {
-    const conditions = [eq(table.tenantId, tenantId)];
+  private scopedConditions<T extends { tenantId: AnyPgColumn; outletId?: AnyPgColumn }>(table: T, tenantId: string, outletId?: string | null): SQL[] {
+    const conditions: SQL[] = [eq(table.tenantId, tenantId)];
     if (outletId && table.outletId) {
       conditions.push(eq(table.outletId, outletId));
     }

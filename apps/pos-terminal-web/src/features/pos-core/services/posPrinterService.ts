@@ -1,4 +1,4 @@
-import { bluetoothReceiptPrinter } from "@/lib/receiptPrinter";
+import { bluetoothReceiptPrinter, type ReceiptPrintPayload } from "@/lib/receiptPrinter";
 import { enqueuePrintJob, getOrCreateTerminalIdentity, markPrintFailed, markPrinted, markPrinting } from "@pos/offline";
 import { getActiveTenantId } from "@/lib/tenant";
 
@@ -9,7 +9,7 @@ export function hasPairedReceiptPrinter() {
 export async function enqueueReceiptPrintJob(input: {
   localOrderId?: string;
   orderNumber: string;
-  payload: unknown;
+  payload: ReceiptPrintPayload;
 }) {
   const tenantId = getActiveTenantId();
   const terminal = await getOrCreateTerminalIdentity(tenantId);
@@ -25,10 +25,10 @@ export async function enqueueReceiptPrintJob(input: {
   return { jobId: job.id, tenantId, terminalId: terminal.terminalId };
 }
 
-export async function printReceiptNow(printJobId: string | null, receiptPayload: unknown) {
+export async function printReceiptNow(printJobId: string | null, receiptPayload: ReceiptPrintPayload) {
   if (printJobId) await markPrinting(printJobId).catch(() => undefined);
   await bluetoothReceiptPrinter.reconnectIfPossible().catch(() => false);
-  await bluetoothReceiptPrinter.print(receiptPayload as any);
+  await bluetoothReceiptPrinter.print(receiptPayload);
   if (printJobId) await markPrinted(printJobId).catch(() => undefined);
 }
 
