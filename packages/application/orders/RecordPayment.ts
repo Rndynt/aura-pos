@@ -10,6 +10,7 @@
  */
 
 import type { RecordPaymentRepositoryPort } from './ports';
+import type { PersistedOrderResult, PersistedPaymentResult } from './CreateAndPayOrder';
 
 export interface RecordPaymentInput {
   order_id: string;
@@ -31,8 +32,8 @@ export interface RecordPaymentInput {
 }
 
 export interface RecordPaymentOutput {
-  payment: any;
-  order: any;
+  payment: PersistedPaymentResult;
+  order: PersistedOrderResult;
   remainingAmount: number;
   idempotent_replay?: boolean;
 }

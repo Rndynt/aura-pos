@@ -25,6 +25,15 @@ interface Violation {
   suggestedFix: string;
 }
 
+interface TypeEscapePolicy {
+  name: string;
+  dirs: string[];
+  maxEscapes: number;
+  includeTests: boolean;
+  reason: string;
+  suggestedFix: string;
+}
+
 interface AllowlistEntry {
   file: string;         // path relative to workspace root (forward-slash)
   importPattern: string; // exact specifier or prefix match
@@ -471,6 +480,89 @@ const ZONES: Zone[] = [
   { dir: 'shared',                    id: 'shared' },
 ];
 
+// ─── Type escape regression guard ────────────────────────────────────────────
+//
+// This does not claim the current codebase is zero-escape. It prevents the
+// scoped critical runtime baseline from growing while the P5 hardening roadmap
+// removes the remaining escapes batch-by-batch.
+
+const TYPE_ESCAPE_RE =
+  /@ts-nocheck|@ts-ignore|@ts-expect-error|\bas\s+any\b|:\s*any\b|\bany\[\]|\bany\b/g;
+
+const TYPE_ESCAPE_POLICIES: TypeEscapePolicy[] = [
+  {
+    name: 'POS core and order/payment runtime type escapes',
+    dirs: [
+      'apps/pos-terminal-web/src/features/pos-core',
+      'apps/pos-terminal-web/src/features/pos-flows',
+      'packages/application/orders',
+    ],
+    maxEscapes: 27,
+    includeTests: false,
+    reason:
+      'Critical POS/order/payment runtime files must not gain new TypeScript escape hatches while P5 hardening is in progress.',
+    suggestedFix:
+      'Replace new any/ts-ignore usage with domain DTOs, application port contracts, typed mappers, or unknown plus runtime narrowing.',
+  },
+  {
+    name: 'POS core and order/payment total scoped type escapes',
+    dirs: [
+      'apps/pos-terminal-web/src/features/pos-core',
+      'apps/pos-terminal-web/src/features/pos-flows',
+      'packages/application/orders',
+    ],
+    maxEscapes: 42,
+    includeTests: true,
+    reason:
+      'Tests-only escape hatches are lower risk, but the total scoped baseline must not grow.',
+    suggestedFix:
+      'Use typed fixtures/builders in tests and typed DTOs/mappers in runtime code instead of adding new escapes.',
+  },
+];
+
+function countTypeEscapes(source: string): number {
+  TYPE_ESCAPE_RE.lastIndex = 0;
+  let count = 0;
+  while (TYPE_ESCAPE_RE.exec(source) !== null) count += 1;
+  return count;
+}
+
+function checkTypeEscapePolicies(): Violation[] {
+  const violations: Violation[] = [];
+
+  for (const policy of TYPE_ESCAPE_POLICIES) {
+    let total = 0;
+    const filesWithEscapes: string[] = [];
+
+    for (const dir of policy.dirs) {
+      for (const absPath of collectSourceFiles(path.join(ROOT, dir))) {
+        const relPath = path.relative(ROOT, absPath).replace(/\\/g, '/');
+        if (!policy.includeTests && isTestFile(relPath)) continue;
+        if (!policy.includeTests && relPath.includes('/__tests__/')) continue;
+
+        const source = fs.readFileSync(absPath, 'utf-8');
+        const count = countTypeEscapes(source);
+        if (count > 0) {
+          total += count;
+          filesWithEscapes.push(`${relPath} (${count})`);
+        }
+      }
+    }
+
+    if (total > policy.maxEscapes) {
+      violations.push({
+        rule: `Rule 8 — Type escape regression guard: ${policy.name}`,
+        file: policy.dirs.join(', '),
+        importSpecifier: `${total} escape(s), allowed baseline ${policy.maxEscapes}`,
+        reason: `${policy.reason} Files with escapes: ${filesWithEscapes.join('; ')}`,
+        suggestedFix: policy.suggestedFix,
+      });
+    }
+  }
+
+  return violations;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const ROOT = process.cwd();
@@ -523,6 +615,8 @@ for (const { dir, id } of ZONES) {
     }
   }
 }
+
+allViolations.push(...checkTypeEscapePolicies());
 
 // ─── Output ───────────────────────────────────────────────────────────────────
 

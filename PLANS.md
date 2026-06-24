@@ -13604,3 +13604,146 @@ Remove type-check bypasses from the highest-risk POS cart/order UI files without
 
 ### Continuation Notes
 Next safest continuation is to remove `// @ts-nocheck` from remaining POS components one at a time, starting with `ProductOptionsDialog.tsx`, then `DraftOrdersSheet.tsx`, with `pnpm --filter @pos/terminal-web type-check` after each file.
+
+## Plan: Type Safety Inventory & First Hardening Batch
+
+### Source
+- Tasklist: `roadmap/architecture-production-hardening/type-safety-inventory.md`
+- User request: inventory/update type escapes by risk group, add boundary/lint guard if possible, clean first POS core and order/payment application batch, run `pnpm type-check` after each batch, keep P5 incomplete until POS core `@ts-nocheck` is gone and critical runtime flow no longer uses unnecessary type escape.
+- Date started: 2026-06-24
+- Current status: In progress
+
+### Goal
+Reduce unnecessary TypeScript escape hatches in critical order/payment runtime code while documenting remaining escapes honestly and adding an automated guard against type-safety regression.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (`roadmap/architecture-production-hardening/type-safety-inventory.md`)
+- [x] Relevant docs
+- [x] Relevant source files (`scripts/validate-boundaries.ts`, POS core/flows, `packages/application/orders/*`)
+
+### Workstreams
+
+#### Backend/API Workstream
+- Scope: `packages/application/orders/*` use cases and payment application ports.
+- Files inspected: `UpdateOrder.ts`, `CreateKitchenTicket.ts`, `RecordPayment.ts`, `CreateAndPayOrder.ts`, order port files.
+- Findings: Runtime use cases still had `any` around order lifecycle/payment status, kitchen ticket payloads, and payment/order output DTOs.
+- Tasks: Replace first batch of critical runtime `any` with domain/application DTO types.
+- Risks: Repository adapters may return camelCase/snake_case compatibility shapes; type cleanup must preserve existing runtime normalization.
+- Validation: `pnpm type-check` after the batch.
+
+#### Frontend/UI Workstream
+- Scope: POS core and POS flows type escapes.
+- Files inspected: `apps/pos-terminal-web/src/features/pos-core`, `apps/pos-terminal-web/src/features/pos-flows`.
+- Findings: No `@ts-nocheck` remains in POS core; remaining POS core escapes are tests-only.
+- Tasks: Keep P5 incomplete until critical runtime flows are fully clear; no POS runtime file changes needed in this batch beyond inventory/guard.
+- Risks: Wider POS pages still contain display/cache casts outside POS core scope.
+- Validation: boundary/type guard scans POS core/flows.
+
+#### Tests/Validation Workstream
+- Scope: type-check and boundary guard.
+- Files inspected: root `package.json`, `scripts/validate-boundaries.ts`.
+- Findings: Existing boundary script can host type escape regression checks; full zero-any enforcement would fail existing baseline, so guard uses scoped thresholds.
+- Tasks: Add scoped no-regression guard for `@ts-nocheck`, `@ts-ignore`, `as any`, `: any`, and `any[]` in critical paths.
+- Risks: Count-based threshold prevents net-new escapes but does not identify every individual new replacement if another escape is removed in same commit.
+- Validation: `pnpm check:boundaries`, `pnpm type-check`.
+
+#### Documentation Workstream
+- Scope: roadmap inventory and `PLANS.md`.
+- Files inspected: roadmap type safety inventory.
+- Findings: Inventory exists but needs requested grouping names and guard details.
+- Tasks: Update categories, current baseline, first batch remediation, validation log, and P5 status note.
+- Risks: Must not mark P5 complete.
+- Validation: docs synchronized with code/guard.
+
+#### Security/Tenant Isolation Workstream
+- Scope: tenant/auth/RBAC and order ownership typing.
+- Files inspected: `CreateKitchenTicket.ts`, `UpdateOrder.ts`.
+- Findings: Kitchen ticket use case keeps explicit tenant ownership check; UpdateOrder repository lookup is tenant-scoped.
+- Tasks: Preserve tenant checks while replacing type escapes.
+- Risks: Do not weaken tenant isolation while typing compatibility fields.
+- Validation: type-check.
+
+### Execution Order
+1. Add scoped type escape guard to boundary script.
+2. Clean first backend critical runtime batch (`UpdateOrder`, `CreateKitchenTicket`, payment output DTOs).
+3. Run `pnpm type-check` and `pnpm check:boundaries`.
+4. Update roadmap inventory and PLANS.md with honest status.
+
+### Progress
+
+#### Completed
+- [ ] Task: Add scoped type-escape regression guard.
+  - Files changed: `scripts/validate-boundaries.ts`
+  - Validation: pending
+  - Docs updated: pending
+- [ ] Task: Clean first order/payment application type escape batch.
+  - Files changed: pending
+  - Validation: pending
+  - Docs updated: pending
+
+#### Partially Completed
+- [ ] Task: P5 critical runtime type escape hardening.
+  - Completed: POS core has no `@ts-nocheck`; first backend batch targeted.
+  - Remaining: Remaining critical backend repository/application casts and POS tests-only casts.
+  - Reason: User explicitly says not to mark P5 complete until broader runtime flow is clean.
+
+#### Blocked
+- [ ] Task: None currently.
+  - Blocker:
+  - Required next step:
+
+#### Not Attempted
+- [ ] Task: Full backend repository runtime `any` removal.
+  - Reason: Later batch after first application use-case batch.
+
+### Validation Log
+- Command: pending
+- Result: pending
+- Notes:
+
+### Documentation Updates
+- File: `roadmap/architecture-production-hardening/type-safety-inventory.md`
+- Change: pending
+
+### Checklist Updates
+- File: `roadmap/architecture-production-hardening/type-safety-inventory.md`
+- Change: pending
+
+### Continuation Notes
+After this batch, continue with `packages/infrastructure/repositories/orders/OrderRepository.ts`, `KitchenTicketRepository.ts`, and sync/offline payload casts, then replace tests-only fixtures with typed builders.
+
+### Batch Update — 2026-06-24
+
+#### Completed
+- [x] Added Rule 8 scoped type-escape regression guard to `scripts/validate-boundaries.ts`.
+  - Files changed: `scripts/validate-boundaries.ts`
+  - Validation: `pnpm check:boundaries` passed.
+  - Docs updated: `roadmap/architecture-production-hardening/type-safety-inventory.md`
+- [x] Cleaned first order/payment application type-escape batch.
+  - Files changed: `packages/application/orders/UpdateOrder.ts`, `packages/application/orders/CreateKitchenTicket.ts`, `packages/application/orders/CreateAndPayOrder.ts`, `packages/application/orders/RecordPayment.ts`, `packages/infrastructure/repositories/orders/DrizzleRecordPaymentRepository.ts`
+  - Validation: `pnpm type-check` passed after fixes.
+  - Docs updated: `roadmap/architecture-production-hardening/type-safety-inventory.md`
+
+#### Partially Completed
+- [ ] P5 critical runtime type escape hardening remains open.
+  - Completed: POS core runtime has no `@ts-nocheck`; first backend order/payment application batch removed unnecessary runtime escapes in UpdateOrder, CreateKitchenTicket, RecordPayment output, and CreateAndPayOrder output.
+  - Remaining: Critical runtime application/repository/sync files still have known type escapes; Rule 8 baseline must be lowered after each cleanup.
+  - Reason: User explicitly required not marking P5 complete until POS core `@ts-nocheck` is gone and critical runtime flow no longer uses unnecessary type escapes.
+
+### Validation Log
+- Command: `pnpm type-check`
+- Result: pass
+- Notes: Initial intermediate runs failed due stricter output DTOs exposing infrastructure/API row-shape mismatches; those were corrected in this batch.
+- Command: `pnpm check:boundaries`
+- Result: pass
+- Notes: Rule 8 type escape regression guard is active with current scoped baselines.
+
+### Documentation Updates
+- File: `roadmap/architecture-production-hardening/type-safety-inventory.md`
+- Change: Rebuilt requested grouping, recorded batch remediation, guard baseline, validation, P5 status, and next batch order.
+
+### Continuation Notes
+Next safest batch: type `packages/application/orders/CreateOrder.ts` idempotency replay and the smaller lifecycle use cases (`CancelOrder`, `ConfirmOrder`, `CompleteOrder`, transitions), then lower Rule 8 baselines.

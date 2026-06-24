@@ -179,6 +179,9 @@ export class DrizzleRecordPaymentRepository {
       `);
 
       const updatedOrder = firstRawRow<RawLockedOrderRow>(updatedOrders);
+      if (!updatedOrder) {
+        throw new Error('Failed to update order payment status');
+      }
 
       return {
         payment: createdPayment,
