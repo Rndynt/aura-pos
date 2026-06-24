@@ -15,7 +15,7 @@ export async function createApiApp(config: ApiConfig) {
   const app = express();
 
   app.use(compression({ threshold: 1024, level: 6 }) as unknown as RequestHandler);
-  app.set('trust proxy', 1);
+  app.set('trust proxy', config.trustProxy);
 
   registerReadinessRoutes(app);
   app.use(createCorsMiddleware(config));

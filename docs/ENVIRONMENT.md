@@ -31,7 +31,7 @@ Notes:
 | `BETTER_AUTH_SECRET` | API/server secret | Required placeholder local secret | Required secret | Required secret | Must be a strong random value, at least 32 characters. Rotate per environment. |
 | `BETTER_AUTH_URL` | API/server | `http://localhost:5000` | Public staging API/auth URL | Public production API/auth URL | Base URL for better-auth trusted origin/callback behavior. |
 | `CORS_ALLOWED_ORIGINS` | API/server | Optional/local origins | Required | Required | Primary comma-separated browser origins allowlist used by API CORS enforcement. |
-| `TRUST_PROXY` | API/server | Optional (`false`) | Required behind proxy | Required behind proxy | Set according to platform reverse proxy behavior. **Reserved/not currently enforced by code**. |
+| `TRUST_PROXY` | API/server | Optional, default `false`; may be `false`, `true`, or a non-negative hop count such as `1` | Required behind proxy | Required behind proxy | Enforced by API bootstrap as Express `trust proxy`. If unset in production, the API uses safe default `false`; set explicitly when deployed behind a trusted reverse proxy. |
 | `LOG_LEVEL` | API/server | Optional (`debug`/`info`) | Recommended (`info`) | Recommended (`info`/`warn`) | Runtime log verbosity. **Reserved/not currently enforced by code**. |
 | `RATE_LIMIT_STORE` | API/server | Optional (`memory`) | Required (`redis`) when rate limiting is enabled | Required (`redis`) when rate limiting is enabled | Use Redis-backed rate limiting outside single-process dev. **Reserved/not currently enforced by code**. |
 | `TERMINAL_TOKEN_SECRET` | API/server secret | Required placeholder local secret before terminal token features are enabled | Required secret | Required secret | Secret for POS terminal/device tokens. **Reserved/not currently enforced by code**. |
@@ -61,6 +61,7 @@ VITE_APP_ENV=development
 
 Recommended local behavior:
 
+- Leave `TRUST_PROXY` unset/`false` when calling the API directly. Use `TRUST_PROXY=1` or `TRUST_PROXY=true` only when local traffic goes through a trusted reverse proxy.
 - Run migrations explicitly with `pnpm db:migrate`. For disposable local development databases only, `API_AUTO_MIGRATE_ON_BOOT=true` can opt into boot-time migrations; do not rely on this in staging or production.
 - Omit `REDIS_URL` for simple one-process development unless you are testing distributed cache/pubsub behavior.
 - Use local placeholder secrets only. Never reuse local placeholders in staging or production.
@@ -92,6 +93,7 @@ Staging requirements:
 - Use a staging database and Redis instance, not production resources.
 - Use staging-only secrets.
 - Configure staging frontend origins separately from production.
+- Set `TRUST_PROXY` explicitly (`true` or a hop count like `1`) when staging traffic reaches the API through a trusted load balancer/reverse proxy.
 - Validate migrations, auth callbacks, tenant resolution, cache/pubsub, and POS browser API connectivity before promoting to production.
 - Keep `API_AUTO_MIGRATE_ON_BOOT` unset/`false`; run `pnpm db:migrate` explicitly as a deployment step before starting the API.
 
@@ -123,6 +125,7 @@ Production requirements:
 - Use strong, unique secrets per environment and rotate on suspected exposure.
 - Keep `VITE_*` values non-secret because they are visible to browser users.
 - Restrict browser origins to the actual deployed frontend domains.
+- Set `TRUST_PROXY` explicitly (`true` or a hop count like `1`) for trusted reverse-proxy deployments; leaving it unset defaults to `false` and will not trust forwarded client/protocol headers.
 - Keep `API_AUTO_MIGRATE_ON_BOOT` unset/`false`; production boot rejects `API_AUTO_MIGRATE_ON_BOOT=true` and never auto-runs migrations by default.
 
 ## Additional supported API variables

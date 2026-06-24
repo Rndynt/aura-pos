@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import http from 'node:http';
 import express from 'express';
 import { createCorsMiddleware, isOriginAllowed } from '../bootstrap/cors';
-import { loadApiConfig, parseTrustedOrigins } from '../bootstrap/env';
+import { loadApiConfig, parseTrustedOrigins, parseTrustProxy } from '../bootstrap/env';
 import { evaluateBootMigrationPolicy } from '../bootstrap/migrations';
 import { registerAuthRoutes } from '../bootstrap/auth';
 
@@ -47,6 +47,39 @@ describe('API bootstrap CORS parsing', () => {
     assert.deepEqual(config.corsAllowedOrigins, ['https://admin.example.com', 'https://pos.example.com']);
     assert.deepEqual(config.extraTrustedOrigins, ['https://admin.example.com', 'https://pos.example.com']);
     assert.equal(config.autoMigrateOnBoot, false);
+    assert.equal(config.trustProxy, false);
+  });
+
+  it('parses TRUST_PROXY as false, true, or hop count', () => {
+    assert.equal(parseTrustProxy(undefined), false);
+    assert.equal(parseTrustProxy(''), false);
+    assert.equal(parseTrustProxy(' false '), false);
+    assert.equal(parseTrustProxy('true'), true);
+    assert.equal(parseTrustProxy('1'), 1);
+    assert.equal(parseTrustProxy('2'), 2);
+
+    assert.throws(() => parseTrustProxy('yes'), /TRUST_PROXY must be one of/);
+    assert.throws(() => parseTrustProxy('-1'), /TRUST_PROXY must be one of/);
+  });
+
+  it('loads TRUST_PROXY from env and keeps production unset default safe', () => {
+    const withTrue = loadApiConfig({
+      DATABASE_URL: 'postgres://user:pass@127.0.0.1:5432/db',
+      TRUST_PROXY: 'true',
+    });
+    const withHop = loadApiConfig({
+      DATABASE_URL: 'postgres://user:pass@127.0.0.1:5432/db',
+      NODE_ENV: 'production',
+      TRUST_PROXY: '1',
+    });
+    const productionUnset = loadApiConfig({
+      DATABASE_URL: 'postgres://user:pass@127.0.0.1:5432/db',
+      NODE_ENV: 'production',
+    });
+
+    assert.equal(withTrue.trustProxy, true);
+    assert.equal(withHop.trustProxy, 1);
+    assert.equal(productionUnset.trustProxy, false);
   });
 
   it('falls back to deprecated EXTRA_TRUSTED_ORIGINS when CORS_ALLOWED_ORIGINS is unset', () => {

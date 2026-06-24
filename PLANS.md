@@ -12212,3 +12212,46 @@ Next safest batch: implement P8.3/P9.2 outbox retry state bug with tests, or fin
 
 ### Continuation Notes
 No remaining tasks from this CORS batch. Deployments should set `CORS_ALLOWED_ORIGINS` explicitly for production frontend domains.
+
+## Plan: Enforce TRUST_PROXY API Bootstrap Config
+
+### Source
+- Tasklist: User request to add `TRUST_PROXY` parsing, API wiring, production-safe default, docs, and tests.
+- User request: Configure Express `trust proxy` from `ApiConfig`.
+- Date started: 2026-06-24
+- Current status: Implemented and validated in this batch.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] docs/ENVIRONMENT.md
+- [x] Relevant API bootstrap source/tests
+
+### Progress
+#### Completed
+- [x] Added typed `trustProxy` API config parsed from `TRUST_PROXY` values `false`, `true`, or non-negative hop counts.
+  - Files changed: apps/api/src/bootstrap/env.ts
+  - Validation: pnpm --filter @pos/api test:file src/__tests__/bootstrap.test.ts
+  - Docs updated: docs/ENVIRONMENT.md
+- [x] Wired Express `app.set('trust proxy', config.trustProxy)` instead of hardcoded proxy trust.
+  - Files changed: apps/api/src/bootstrap/createApp.ts
+  - Validation: pnpm --filter @pos/api test:file src/__tests__/bootstrap.test.ts
+- [x] Added bootstrap tests for `TRUST_PROXY` parsing and production unset safe default.
+  - Files changed: apps/api/src/__tests__/bootstrap.test.ts
+  - Validation: pnpm --filter @pos/api test:file src/__tests__/bootstrap.test.ts
+
+### Validation Log
+- Command: pnpm --filter @pos/api test:file src/__tests__/bootstrap.test.ts
+- Result: pass
+- Notes: Initial attempt with repository-relative test path failed because the filtered package command runs from `apps/api`; reran with package-relative `src/__tests__/bootstrap.test.ts` and it passed.
+- Command: pnpm --filter @pos/api type-check
+- Result: pass
+- Notes: API TypeScript check passed after config typing changes.
+
+### Documentation Updates
+- File: docs/ENVIRONMENT.md
+- Change: `TRUST_PROXY` is documented as enforced by API bootstrap with accepted values and production default behavior.
+
+### Continuation Notes
+No known follow-up required for this focused change. Deployment should set `TRUST_PROXY` explicitly when the API is behind a trusted reverse proxy.
