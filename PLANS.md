@@ -12455,3 +12455,79 @@ Reduce tenant-isolation and mutation risks by moving route database access behin
 
 ### Continuation Notes
 Continue by applying the same app-port-adapter pattern to KDS device routes, then inventory mutation/report routes, then category/catalog controllers, then tenant/outlet/RBAC middleware and outlets/tenants routes. Do not reintroduce direct `container.db` usage in migrated controllers.
+
+## Plan: API Container Public Surface Hardening 2026-06-24
+
+### Source
+- Tasklist: User-provided numbered list to audit `container.db`, migrate HTTP access to typed handlers/use cases, and hide shared DB deps from the API container.
+- User request: Remove full `SharedCompositionDeps` exposure from `AppContainer`; expose a public `ApiUseCaseContainer` containing only use cases/handlers; keep `db` internal to composition factories.
+- Date started: 2026-06-24
+- Current status: Implemented and validated
+
+### Goal
+Ensure the HTTP layer cannot access `container.db` or other raw shared composition dependencies through the singleton container, and replace remaining public repository access from HTTP controllers with typed composition handlers/use cases.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (user prompt)
+- [x] Relevant docs
+- [x] Relevant source files
+
+### Workstreams
+#### Backend/API Workstream
+- Scope: `apps/api/src/composition/*`, HTTP controllers/handlers using container repositories.
+- Files inspected: `createAppContainer.ts`, composition modules, order/catalog/order-type handlers.
+- Findings: `rg -n "container\.db" apps packages` returned no current direct usages, but `AppContainer` still extended `SharedCompositionDeps` and HTTP code used repository members.
+- Tasks: Define public `ApiUseCaseContainer`, keep internal repositories inside module factories, add typed handler members for repository-backed HTTP needs, update controllers.
+- Risks: Must preserve existing tenant/outlet filters and response shapes.
+- Validation: API type-check.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Tenant/outlet scoped order lookup, order list, order type validation, catalog outlet availability.
+- Files inspected: order common/list handlers and catalog controller.
+- Findings: Existing filters are tenant scoped; migration must preserve outlet scoping.
+- Tasks: Move scoped operations behind handlers and keep tenant/outlet args explicit.
+- Risks: Cross-tenant/order leakage if tenant filter omitted.
+- Validation: Type-check and code review.
+
+### Execution Order
+1. Audit `container.db` usage.
+2. Add public container type and internal-only composition deps.
+3. Replace HTTP repository access with typed handlers/use cases.
+4. Validate with targeted search and API type-check.
+5. Commit and open PR.
+
+### Progress
+#### Completed
+- [x] Task: Audited direct `container.db` access.
+  - Files changed: PLANS.md
+  - Validation: `rg -n "container\.db" apps packages` returned no matches.
+  - Docs updated: PLANS.md
+- [x] Task: Hardened public API container surface.
+  - Files changed: apps/api/src/composition/createAppContainer.ts, apps/api/src/composition/modules/catalogModule.ts, apps/api/src/composition/modules/inventoryModule.ts, apps/api/src/composition/modules/ordersModule.ts, apps/api/src/composition/modules/paymentsModule.ts
+  - Validation: `pnpm --filter @pos/api type-check` passed.
+  - Docs updated: PLANS.md
+- [x] Task: Migrated HTTP `container.*Repository` access to typed handlers/use cases.
+  - Files changed: apps/api/src/http/controllers/CatalogController.ts, apps/api/src/http/controllers/OrderTypesController.ts, apps/api/src/http/handlers/orders/common.ts, apps/api/src/http/handlers/orders/listOrders.ts
+  - Validation: `rg -n "container\.(.*Repository|unitOfWork|db)" apps/api/src packages` returned no matches; API type-check passed.
+  - Docs updated: PLANS.md
+
+### Validation Log
+- Command: `rg -n "container\.db" apps packages`
+- Result: pass
+- Notes: No matches.
+- Command: `rg -n "container\.(.*Repository|unitOfWork|db)" apps/api/src packages`
+- Result: pass
+- Notes: No public singleton repository/shared-dependency access remains in API/package source.
+- Command: `pnpm --filter @pos/api type-check`
+- Result: pass
+- Notes: API TypeScript check passed.
+
+### Documentation Updates
+- File: PLANS.md
+- Change: Added this active plan.
+
+### Continuation Notes
+No remaining `container.db` or HTTP `container.*Repository` singleton accesses were found in this batch. Continue future route migrations by adding typed composition handlers/use cases instead of exposing repositories or shared deps.

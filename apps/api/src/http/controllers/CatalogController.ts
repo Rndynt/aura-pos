@@ -8,8 +8,8 @@ import { z } from 'zod';
 import { container } from '../../container';
 import { asyncHandler, createError } from '../middleware/errorHandler';
 import { db } from '@pos/infrastructure/database';
-import { productCategories, outletProductConfigs } from '@pos/infrastructure/db/schema';
-import { and, eq, inArray } from 'drizzle-orm';
+import { productCategories } from '@pos/infrastructure/db/schema';
+import { and, eq } from 'drizzle-orm';
 import { enrichCatalogProductsWithStock } from '../helpers/catalogStockEnrichment';
 
 /**
@@ -48,18 +48,8 @@ export const listProducts = asyncHandler(async (req: Request, res: Response) => 
   let filteredProducts = result.products;
   if (outletId && !includeUnavailable && filteredProducts.length > 0) {
     const productIds = filteredProducts.map(p => p.id);
-    const unavailableRows = await db
-      .select({ productId: outletProductConfigs.productId })
-      .from(outletProductConfigs)
-      .where(
-        and(
-          eq(outletProductConfigs.outletId, outletId),
-          eq(outletProductConfigs.isAvailable, false),
-          inArray(outletProductConfigs.productId, productIds),
-        ),
-      );
-    if (unavailableRows.length > 0) {
-      const unavailableIds = new Set(unavailableRows.map(r => r.productId));
+    const unavailableIds = await container.catalogHandlers.listUnavailableOutletProductIds(outletId, productIds);
+    if (unavailableIds.size > 0) {
       filteredProducts = filteredProducts.filter(p => !unavailableIds.has(p.id));
     }
   }
@@ -70,7 +60,7 @@ export const listProducts = asyncHandler(async (req: Request, res: Response) => 
   let enrichedProducts: any[] = filteredProducts;
   if (filteredProducts.length > 0) {
     const balances = outletId
-      ? await container.inventoryBalanceRepository.listBalances(tenantId, outletId)
+      ? await container.inventoryHandlers.listBalances(tenantId, outletId)
       : [];
     enrichedProducts = enrichCatalogProductsWithStock({
       products: filteredProducts,

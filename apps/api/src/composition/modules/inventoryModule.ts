@@ -12,10 +12,9 @@ import {
 import type { ModuleFactory } from '../types';
 
 export interface InventoryModule {
-  inventoryPolicyRepository: DrizzleInventoryPolicyRepository;
-  inventorySyncErrorRepository: DrizzleInventorySyncErrorRepository;
-  stockMovementRepository: DrizzleStockMovementRepository;
-  inventoryBalanceRepository: DrizzleInventoryBalanceRepository;
+  inventoryHandlers: {
+    listBalances: DrizzleInventoryBalanceRepository['listBalances'];
+  };
 }
 
 export const createInventoryModule: ModuleFactory<InventoryModule> = ({ db }) => {
@@ -29,9 +28,8 @@ export const createInventoryModule: ModuleFactory<InventoryModule> = ({ db }) =>
   configureStockMovementPort(stockMovementRepository);
 
   return {
-    inventoryPolicyRepository,
-    inventorySyncErrorRepository,
-    stockMovementRepository,
-    inventoryBalanceRepository,
+    inventoryHandlers: {
+      listBalances: inventoryBalanceRepository.listBalances.bind(inventoryBalanceRepository),
+    },
   };
 };

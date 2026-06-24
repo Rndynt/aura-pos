@@ -5,16 +5,20 @@ import type { ModuleFactory } from '../types';
 
 export interface PaymentsModule {
   submitPOSPayment: SubmitPOSPayment;
-  posPaymentOrderTypeRepository: DrizzlePOSPaymentOrderTypeRepository;
+  orderTypePaymentHandlers: {
+    validateOrderTypeForTenant: DrizzlePOSPaymentOrderTypeRepository['validateOrderTypeForTenant'];
+  };
 }
 
 export const createPaymentsModule: ModuleFactory<PaymentsModule> = ({ db, unitOfWork }) => {
   const posPaymentOrderTypeRepository = new DrizzlePOSPaymentOrderTypeRepository(db);
   return {
-    posPaymentOrderTypeRepository,
     submitPOSPayment: new SubmitPOSPayment(
       new DrizzleSubmitPOSPaymentRepository(db, unitOfWork),
       posPaymentOrderTypeRepository,
     ),
+    orderTypePaymentHandlers: {
+      validateOrderTypeForTenant: posPaymentOrderTypeRepository.validateOrderTypeForTenant.bind(posPaymentOrderTypeRepository),
+    },
   };
 };

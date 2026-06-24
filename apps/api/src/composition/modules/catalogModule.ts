@@ -7,17 +7,18 @@ import { ProductOptionGroupRepository } from '@pos/infrastructure/repositories/c
 import { ProductOptionRepository } from '@pos/infrastructure/repositories/catalog/ProductOptionRepository';
 import { TenantRepository } from '@pos/infrastructure/repositories/tenants/TenantRepository';
 import { DrizzleInventoryBalanceRepository } from '@pos/infrastructure/repositories/inventory';
+import { and, eq, inArray } from 'drizzle-orm';
+import { outletProductConfigs } from '@pos/infrastructure/db/schema';
 import type { ModuleFactory } from '../types';
 
 export interface CatalogModule {
-  productRepository: ProductRepository;
-  productOptionGroupRepository: ProductOptionGroupRepository;
-  productOptionRepository: ProductOptionRepository;
-  inventoryBalanceRepository: DrizzleInventoryBalanceRepository;
   getProducts: GetProducts;
   getProductById: GetProductById;
   checkProductAvailability: CheckProductAvailability;
   createOrUpdateProduct: CreateOrUpdateProduct;
+  catalogHandlers: {
+    listUnavailableOutletProductIds: (outletId: string, productIds: string[]) => Promise<Set<string>>;
+  };
 }
 
 export const createCatalogModule: ModuleFactory<CatalogModule & { tenantRepository: TenantRepository }> = ({ db, unitOfWork }) => {
@@ -29,11 +30,7 @@ export const createCatalogModule: ModuleFactory<CatalogModule & { tenantReposito
   const checkProductAvailability = new CheckProductAvailability(productRepository, inventoryBalanceRepository);
 
   return {
-    productRepository,
-    productOptionGroupRepository,
-    productOptionRepository,
     tenantRepository,
-    inventoryBalanceRepository,
     getProducts: new GetProducts(productRepository),
     getProductById: new GetProductById(productRepository),
     checkProductAvailability,
@@ -44,5 +41,21 @@ export const createCatalogModule: ModuleFactory<CatalogModule & { tenantReposito
       productOptionRepository,
       tenantRepository,
     ),
+    catalogHandlers: {
+      listUnavailableOutletProductIds: async (outletId, productIds) => {
+        if (productIds.length === 0) return new Set<string>();
+        const unavailableRows = await db
+          .select({ productId: outletProductConfigs.productId })
+          .from(outletProductConfigs)
+          .where(
+            and(
+              eq(outletProductConfigs.outletId, outletId),
+              eq(outletProductConfigs.isAvailable, false),
+              inArray(outletProductConfigs.productId, productIds),
+            ),
+          );
+        return new Set(unavailableRows.map((row) => row.productId));
+      },
+    },
   };
 };

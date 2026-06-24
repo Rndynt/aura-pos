@@ -39,7 +39,7 @@ export function getIdempotencyKey(req: Request, bodyValue?: string): string | un
 }
 
 export async function assertOrderBelongsToOutlet(orderId: string, tenantId: string, outletId?: string | null): Promise<any> {
-  const order = await container.orderRepository.findById(orderId, tenantId);
+  const order = await container.orderQueries.findById(orderId, tenantId);
   if (!order) throw createError('Order not found', 404, 'ORDER_NOT_FOUND');
   if (outletId && order.outletId !== outletId) throw createError('Order not found for this outlet', 404, 'ORDER_NOT_FOUND');
   return order;
@@ -56,19 +56,19 @@ export async function requirePaymentEntitlement(tenantId: string, entitlementCod
 }
 
 export async function resolveOrderTypeForTenant(tenantId: string, orderTypeId: string | null | undefined): Promise<string | null> {
-  const result = await container.posPaymentOrderTypeRepository.validateOrderTypeForTenant(tenantId, orderTypeId);
+  const result = await container.orderTypePaymentHandlers.validateOrderTypeForTenant(tenantId, orderTypeId);
   if (!result.valid) throw createError(result.message, 400, result.errorCode);
   return result.orderTypeId;
 }
 
 export async function attachLifecycleFields(orders: any[], tenantId: string): Promise<any[]> {
   if (orders.length === 0) return orders;
-  const lockStates = await container.orderRepository.getEditLockStates?.(orders.map((order) => order.id), tenantId);
+  const lockStates = await container.orderQueries.getEditLockStates?.(orders.map((order) => order.id), tenantId);
   return orders.map((order) => withOrderLifecycleDtoFields(order, lockStates?.[order.id]));
 }
 
 export async function attachLifecycleField(order: any, tenantId: string): Promise<any> {
-  const lockState = await container.orderRepository.getEditLockState?.(order.id, tenantId);
+  const lockState = await container.orderQueries.getEditLockState?.(order.id, tenantId);
   return withOrderLifecycleDtoFields(order, lockState);
 }
 

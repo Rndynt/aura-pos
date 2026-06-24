@@ -14,13 +14,13 @@ export const listOrders = asyncHandler(async (req: Request, res: Response) => {
   const { status, payment_status, startDate, endDate, page, limit } = parsed.data; const offset = (page! - 1) * limit!;
   const filterOptions = { status, paymentStatus: payment_status, dateFrom: startDate, dateTo: endDate };
   const outletFilter = req.outletId ? { outletId: req.outletId } : {};
-  const [orders,total] = await Promise.all([container.orderRepository.findByTenant(tenantId, { ...filterOptions, ...outletFilter, limit: limit!, offset }), container.orderRepository.countByTenant(tenantId, { ...filterOptions, ...outletFilter })]);
+  const [orders,total] = await Promise.all([container.orderQueries.findByTenant(tenantId, { ...filterOptions, ...outletFilter, limit: limit!, offset }), container.orderQueries.countByTenant(tenantId, { ...filterOptions, ...outletFilter })]);
   res.status(200).json({ success: true, data: { orders: await attachLifecycleFields(orders, tenantId), pagination: { page: page!, limit: limit!, total } } });
 });
 
 export const getOrderById = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.tenantId!; const { id } = req.params; if (!id) throw createError('Order ID is required', 400, 'MISSING_PARAMETER');
-  const order = await container.orderRepository.findById(id, tenantId); if (!order) throw createError('Order not found', 404, 'ORDER_NOT_FOUND');
+  const order = await container.orderQueries.findById(id, tenantId); if (!order) throw createError('Order not found', 404, 'ORDER_NOT_FOUND');
   if (req.outletId && order.outletId !== req.outletId) throw createError('Order not found for this outlet', 404, 'ORDER_NOT_FOUND');
   res.status(200).json({ success: true, data: await attachLifecycleField(order, tenantId) });
 });

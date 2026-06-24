@@ -1,23 +1,30 @@
 import { createDatabaseModule } from './shared/databaseModule';
 import { createCatalogModule, type CatalogModule } from './modules/catalogModule';
 import { createInventoryModule, type InventoryModule } from './modules/inventoryModule';
-import { createTenantModule, type TenantModule } from './modules/tenantModule';
+import { createTenantModule } from './modules/tenantModule';
 import { createOrdersModule, type OrdersModule } from './modules/ordersModule';
 import { createPaymentsModule, type PaymentsModule } from './modules/paymentsModule';
 import { createSyncModule, type SyncModule } from './modules/syncModule';
 import { createKitchenModule, type KitchenModule } from './modules/kitchenModule';
-import type { SharedCompositionDeps } from './types';
 
-export type AppContainer = SharedCompositionDeps
-  & TenantModule
-  & CatalogModule
+/**
+ * Public API dependency container exposed to HTTP controllers/handlers.
+ *
+ * Keep raw shared composition dependencies (notably `db` and unit-of-work)
+ * inside composition module factories. HTTP code should depend on typed
+ * use cases/handlers from this public surface instead of reaching into the
+ * database or infrastructure repositories through the singleton container.
+ */
+export type ApiUseCaseContainer = CatalogModule
   & InventoryModule
   & OrdersModule
   & PaymentsModule
   & SyncModule
   & KitchenModule;
 
-export function createAppContainer(): AppContainer {
+export type AppContainer = ApiUseCaseContainer;
+
+export function createAppContainer(): ApiUseCaseContainer {
   const shared = createDatabaseModule();
   const tenant = createTenantModule(shared);
   const inventory = createInventoryModule(shared);
@@ -35,10 +42,8 @@ export function createAppContainer(): AppContainer {
   });
 
   return {
-    ...shared,
     ...inventory,
     ...catalog,
-    ...tenant,
     ...orders,
     ...payments,
     ...sync,

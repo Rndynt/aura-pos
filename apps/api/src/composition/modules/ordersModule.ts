@@ -14,9 +14,6 @@ import { TransitionOrderFulfillmentStatus } from '@pos/application/orders/Transi
 import { ConfirmOrderWorkflow } from '@pos/application/orders/services/ConfirmOrderWorkflow';
 import { CancelOrderWorkflow } from '@pos/application/orders/services/CancelOrderWorkflow';
 import { OrderRepository } from '@pos/infrastructure/repositories/orders/OrderRepository';
-import { OrderItemRepository } from '@pos/infrastructure/repositories/orders/OrderItemRepository';
-import { OrderItemModifierRepository } from '@pos/infrastructure/repositories/orders/OrderItemModifierRepository';
-import { OrderPaymentRepository } from '@pos/infrastructure/repositories/orders/OrderPaymentRepository';
 import { KitchenTicketRepository } from '@pos/infrastructure/repositories/orders/KitchenTicketRepository';
 import { OrderTypeRepository } from '@pos/infrastructure/repositories/orders/OrderTypeRepository';
 import { DrizzleCreateAndPayOrderRepository } from '@pos/infrastructure/repositories/orders/DrizzleCreateAndPayOrderRepository';
@@ -31,12 +28,6 @@ export interface OrdersModuleDeps extends SharedCompositionDeps {
 }
 
 export interface OrdersModule {
-  orderRepository: OrderRepository;
-  orderItemRepository: OrderItemRepository;
-  orderItemModifierRepository: OrderItemModifierRepository;
-  orderPaymentRepository: OrderPaymentRepository;
-  kitchenTicketRepository: KitchenTicketRepository;
-  orderTypeRepository: OrderTypeRepository;
   createOrder: CreateOrder;
   updateOrder: UpdateOrder;
   recordPayment: RecordPayment;
@@ -51,13 +42,24 @@ export interface OrdersModule {
   transitionOrderStatus: TransitionOrderStatus;
   createAndPayOrder: CreateAndPayOrder;
   transitionOrderFulfillmentStatus: TransitionOrderFulfillmentStatus;
+  orderQueries: {
+    findById: (orderId: string, tenantId: string) => ReturnType<OrderRepository['findById']>;
+    findByTenant: OrderRepository['findByTenant'];
+    countByTenant: OrderRepository['countByTenant'];
+    getEditLockState: OrderRepository['getEditLockState'];
+    getEditLockStates: OrderRepository['getEditLockStates'];
+  };
+  orderTypeHandlers: {
+    findOrBootstrapForTenant: OrderTypeRepository['findOrBootstrapForTenant'];
+    findAll: OrderTypeRepository['findAll'];
+    enableForTenant: OrderTypeRepository['enableForTenant'];
+    disableForTenant: OrderTypeRepository['disableForTenant'];
+  };
+  kitchenTicketRepository: KitchenTicketRepository;
 }
 
 export const createOrdersModule = ({ db, unitOfWork, tenantRepository, checkProductAvailability }: OrdersModuleDeps): OrdersModule => {
   const orderRepository = new OrderRepository(db);
-  const orderItemRepository = new OrderItemRepository(db);
-  const orderItemModifierRepository = new OrderItemModifierRepository(db);
-  const orderPaymentRepository = new OrderPaymentRepository(db);
   const kitchenTicketRepository = new KitchenTicketRepository(db);
   const orderTypeRepository = new OrderTypeRepository(db);
   const confirmOrder = new ConfirmOrder(orderRepository, tenantRepository);
@@ -71,12 +73,6 @@ export const createOrdersModule = ({ db, unitOfWork, tenantRepository, checkProd
   };
 
   return {
-    orderRepository,
-    orderItemRepository,
-    orderItemModifierRepository,
-    orderPaymentRepository,
-    kitchenTicketRepository,
-    orderTypeRepository,
     createOrder: new CreateOrder(orderRepository, tenantRepository, checkProductAvailability),
     updateOrder: new UpdateOrder(updateOrderRepository, tenantRepository),
     recordPayment: new RecordPayment(new DrizzleRecordPaymentRepository(db, unitOfWork)),
@@ -91,5 +87,19 @@ export const createOrdersModule = ({ db, unitOfWork, tenantRepository, checkProd
     transitionOrderStatus: new TransitionOrderStatus(orderRepository),
     createAndPayOrder: new CreateAndPayOrder(new DrizzleCreateAndPayOrderRepository(db, unitOfWork)),
     transitionOrderFulfillmentStatus: new TransitionOrderFulfillmentStatus(orderRepository),
+    orderQueries: {
+      findById: (orderId, tenantId) => orderRepository.findById(orderId, tenantId),
+      findByTenant: orderRepository.findByTenant.bind(orderRepository),
+      countByTenant: orderRepository.countByTenant.bind(orderRepository),
+      getEditLockState: orderRepository.getEditLockState.bind(orderRepository),
+      getEditLockStates: orderRepository.getEditLockStates.bind(orderRepository),
+    },
+    orderTypeHandlers: {
+      findOrBootstrapForTenant: orderTypeRepository.findOrBootstrapForTenant.bind(orderTypeRepository),
+      findAll: orderTypeRepository.findAll.bind(orderTypeRepository),
+      enableForTenant: orderTypeRepository.enableForTenant.bind(orderTypeRepository),
+      disableForTenant: orderTypeRepository.disableForTenant.bind(orderTypeRepository),
+    },
+    kitchenTicketRepository,
   };
 };

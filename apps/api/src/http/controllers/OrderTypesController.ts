@@ -26,7 +26,7 @@ export async function listOrderTypes(
       return;
     }
 
-    const orderTypes = await container.orderTypeRepository.findOrBootstrapForTenant(tenantId);
+    const orderTypes = await container.orderTypeHandlers.findOrBootstrapForTenant(tenantId);
 
     res.status(200).json({
       success: true,
@@ -52,7 +52,7 @@ export async function listAllOrderTypes(
   next: NextFunction
 ): Promise<void> {
   try {
-    const orderTypes = await container.orderTypeRepository.findAll();
+    const orderTypes = await container.orderTypeHandlers.findAll();
 
     res.status(200).json({
       success: true,
@@ -90,7 +90,7 @@ export async function enableOrderType(
       return;
     }
 
-    const tenantOrderType = await container.orderTypeRepository.enableForTenant(
+    const tenantOrderType = await container.orderTypeHandlers.enableForTenant(
       tenantId,
       orderTypeId,
       config
@@ -132,7 +132,7 @@ export async function disableOrderType(
       return;
     }
 
-    await container.orderTypeRepository.disableForTenant(tenantId, orderTypeId);
+    await container.orderTypeHandlers.disableForTenant(tenantId, orderTypeId);
 
     res.status(200).json({
       success: true,
