@@ -1,3 +1,4 @@
+import { logger } from '../../bootstrap/logging';
 import type { Express, RequestHandler } from 'express';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import { GetCurrentAuthUserProfile } from '@pos/application/auth';
@@ -42,7 +43,7 @@ export function registerAuthRoutes(app: Express, dependencies: AuthBootstrapDepe
         data: result.profile,
       });
     } catch (err) {
-      console.error('[auth/me]', err);
+      logger.error('[auth/me]', err);
       return res.status(500).json({ success: false, error: 'Internal server error' });
     }
   });

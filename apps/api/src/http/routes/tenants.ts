@@ -1,3 +1,4 @@
+import { logger } from '../../bootstrap/logging';
 /**
  * Tenants Routes
  * Tenant feature management endpoints
@@ -44,7 +45,7 @@ export const getTenantBySlug: RequestHandler = async (req, res) => {
     if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
     return res.json({ success: true, data: tenant });
   } catch (err) {
-    console.error('[by-slug]', err);
+    logger.error('[by-slug]', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 };

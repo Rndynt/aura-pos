@@ -3,6 +3,7 @@
  * Catches and formats errors consistently with proper HTTP status codes
  */
 
+import { logger } from '../../bootstrap/logging';
 import { Request, Response, NextFunction } from 'express';
 
 export interface ApiError extends Error {
@@ -38,7 +39,7 @@ export function errorHandler(
   }
 
   // Log error details
-  console.error(`[${statusCode}] ${err.message}`, {
+  logger.error(`[${statusCode}] ${err.message}`, {
     path: req.path,
     method: req.method,
     tenantId: req.tenantId,

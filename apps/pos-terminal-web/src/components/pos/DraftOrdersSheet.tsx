@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState } from "react";
 import { Drawer } from "vaul";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";

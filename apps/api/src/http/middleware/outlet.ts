@@ -1,3 +1,4 @@
+import { logger } from '../../bootstrap/logging';
 import { Request, Response, NextFunction } from 'express';
 import { AssertOutletAccess, ResolveOutletContext } from '@pos/application/tenant-context';
 import type { TenantContextRepositoryPort } from '@pos/application/tenant-context';
@@ -117,7 +118,7 @@ export function createOutletMiddleware(deps: OutletMiddlewareDeps = {}) {
 
       next();
     } catch (err) {
-      console.error('Outlet middleware error:', err);
+      logger.error('Outlet middleware error:', err);
       next();
     }
   };

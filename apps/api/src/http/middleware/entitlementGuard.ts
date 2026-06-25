@@ -1,3 +1,4 @@
+import { logger } from '../../bootstrap/logging';
 /**
  * Entitlement Guard Middleware
  *
@@ -32,7 +33,7 @@ export function requireEntitlement(entitlementCode: EntitlementCode) {
         entitlement_code: entitlementCode,
       });
     } catch (err) {
-      console.error('[entitlementGuard] requireEntitlement error:', err);
+      logger.error('[entitlementGuard] requireEntitlement error:', err);
       next(err);
     }
   };
@@ -59,7 +60,7 @@ export function requireAnyEntitlement(entitlementCodes: EntitlementCode[]) {
         entitlement_codes: entitlementCodes,
       });
     } catch (err) {
-      console.error('[entitlementGuard] requireAnyEntitlement error:', err);
+      logger.error('[entitlementGuard] requireAnyEntitlement error:', err);
       next(err);
     }
   };

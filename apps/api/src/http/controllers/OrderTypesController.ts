@@ -1,3 +1,4 @@
+import { logger } from '../../bootstrap/logging';
 /**
  * Order Types Controller
  * Handles order type listing and management
@@ -33,7 +34,7 @@ export async function listOrderTypes(
       data: orderTypes,
     });
   } catch (error: any) {
-    console.error('Error listing order types:', error);
+    logger.error('Error listing order types:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to list order types',
@@ -59,7 +60,7 @@ export async function listAllOrderTypes(
       data: orderTypes,
     });
   } catch (error: any) {
-    console.error('Error listing all order types:', error);
+    logger.error('Error listing all order types:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to list all order types',
@@ -102,7 +103,7 @@ export async function enableOrderType(
       message: 'Order type enabled successfully',
     });
   } catch (error: any) {
-    console.error('Error enabling order type:', error);
+    logger.error('Error enabling order type:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to enable order type',
@@ -139,7 +140,7 @@ export async function disableOrderType(
       message: 'Order type disabled successfully',
     });
   } catch (error: any) {
-    console.error('Error disabling order type:', error);
+    logger.error('Error disabling order type:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to disable order type',

@@ -1,3 +1,4 @@
+import { logger } from '../../bootstrap/logging';
 /**
  * KDS Device Management Routes
  * Handles KDS device pairing (6-digit activation code) and hashed API key auth.
@@ -84,7 +85,7 @@ async function requireSession(
     }
     return { userId: session.user.id, tenantId };
   } catch (err) {
-    console.error('[kds requireSession]', err);
+    logger.error('[kds requireSession]', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
     return null;
   }
@@ -116,7 +117,7 @@ async function requireKdsKey(
       outletId: device.outletId ?? null,
     };
   } catch (err) {
-    console.error('[kds requireKdsKey]', err);
+    logger.error('[kds requireKdsKey]', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
     return null;
   }
@@ -177,7 +178,7 @@ router.post('/generate-code', async (req, res) => {
 
     res.json({ success: true, data: { code, expiresAt, deviceId } });
   } catch (err) {
-    console.error('[kds/generate-code]', err);
+    logger.error('[kds/generate-code]', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
@@ -192,7 +193,7 @@ router.get('/devices', async (req, res) => {
 
     res.json({ success: true, data: { devices } });
   } catch (err) {
-    console.error('[kds/devices GET]', err);
+    logger.error('[kds/devices GET]', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
@@ -207,7 +208,7 @@ router.delete('/devices/:id', async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error('[kds/devices DELETE]', err);
+    logger.error('[kds/devices DELETE]', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
@@ -240,7 +241,7 @@ router.post('/check-code', kdsPairingLimiter, async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error('[kds/check-code]', err);
+    logger.error('[kds/check-code]', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
@@ -286,7 +287,7 @@ router.post('/verify-code', kdsPairingLimiter, async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[kds/verify-code]', err);
+    logger.error('[kds/verify-code]', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
@@ -305,7 +306,7 @@ router.get('/orders', async (req: Request, res: Response) => {
       res,
       (err?: unknown) => {
         if (err) {
-          console.error('[kds/orders delegate error]', err);
+          logger.error('[kds/orders delegate error]', err);
           if (!res.headersSent) {
             res.status(500).json({ success: false, error: 'Internal server error' });
           }
@@ -313,7 +314,7 @@ router.get('/orders', async (req: Request, res: Response) => {
       },
     );
   } catch (err) {
-    console.error('[kds/orders]', err);
+    logger.error('[kds/orders]', err);
     if (!res.headersSent) {
       res.status(500).json({ success: false, error: 'Internal server error' });
     }
@@ -358,7 +359,7 @@ router.patch('/orders/:id/status', async (req: Request, res: Response) => {
       res,
       (err?: unknown) => {
         if (err) {
-          console.error('[kds/orders status delegate error]', err);
+          logger.error('[kds/orders status delegate error]', err);
           if (!res.headersSent) {
             res.status(500).json({ success: false, error: 'Internal server error' });
           }
@@ -366,7 +367,7 @@ router.patch('/orders/:id/status', async (req: Request, res: Response) => {
       },
     );
   } catch (err) {
-    console.error('[kds/orders/:id/status]', err);
+    logger.error('[kds/orders/:id/status]', err);
     if (!res.headersSent) {
       res.status(500).json({ success: false, error: 'Internal server error' });
     }

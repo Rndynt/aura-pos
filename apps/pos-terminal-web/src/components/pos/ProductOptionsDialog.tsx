@@ -1,4 +1,3 @@
-// @ts-nocheck - React 19 compatibility with shadcn/ui components
 import { useState, useEffect } from "react";
 import type { Product, ProductVariant, ProductOptionGroup } from "@pos/domain/catalog/types";
 import type { SelectedOption } from "@pos/domain/orders/types";

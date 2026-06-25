@@ -1,3 +1,4 @@
+import { logger } from '../../bootstrap/logging';
 /**
  * Public Registration Routes
  * Tidak butuh auth / tenant context
@@ -170,7 +171,7 @@ export function createRegistrationRouter(deps: RegistrationRouteDeps = {}) {
 
       return sendRegistrationResult(res, result, baseDomain);
     } catch (err: any) {
-      console.error('[register]', err);
+      logger.error('[register]', err);
       if (err instanceof RegistrationError) {
         return res.status(err.status).json({ error: err.message, code: err.code });
       }

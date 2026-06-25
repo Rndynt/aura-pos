@@ -1,3 +1,4 @@
+import { logger } from '../../bootstrap/logging';
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import type { AppContainer } from "../../composition/createAppContainer";
@@ -68,7 +69,7 @@ export function createTablesRouter(dependencies: TablesRouterDependencies): Rout
 
       res.json({ success: true, data: { tables: result.tables, total: result.total } });
     } catch (error) {
-      console.error("Error listing tables:", error);
+      logger.error("Error listing tables:", error);
       res.status(500).json({ success: false, error: { message: "Failed to list tables" } });
     }
   });
@@ -98,7 +99,7 @@ export function createTablesRouter(dependencies: TablesRouterDependencies): Rout
 
       res.status(201).json({ success: true, data: newTable });
     } catch (error) {
-      console.error("Error creating table:", error);
+      logger.error("Error creating table:", error);
       res.status(500).json({ success: false, error: { message: "Failed to create table" } });
     }
   });
@@ -149,7 +150,7 @@ export function createTablesRouter(dependencies: TablesRouterDependencies): Rout
 
       res.json({ success: true, data: updated });
     } catch (error) {
-      console.error("Error updating table status:", error);
+      logger.error("Error updating table status:", error);
       res.status(500).json({ success: false, error: { message: "Failed to update table" } });
     }
   });

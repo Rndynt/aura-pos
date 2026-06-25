@@ -1,3 +1,4 @@
+import { logger } from '../../bootstrap/logging';
 import { Request, Response, NextFunction } from 'express';
 import { GetTenantAuthUser, ResolveTenantContext } from '@pos/application/tenant-context';
 import { DrizzleTenantContextRepository } from '@pos/infrastructure/repositories/tenant-context';
@@ -199,7 +200,7 @@ export function createTenantAuthGuard(deps: TenantAuthGuardDeps = {}) {
 
       next();
     } catch (err) {
-      console.error('Tenant auth guard error:', err);
+      logger.error('Tenant auth guard error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   };
@@ -330,7 +331,7 @@ export async function tenantMiddleware(
     req.tenantSlug = tenant.slug;
     next();
   } catch (err) {
-    console.error('Tenant middleware error:', err);
+    logger.error('Tenant middleware error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
