@@ -3,7 +3,7 @@ import type { Express, RequestHandler } from 'express';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import { GetCurrentAuthUserProfile } from '@pos/application/auth';
 import { DrizzleAuthUserProfileReader } from '@pos/infrastructure/repositories/auth';
-import { auth, authDb } from '../lib/auth';
+import { auth, authDb, subdomainOriginRewriter } from '../lib/auth';
 
 type AuthSessionApi = {
   getSession(input: { headers: Headers }): Promise<{ user?: { id: string; name?: string | null; email?: string | null } } | null>;
@@ -47,6 +47,10 @@ export function registerAuthRoutes(app: Express, dependencies: AuthBootstrapDepe
       return res.status(500).json({ success: false, error: 'Internal server error' });
     }
   });
+
+  // Rewrite tenant subdomain Origins (e.g. tokobudi.aurapos.my.id → aurapos.my.id)
+  // before Better Auth validates them. See lib/auth.ts for rationale.
+  app.use('/api/auth', subdomainOriginRewriter);
 
   app.all('/api/auth/*', authHandler);
 }
