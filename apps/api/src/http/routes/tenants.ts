@@ -12,6 +12,7 @@ export interface TenantsRouterDependencies {
   registerTenant: RequestHandler;
   getTenantProfile: RequestHandler;
   getTenantEntitlements: RequestHandler;
+  updateTenantProfile: RequestHandler;
 }
 
 export function createTenantsRouter(deps: TenantsRouterDependencies): Router {
@@ -26,6 +27,9 @@ export function createTenantsRouter(deps: TenantsRouterDependencies): Router {
 
   // GET /api/tenants/profile - Tenant profile + effective entitlements + catalog
   router.get('/profile', deps.getTenantProfile);
+
+  // PATCH /api/tenants/profile - Update tenant profile fields
+  router.patch('/profile', deps.updateTenantProfile);
 
   // GET /api/tenants/entitlements - Effective entitlement map only
   router.get('/entitlements', deps.getTenantEntitlements);
@@ -50,5 +54,6 @@ const defaultTenantsRouter = createTenantsRouter({
   registerTenant: TenantsController.registerTenant,
   getTenantProfile: TenantsController.getTenantProfile,
   getTenantEntitlements: TenantsController.getTenantEntitlements,
+  updateTenantProfile: TenantsController.updateTenantProfile,
 });
 export default defaultTenantsRouter;

@@ -15,6 +15,11 @@ import {
   getEffectiveEntitlementMap,
   loadTenantEntitlementContext,
 } from '../../services/tenantEntitlements';
+import { z } from 'zod';
+import { db } from '@pos/infrastructure/database';
+import { tenants } from '@pos/infrastructure/db/schema';
+import { eq } from 'drizzle-orm';
+import { invalidateTenantResolutionCache } from '../../services/cacheInvalidation';
 
 /**
  * Builds the canonical entitlement response shape shared by
@@ -120,4 +125,70 @@ export const registerTenant = asyncHandler(async (_req: Request, res: Response) 
     code: 'ENDPOINT_DEPRECATED',
     location: '/api/register',
   });
+});
+
+const updateProfileSchema = z.object({
+  businessName: z.string().min(1).max(255).optional(),
+  businessPhone: z.string().max(50).optional().nullable(),
+  businessAddress: z.string().max(500).optional().nullable(),
+  businessEmail: z.string().email().max(255).optional().nullable(),
+  timezone: z.string().max(100).optional(),
+  currency: z.string().length(3).optional(),
+  locale: z.string().max(10).optional(),
+});
+
+/**
+ * PATCH /api/tenants/profile
+ * Update tenant profile fields (business name, phone, address, email).
+ * Requires owner role minimum — enforced by route guard.
+ */
+export const updateTenantProfile = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.tenantId!;
+
+  const parsed = updateProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      success: false,
+      error: 'Validasi gagal',
+      code: 'VALIDATION_ERROR',
+      details: parsed.error.flatten().fieldErrors,
+    });
+    return;
+  }
+
+  const { businessName, businessPhone, businessAddress, businessEmail, timezone, currency, locale } = parsed.data;
+
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (businessName !== undefined) updateData.businessName = businessName;
+  if (businessPhone !== undefined) updateData.businessPhone = businessPhone;
+  if (businessAddress !== undefined) updateData.businessAddress = businessAddress;
+  if (businessEmail !== undefined) updateData.businessEmail = businessEmail;
+  if (timezone !== undefined) updateData.timezone = timezone;
+  if (currency !== undefined) updateData.currency = currency;
+  if (locale !== undefined) updateData.locale = locale;
+
+  const [updated] = await db
+    .update(tenants)
+    .set(updateData)
+    .where(eq(tenants.id, tenantId))
+    .returning({
+      id: tenants.id,
+      name: tenants.name,
+      businessName: tenants.businessName,
+      businessPhone: tenants.businessPhone,
+      businessAddress: tenants.businessAddress,
+      businessEmail: tenants.businessEmail,
+      timezone: tenants.timezone,
+      currency: tenants.currency,
+      locale: tenants.locale,
+    });
+
+  if (!updated) {
+    throw createError('Tenant not found', 404, 'TENANT_NOT_FOUND');
+  }
+
+  // Invalidate tenant resolution cache so updated business name appears immediately
+  await invalidateTenantResolutionCache(tenantId, [], 'profile_update');
+
+  res.status(200).json({ success: true, data: updated });
 });
