@@ -1,4 +1,4 @@
-import { logger } from '../../bootstrap/logging';
+import { logger } from './logging';
 import type { Express, RequestHandler } from 'express';
 import { fromNodeHeaders, toNodeHandler } from 'better-auth/node';
 import { GetCurrentAuthUserProfile } from '@pos/application/auth';
