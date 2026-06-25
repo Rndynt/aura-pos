@@ -58,7 +58,7 @@ export function useRestaurantTableServicePOSFlow() {
   const [isDraftSaving, setIsDraftSaving] = useState(false);
   const [isProcessingQuickCharge, setIsProcessingQuickCharge] = useState(false);
   const [paymentMethodDialogOpen, setPaymentMethodDialogOpen] = useState(false);
-  const [pendingOrderForPayment, setPendingOrderForPayment] = useState<{ orderId: string; totalAmount: number; orderNumber: string } | null>(null);
+  const [pendingOrderForPayment, setPendingOrderForPayment] = useState<import("@/features/pos-core/hooks/usePOSActiveOrderPayment").POSPendingOrderPayment>(null);
 
   const { data: productsData, isLoading: productsLoading, error: productsError } = useProducts();
   const products = productsData?.products || [];

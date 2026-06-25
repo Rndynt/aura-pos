@@ -67,3 +67,27 @@ const splitOnlyBillA = buildSubmitPOSPaymentRequest({ clientPaymentSessionId: "s
 assert.equal(splitOnlyBillA.payment.splits?.length, 1, "only Bill A with amountDue>0 should be in splits");
 assert.equal(splitOnlyBillA.payment.splits?.[0].amountDue, 14000);
 assert.equal(splitOnlyBillA.payment.splits?.[0].clientBillId, "A");
+
+const splitWithPersistedItems = buildSubmitPOSPaymentRequest({
+  clientPaymentSessionId: "sess-split-items",
+  mode: "SAVED_ORDER",
+  orderId: "00000000-0000-0000-0000-000000000001",
+  totalAmount: 26000,
+  paymentMethod: "CASH",
+  paymentDetails: {
+    flow: "SPLIT_BILL",
+    targetBillId: "A",
+    lines: [{ method: "CASH", amount: 26000, clientBillId: "A", orderBillSplitId: "11111111-1111-1111-1111-111111111111" }],
+    splits: [{
+      id: "A",
+      label: "Bill A",
+      amountDue: 26000,
+      amountPaid: 0,
+      orderBillSplitId: "11111111-1111-1111-1111-111111111111",
+      items: [{ orderItemId: "22222222-2222-2222-2222-222222222222", quantity: 1, amount: 26000 }],
+    }],
+  },
+});
+assert.equal(splitWithPersistedItems.payment.lines[0].orderBillSplitId, "11111111-1111-1111-1111-111111111111");
+assert.equal(splitWithPersistedItems.payment.splits?.[0].items?.[0].orderItemId, "22222222-2222-2222-2222-222222222222");
+assert.equal(splitWithPersistedItems.payment.splits?.[0].items?.[0].amount, 26000);

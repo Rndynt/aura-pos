@@ -13324,7 +13324,7 @@ Continue by extracting the new composition shim surface into narrow application 
 - Tasklist: User-provided 6-item category architecture checklist.
 - User request: Implement List/Create/Rename/Delete/Reorder category use cases, repository port, Drizzle adapter, move legacy bootstrap, slim CategoryController, add tenant-scoped tests.
 - Date started: 2026-06-24
-- Current status: In progress
+- Current status: Implemented; validation completed with targeted checks and known unrelated type-check warnings.
 
 ### Goal
 Move catalog category operations out of HTTP handlers into application use cases backed by a tenant-scoped repository port and Drizzle infrastructure adapter, preserving legacy product.category bootstrap through an explicit policy and adding tests for tenant isolation.
@@ -14021,3 +14021,98 @@ Move KDS tenant/device/outlet resolution SQL out of the Express route into typed
 
 ### Continuation Notes
 Next safest continuation is broader integration coverage for the KDS pairing/admin endpoints if deeper regression protection is needed.
+
+## Plan: P9.11 Split Bill Persistence + Resume Flow Final Fix
+
+### Source
+- Tasklist: `roadmap/business-flows/replit_codex_P9_11_split_bill_persistence_resume_prompt.md`
+- User request: Analisa mendalam dan eksekusi roadmap P9.11 split bill persistence/resume; cek berulang sebelum commit.
+- Date started: 2026-06-25
+- Current status: Implemented; workspace has unrelated pre-existing type-check failures documented.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active roadmap prompt
+- [x] Relevant docs (`docs/ORDER_LIFECYCLE.md`, P9.4 report)
+- [x] Relevant source files from the prompt
+
+### Progress
+#### Completed
+- [x] Persist split-bill item assignments with schema + migration.
+  - Files changed: `packages/infrastructure/db/schema/orders.schema.ts`, `migrations/0018_order_bill_split_items.sql`
+  - Validation: `pnpm --filter @pos/infrastructure type-check`
+  - Docs updated: `docs/ORDER_LIFECYCLE.md`
+- [x] Submit split-bill selected items and validate paid-item reuse/order ownership.
+  - Files changed: POS payment command/controller/service/repository files
+  - Validation: `pnpm --filter @pos/application type-check`, `pnpm --filter @pos/terminal-web test`
+  - Docs updated: roadmap execution report
+- [x] Rehydrate split-bill state from order read model and lock paid bills/items in dialog.
+  - Files changed: `OrderRepository`, API hooks, `PaymentMethodDialog`, POS flow entry points
+  - Validation: targeted package type-check/test commands above
+
+#### Partially Completed
+- [ ] Partial quantity split UI.
+  - Completed: Schema/API can store quantity.
+  - Remaining: UI still assigns whole order-item rows.
+  - Reason: Roadmap allowed whole-item assignment first if quantity splitting is not already supported.
+
+#### Blocked
+- [ ] Full workspace/API green type-check.
+  - Blocker: unrelated pre-existing errors in API auth/migration/middleware/routes/tests and POS DraftOrdersSheet/Employees typing.
+  - Required next step: separate cleanup batch for existing type errors.
+
+### Validation Log
+- Command: `pnpm --filter @pos/infrastructure type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/application type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: pass
+- Command: `pnpm --filter @pos/api type-check`
+- Result: fail, pre-existing unrelated errors
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: fail, pre-existing unrelated errors after P9.11 changed-file errors were fixed
+
+### Continuation Notes
+Next safest batch is to clean existing API/POS type errors so full workspace `pnpm type-check` can become a hard gate.
+
+## Plan Update: P9.11 Partial Quantity Split UI Completion
+
+### Source
+- Tasklist: continuation of `roadmap/business-flows/replit_codex_P9_11_split_bill_persistence_resume_prompt.md`
+- User request: Complete the previously partial quantity-split UI task.
+- Date started: 2026-06-25
+- Current status: Implemented; validation completed with targeted checks and known unrelated type-check warnings.
+
+### Goal
+Finish quantity-level split assignment so one order item row with quantity > 1 can be allocated across different split bills without moving or re-paying already paid quantities.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active roadmap prompt
+- [x] Relevant source files
+
+### Progress
+#### Completed
+- [x] Task: Partial quantity split UI
+  - Files changed: `apps/pos-terminal-web/src/components/pos/PaymentMethodDialog.tsx`, `packages/infrastructure/repositories/payments/DrizzleSubmitPOSPaymentRepository.ts`
+  - Validation: `pnpm --filter @pos/infrastructure type-check`, `pnpm --filter @pos/terminal-web test`
+  - Docs updated: `roadmap/business-flows/replit_codex_P9_11_split_bill_persistence_resume_prompt.md`, `docs/ORDER_LIFECYCLE.md`, `PLANS.md`
+
+#### Partially Completed
+- [x] None for this continuation batch.
+
+### Validation Log
+- Command: `pnpm --filter @pos/infrastructure type-check`
+- Result: pass
+- Command: `pnpm --filter @pos/terminal-web test`
+- Result: pass
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: fail, pre-existing unrelated DraftOrdersSheet/Employees type errors only.
+
+### Continuation Notes
+Partial quantity split UI is now completed for whole-number item quantities: each bill can receive a subset of an order item's quantity, paid quantities remain locked, and backend validation allows paying only the unpaid remaining quantity.

@@ -14,6 +14,7 @@ export type SubmitPOSPaymentResultSplit = {
   amountDue: number;
   amountPaid: number;
   status: "unpaid" | "partial" | "paid";
+  items?: Array<{ orderItemId: string; quantity: number; amount: number }>;
 };
 
 export type SubmitPOSPaymentResult = {

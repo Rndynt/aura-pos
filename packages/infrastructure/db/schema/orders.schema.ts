@@ -260,3 +260,23 @@ export const orderBillSplits = pgTable("order_bill_splits", {
 
 export type InsertOrderBillSplit = typeof orderBillSplits.$inferInsert;
 export type OrderBillSplit = typeof orderBillSplits.$inferSelect;
+
+export const orderBillSplitItems = pgTable("order_bill_split_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orderId: uuid("order_id").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  orderBillSplitId: uuid("order_bill_split_id").notNull().references(() => orderBillSplits.id, { onDelete: "cascade" }),
+  orderItemId: uuid("order_item_id").notNull().references(() => orderItems.id, { onDelete: "cascade" }),
+  clientBillId: varchar("client_bill_id", { length: 128 }).notNull(),
+  quantity: decimal("quantity", { precision: 12, scale: 3 }).notNull().default("1"),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => ({
+  orderIdx: index("order_bill_split_items_order_idx").on(table.orderId),
+  splitIdx: index("order_bill_split_items_split_idx").on(table.orderBillSplitId),
+  itemIdx: index("order_bill_split_items_item_idx").on(table.orderItemId),
+  orderItemBillUnique: uniqueIndex("order_bill_split_items_order_item_bill_unique").on(table.orderId, table.orderItemId, table.clientBillId),
+}));
+
+export type InsertOrderBillSplitItem = typeof orderBillSplitItems.$inferInsert;
+export type OrderBillSplitItem = typeof orderBillSplitItems.$inferSelect;

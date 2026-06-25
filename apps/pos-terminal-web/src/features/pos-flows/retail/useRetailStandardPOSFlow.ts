@@ -54,7 +54,7 @@ export function useRetailStandardPOSFlow() {
   const [isDraftSaving, setIsDraftSaving] = useState(false);
   const [isProcessingQuickCharge, setIsProcessingQuickCharge] = useState(false);
   const [paymentMethodDialogOpen, setPaymentMethodDialogOpen] = useState(false);
-  const [pendingOrderForPayment, setPendingOrderForPayment] = useState<{ orderId: string; totalAmount: number; orderNumber: string } | null>(null);
+  const [pendingOrderForPayment, setPendingOrderForPayment] = useState<import("@/features/pos-core/hooks/usePOSActiveOrderPayment").POSPendingOrderPayment>(null);
 
   const { data: productsData, isLoading: productsLoading, error: productsError } = useProducts();
   const products = productsData?.products || [];
@@ -242,13 +242,16 @@ export function useRetailStandardPOSFlow() {
 
       const mode = continueOrderId ? "SAVED_ORDER" : "FRESH_CART";
       if (continueOrderId) {
-        const updateResult = await updateOrderMutation.mutateAsync({ orderId: continueOrderId, ...buildOrderPayload() });
-        const totalAmount = getPOSOrderTotal(updateResult, cart.total);
+        const shouldPreservePersistedSplitState = paymentDetails?.flow === "SPLIT_BILL";
+        const updateResult = shouldPreservePersistedSplitState
+          ? undefined
+          : await updateOrderMutation.mutateAsync({ orderId: continueOrderId, ...buildOrderPayload() });
+        const totalAmount = updateResult ? getPOSOrderTotal(updateResult, cart.total) : cart.total;
         const result = await submitPOSPayment({
           mode,
           clientPaymentSessionId: paymentSessionIdRef.current ?? (paymentSessionIdRef.current = createClientPaymentSessionId()),
           orderId: continueOrderId,
-          orderNumber: getPOSOrderIdentity(updateResult).orderNumber || continueOrderId,
+          orderNumber: updateResult ? (getPOSOrderIdentity(updateResult).orderNumber || continueOrderId) : continueOrderId,
           totalAmount,
           paymentMethod,
           cashReceived,

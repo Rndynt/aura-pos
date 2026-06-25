@@ -10,6 +10,8 @@ import {
   orderItems,
   orderItemModifiers,
   orderPayments,
+  orderBillSplits,
+  orderBillSplitItems,
   products,
   kitchenTickets,
   type Order,
@@ -263,6 +265,19 @@ export class OrderRepository
         .from(orderPayments)
         .where(eq(orderPayments.orderId, id));
 
+      // Get persisted split bill state and item assignments for resume flow
+      const billSplits = await client
+        .select()
+        .from(orderBillSplits)
+        .where(eq(orderBillSplits.orderId, id));
+
+      const billSplitItems = billSplits.length > 0
+        ? await client
+            .select()
+            .from(orderBillSplitItems)
+            .where(eq(orderBillSplitItems.orderId, id))
+        : [];
+
       // Map modifiers to items
       const modifiersByItem = modifiers.reduce((acc, modifier) => {
         if (!acc[modifier.orderItemId]) {
@@ -285,10 +300,31 @@ export class OrderRepository
         };
       });
 
+      const splitItemsBySplitId = billSplitItems.reduce((acc, item) => {
+        if (!acc[item.orderBillSplitId]) acc[item.orderBillSplitId] = [];
+        acc[item.orderBillSplitId].push({
+          orderItemId: item.orderItemId,
+          clientBillId: item.clientBillId,
+          quantity: Number(item.quantity ?? 0),
+          amount: Number(item.amount ?? 0),
+        });
+        return acc;
+      }, {} as Record<string, Array<{ orderItemId: string; clientBillId: string; quantity: number; amount: number }>>);
+
       return {
         ...order,
         items: completeItems,
         payments,
+        billSplits: billSplits.map((split) => ({
+          id: split.id,
+          clientBillId: split.clientBillId,
+          label: split.splitLabel ?? `Bill ${split.splitNo}`,
+          splitNo: split.splitNo,
+          amountDue: Number(split.amountDue ?? 0),
+          amountPaid: Number(split.amountPaid ?? 0),
+          status: String(split.status ?? 'unpaid').toUpperCase(),
+          items: splitItemsBySplitId[split.id] ?? [],
+        })),
       };
     } catch (error) {
       this.handleError('find order by id', error);

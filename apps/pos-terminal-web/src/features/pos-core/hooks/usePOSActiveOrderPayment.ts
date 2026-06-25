@@ -3,7 +3,7 @@ import { useToast } from "@/hooks/use-toast";
 import { resolvePOSActiveOrderPaymentAmount } from "../services/posPaymentAmountService";
 import type { POSLifecycleOrder } from "../services/posLifecycleService";
 
-export type POSPendingOrderPayment = { orderId: string; totalAmount: number; orderNumber: string } | null;
+export type POSPendingOrderPayment = { orderId: string; totalAmount: number; orderNumber: string; order?: POSLifecycleOrder } | null;
 
 export function usePOSActiveOrderPayment(input: {
   setPendingOrderForPayment: Dispatch<SetStateAction<POSPendingOrderPayment>>;
@@ -17,7 +17,7 @@ export function usePOSActiveOrderPayment(input: {
       toast({ title: "Pembayaran diblokir", description: result.reason, variant: "destructive" });
       return;
     }
-    input.setPendingOrderForPayment({ orderId: order.id, totalAmount: result.amount, orderNumber: result.orderNumber });
+    input.setPendingOrderForPayment({ orderId: order.id, totalAmount: result.amount, orderNumber: result.orderNumber, order });
     input.openPaymentDialog();
   };
 

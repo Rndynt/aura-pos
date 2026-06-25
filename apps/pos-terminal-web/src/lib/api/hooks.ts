@@ -72,6 +72,23 @@ function mapApiOrder(raw: Record<string, any>): Order {
         payment_date: p.paymentDate ?? p.payment_date,
       })),
     } : {}),
+    ...(Array.isArray(raw.billSplits ?? raw.splits) ? {
+      billSplits: (raw.billSplits ?? raw.splits).map((split: Record<string, any>) => ({
+        id: split.id,
+        clientBillId: split.clientBillId ?? split.client_bill_id,
+        label: split.label ?? split.splitLabel ?? split.split_label,
+        splitNo: split.splitNo ?? split.split_no,
+        amountDue: Number(split.amountDue ?? split.amount_due ?? 0),
+        amountPaid: Number(split.amountPaid ?? split.amount_paid ?? 0),
+        status: split.status,
+        items: Array.isArray(split.items) ? split.items.map((item: Record<string, any>) => ({
+          orderItemId: item.orderItemId ?? item.order_item_id,
+          clientBillId: item.clientBillId ?? item.client_bill_id ?? split.clientBillId ?? split.client_bill_id,
+          quantity: Number(item.quantity ?? 0),
+          amount: Number(item.amount ?? 0),
+        })) : [],
+      })),
+    } : {}),
   } as Order;
 }
 

@@ -35,7 +35,7 @@ export type POSPaymentSubmissionInput = {
     paymentKind?: POSPaymentKind;
     targetBillId?: string;
     lines?: POSPaymentLineInput[];
-    splits?: Array<{ id?: string; label?: string; amountDue: number; amountPaid?: number }>;
+    splits?: Array<{ id?: string; label?: string; amountDue: number; amountPaid?: number; orderBillSplitId?: string; status?: "UNPAID" | "PARTIAL" | "PAID"; items?: Array<{ orderItemId?: string; clientItemId?: string; quantity: number; amount: number }> }>;
   };
 };
 
@@ -81,6 +81,7 @@ export type SubmitPOSPaymentRequest = {
       amountDue: number;
       amountPaid?: number;
       status?: "UNPAID" | "PARTIAL" | "PAID";
+      items?: Array<{ orderItemId?: string; clientItemId?: string; quantity: number; amount: number }>;
     }>;
   };
 };
@@ -149,7 +150,8 @@ function buildSplitPayload(input: POSPaymentSubmissionInput): SubmitPOSPaymentRe
     splitNo: index + 1,
     amountDue: roundCurrency(split.amountDue),
     amountPaid: roundCurrency(split.amountPaid ?? 0),
-    status: (split.amountPaid ?? 0) >= split.amountDue - 0.001 ? "PAID" : (split.amountPaid ?? 0) > 0 ? "PARTIAL" : "UNPAID",
+    status: split.status ?? ((split.amountPaid ?? 0) >= split.amountDue - 0.001 ? "PAID" : (split.amountPaid ?? 0) > 0 ? "PARTIAL" : "UNPAID"),
+    items: split.items,
   }));
 }
 

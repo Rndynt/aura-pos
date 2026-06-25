@@ -33,6 +33,7 @@ export interface BackendOrderItem {
   variant_price_delta?: number;
   selected_options?: SelectedOption[];
   notes?: string;
+  client_item_id?: string;
   discount_type?: string;
   discount_value?: number;
   discount_amount?: number;
@@ -342,6 +343,7 @@ export function useCart() {
     items.map((item) => {
       const discountAmount = getItemDiscountAmount(item);
       return {
+        client_item_id: item.id,
         product_id: item.product.id,
         product_name: item.product.name,
         base_price: item.product.base_price,

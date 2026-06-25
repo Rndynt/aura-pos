@@ -612,3 +612,43 @@ Include:
 ```txt
 fix(pos): persist and resume split bill state
 ```
+
+## Execution Report — 2026-06-25
+
+Status: Implemented and validated for the current batch.
+
+What changed:
+- Added persisted split-bill item assignment storage via `order_bill_split_items` so bill/item state is no longer dialog-local only.
+- Submit POS payment now carries selected split-bill item assignments, validates order ownership, blocks already-paid item reuse, and writes split rows/items/payments/order totals in one repository transaction.
+- Order read model now returns `billSplits[].items[]` for split resume hydration.
+- POS payment dialog now hydrates persisted paid bills, locks paid bill tabs/items, defaults to the first unpaid bill, and sends DB split/item identifiers without mixing `clientBillId` and `orderBillSplitId`.
+- Active/draft order payment entry points pass persisted split state to the dialog and preserve existing split assignments during split-bill payment continuation.
+
+Validation:
+- Passed: `pnpm --filter @pos/infrastructure type-check`
+- Passed: `pnpm --filter @pos/application type-check`
+- Passed: `pnpm --filter @pos/terminal-web test`
+- Warning/pre-existing failures: `pnpm --filter @pos/api type-check` still fails on unrelated API typing issues in auth/migrations/middleware/routes/tests.
+- Warning/pre-existing failures: `pnpm --filter @pos/terminal-web type-check` still fails on unrelated DraftOrdersSheet and Employees icon typing issues; no P9.11 changed file errors remained after targeted fixes.
+
+Schema storage note:
+- This repo already contains SQL migrations for order payment metadata (`0016`, `0017`), so this batch adds a single forward migration `migrations/0018_order_bill_split_items.sql` plus the Drizzle schema table definition. This is not a random repair migration; it is the canonical storage addition required to persist split item assignment.
+
+Remaining/hardening notes:
+- Partial quantity split UI is now completed for whole-number item quantities. One order item row with quantity > 1 can be allocated across different split bills, while quantities already attached to paid bills remain locked.
+- Existing full workspace/API type-check failures should be cleaned separately because they are outside this split-bill flow and pre-date this batch.
+
+## Execution Report Update — 2026-06-25 Partial Quantity Completion
+
+Status: Completed.
+
+What changed:
+- Split Bill UI now stores quantity allocation per order item per bill instead of a single item-to-bill mapping.
+- Cashier can assign a subset of an item row quantity to the active bill with +/- controls.
+- Paid quantities stay locked and cannot be moved or submitted again.
+- Backend validation now sums paid quantity per order item and allows submitting only unpaid remaining quantity.
+
+Validation:
+- Passed: `pnpm --filter @pos/infrastructure type-check`
+- Passed: `pnpm --filter @pos/terminal-web test`
+- Warning/pre-existing failures: `pnpm --filter @pos/terminal-web type-check` still fails on unrelated DraftOrdersSheet and Employees icon typing issues.

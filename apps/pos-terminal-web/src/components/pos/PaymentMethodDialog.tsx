@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Banknote, Landmark, QrCode, Delete, X, Plus, Trash2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Banknote, Landmark, QrCode, Delete, X, Plus, Trash2, CheckCircle2, AlertCircle, Minus } from "lucide-react";
 import type { PaymentMethod, CartItem } from "@/hooks/useCart";
 import { getItemEffectiveTotal } from "@/hooks/useCart";
 import type { POSPaymentFlow, POSPaymentKind } from "@pos/domain/payments";
+
+export type ExistingSplitBillItem = { orderItemId: string; clientBillId: string; quantity: number; amount: number };
+export type ExistingSplitBill = { id?: string; clientBillId: string; label: string; amountDue: number; amountPaid: number; status: "UNPAID" | "PARTIAL" | "PAID"; items?: ExistingSplitBillItem[] };
 
 type PaymentDetails = {
   flow: POSPaymentFlow;
@@ -15,8 +18,9 @@ type PaymentDetails = {
     receivedAmount?: number;
     splitId?: string;
     clientBillId?: string;
+    orderBillSplitId?: string;
   }>;
-  splits?: Array<{ id: string; label: string; splitNo: number; amountDue: number; amountPaid: number; status?: "UNPAID" | "PARTIAL" | "PAID" }>;
+  splits?: Array<{ id: string; label: string; splitNo: number; amountDue: number; amountPaid: number; status?: "UNPAID" | "PARTIAL" | "PAID"; orderBillSplitId?: string; items?: Array<{ orderItemId?: string; clientItemId?: string; quantity: number; amount: number }> }>;
 };
 
 type Props = {
@@ -32,6 +36,7 @@ type Props = {
   allowMultiPayment?: boolean;
   allowSplitBill?: boolean;
   initialPartialMode?: boolean;
+  existingSplitBills?: ExistingSplitBill[];
 };
 
 const fmt = (n: number) =>
@@ -150,6 +155,7 @@ export function PaymentMethodDialog({
   allowMultiPayment = false,
   allowSplitBill = false,
   initialPartialMode = false,
+  existingSplitBills = [],
 }: Props) {
   const [method, setMethod] = useState<PaymentMethod>(defaultPaymentMethod);
   const [cashRaw, setCashRaw] = useState("");
@@ -161,7 +167,8 @@ export function PaymentMethodDialog({
   const [multiMethod, setMultiMethod] = useState<PaymentMethod>("CASH");
   const [splitBills, setSplitBills] = useState<string[]>(["A", "B"]);
   const [activeBill, setActiveBill] = useState("A");
-  const [itemBillMap, setItemBillMap] = useState<Record<string, string | undefined>>({});
+  const [splitItemQuantityMap, setSplitItemQuantityMap] = useState<Record<string, Record<string, number>>>({});
+  const [persistedSplitBills, setPersistedSplitBills] = useState<Record<string, ExistingSplitBill>>({});
   const isWide = useIsWide();
 
   useEffect(() => {
@@ -174,10 +181,26 @@ export function PaymentMethodDialog({
     setMultiEntries([]);
     setMultiRaw("");
     setMultiMethod("CASH");
-    setSplitBills(["A", "B"]);
-    setActiveBill("A");
-    setItemBillMap({});
-  }, [open, defaultPaymentMethod, initialPartialMode]);
+    const normalizedExisting = existingSplitBills.filter((bill) => bill.clientBillId);
+    if (normalizedExisting.length > 0) {
+      const ids = Array.from(new Set([...normalizedExisting.map((bill) => bill.clientBillId), "A", "B"]));
+      const persisted = Object.fromEntries(normalizedExisting.map((bill) => [bill.clientBillId, bill]));
+      const persistedQuantityMap: Record<string, Record<string, number>> = {};
+      normalizedExisting.forEach((bill) => bill.items?.forEach((item) => {
+        if (!persistedQuantityMap[item.orderItemId]) persistedQuantityMap[item.orderItemId] = {};
+        persistedQuantityMap[item.orderItemId][bill.clientBillId] = Number(item.quantity || 0);
+      }));
+      setSplitBills(ids.slice(0, 4));
+      setPersistedSplitBills(persisted);
+      setSplitItemQuantityMap(persistedQuantityMap);
+      setActiveBill(normalizedExisting.find((bill) => bill.status !== "PAID")?.clientBillId ?? ids.find((id) => persisted[id]?.status !== "PAID") ?? "B");
+    } else {
+      setSplitBills(["A", "B"]);
+      setActiveBill("A");
+      setPersistedSplitBills({});
+      setSplitItemQuantityMap({});
+    }
+  }, [open, defaultPaymentMethod, initialPartialMode, existingSplitBills]);
 
   const loading = isProcessing || isSubmitting;
   const cashAmount = parseInt(cashRaw, 10) || 0;
@@ -190,12 +213,23 @@ export function PaymentMethodDialog({
   const multiRemaining = Math.max(0, cartTotal - multiPaid);
   const multiCanAdd = multiEntries.length < 2 && multiInputAmount > 0 && multiInputAmount <= multiRemaining;
   const multiComplete = multiRemaining === 0;
-  const getBillForItem = (itemId: string) => itemBillMap[itemId];
-  const unassignedCount = cartItems.filter((item) => !getBillForItem(item.id)).length;
-  const getBillTotal = (bill: string) =>
-    cartItems.reduce((sum, item) => (getBillForItem(item.id) === bill ? sum + getItemEffectiveTotal(item) : sum), 0);
+  const getDialogItemTotal = (item: CartItem) => Number((item as any).itemSubtotal ?? (item as any).item_subtotal ?? (item as any).totalPrice ?? (item as any).total_price ?? getItemEffectiveTotal(item));
+  const getPersistedBill = (bill: string) => persistedSplitBills[bill];
+  const isBillLocked = (bill: string) => getPersistedBill(bill)?.status === "PAID";
+  const getOrderItemId = (item: CartItem) => item.id;
+  const getItemQuantity = (item: CartItem) => Math.max(1, Number((item as any).quantity ?? 1));
+  const getAssignedQty = (itemId: string, bill: string) => Number(splitItemQuantityMap[itemId]?.[bill] ?? 0);
+  const getAssignedQtyForItem = (itemId: string) => Object.values(splitItemQuantityMap[itemId] ?? {}).reduce((sum, qty) => sum + Number(qty || 0), 0);
+  const getLockedQtyForItem = (itemId: string) => Object.entries(splitItemQuantityMap[itemId] ?? {}).reduce((sum, [bill, qty]) => sum + (isBillLocked(bill) ? Number(qty || 0) : 0), 0);
+  const getDisplayBillForItem = (itemId: string) => Object.entries(splitItemQuantityMap[itemId] ?? {}).find(([, qty]) => Number(qty || 0) > 0)?.[0];
+  const unassignedCount = cartItems.filter((item) => getAssignedQtyForItem(getOrderItemId(item)) < getItemQuantity(item)).length;
+  const getItemUnitAmount = (item: CartItem) => getDialogItemTotal(item) / getItemQuantity(item);
+  const getBillTotal = (bill: string) => {
+    const total = cartItems.reduce((sum, item) => sum + getItemUnitAmount(item) * getAssignedQty(getOrderItemId(item), bill), 0);
+    return total > 0 ? Math.round(total * 100) / 100 : (getPersistedBill(bill)?.amountDue ?? 0);
+  };
   const activeBillTotal = getBillTotal(activeBill);
-  const canPayActiveBill = activeBillTotal > 0;
+  const canPayActiveBill = activeBillTotal > 0 && !isBillLocked(activeBill);
   const hasExtraFlows = allowPartial || allowMultiPayment || allowSplitBill;
 
   const selectMethod = (nextMethod: PaymentMethod) => {
@@ -204,20 +238,47 @@ export function PaymentMethodDialog({
   };
 
   const getItemLabel = (item: CartItem) => {
+    const raw = item as any;
+    const productName = item.product?.name ?? raw.productName ?? raw.product_name ?? raw.name ?? "Produk";
     const parts: string[] = [];
-    if (item.variant?.name) parts.push(item.variant.name);
+    if (item.variant?.name ?? raw.variantName ?? raw.variant_name) parts.push(item.variant?.name ?? raw.variantName ?? raw.variant_name);
     if (item.selectedOptions?.length)
       parts.push(...item.selectedOptions.map((option) => option.option_name).filter(Boolean));
-    return parts.length ? `${item.product.name} · ${parts.join(", ")}` : item.product.name;
+    return parts.length ? `${productName} · ${parts.join(", ")}` : productName;
   };
 
-  const handleItemTap = (itemId: string) => {
-    setItemBillMap((prev) => {
+  const setItemBillQuantity = (item: CartItem, bill: string, nextQty: number) => {
+    if (isBillLocked(bill)) return;
+    const itemId = getOrderItemId(item);
+    const itemQty = getItemQuantity(item);
+    const lockedQty = getLockedQtyForItem(itemId);
+    const otherEditableQty = Object.entries(splitItemQuantityMap[itemId] ?? {}).reduce(
+      (sum, [currentBill, qty]) => sum + (currentBill !== bill && !isBillLocked(currentBill) ? Number(qty || 0) : 0),
+      0,
+    );
+    const maxQty = Math.max(0, itemQty - lockedQty - otherEditableQty);
+    const normalizedQty = Math.max(0, Math.min(maxQty, Math.floor(nextQty)));
+    setSplitItemQuantityMap((prev) => {
+      const byBill = { ...(prev[itemId] ?? {}) };
+      if (normalizedQty <= 0) delete byBill[bill];
+      else byBill[bill] = normalizedQty;
       const next = { ...prev };
-      if (next[itemId] === activeBill) delete next[itemId];
-      else next[itemId] = activeBill;
+      if (Object.keys(byBill).length === 0) delete next[itemId];
+      else next[itemId] = byBill;
       return next;
     });
+  };
+
+  const handleItemTap = (item: CartItem) => {
+    if (isBillLocked(activeBill)) return;
+    const itemId = getOrderItemId(item);
+    const currentQty = getAssignedQty(itemId, activeBill);
+    if (currentQty > 0) {
+      setItemBillQuantity(item, activeBill, 0);
+      return;
+    }
+    const remainingQty = Math.max(0, getItemQuantity(item) - getAssignedQtyForItem(itemId));
+    if (remainingQty > 0) setItemBillQuantity(item, activeBill, remainingQty);
   };
 
   const addBill = () => {
@@ -257,20 +318,30 @@ export function PaymentMethodDialog({
         // enforces the selected-bill amount invariant, and zero-amount non-selected
         // bills provide no information that the backend needs.
         const nonZeroSplits = splitBills
-          .map((bill, index) => ({
-            id: bill,
-            label: `Bill ${bill}`,
-            splitNo: index + 1,
-            amountDue: getBillTotal(bill),
-            amountPaid: 0,
-            status: "UNPAID" as const,
-          }))
+          .map((bill, index) => {
+            const persisted = getPersistedBill(bill);
+            return {
+              id: bill,
+              label: persisted?.label ?? `Bill ${bill}`,
+              splitNo: index + 1,
+              orderBillSplitId: persisted?.id,
+              amountDue: getBillTotal(bill),
+              amountPaid: persisted?.amountPaid ?? 0,
+              status: persisted?.status ?? "UNPAID" as const,
+              items: cartItems
+                .filter((item) => getAssignedQty(getOrderItemId(item), bill) > 0)
+                .map((item) => {
+                  const quantity = getAssignedQty(getOrderItemId(item), bill);
+                  return { orderItemId: getOrderItemId(item), clientItemId: getOrderItemId(item), quantity, amount: Math.round(getItemUnitAmount(item) * quantity * 100) / 100 };
+                }),
+            };
+          })
           .filter((split) => split.amountDue > 0);
         onConfirm(method, undefined, activeBillTotal, {
           flow: "SPLIT_BILL",
           paymentKind: "SPLIT_BILL_LINE",
           targetBillId: activeBill,
-          lines: [{ method, amount: activeBillTotal, clientBillId: activeBill }],
+          lines: [{ method, amount: activeBillTotal, clientBillId: activeBill, orderBillSplitId: getPersistedBill(activeBill)?.id }],
           splits: nonZeroSplits,
         });
         return;
@@ -513,15 +584,19 @@ export function PaymentMethodDialog({
                 const colors = BILL_COLORS[idx % BILL_COLORS.length];
                 const isActive = activeBill === bill;
                 const billTotal = getBillTotal(bill);
+                const locked = isBillLocked(bill);
+                const persisted = getPersistedBill(bill);
                 return (
                   <button
                     key={bill}
-                    onClick={() => setActiveBill(bill)}
-                    className={`flex-1 flex flex-col items-center py-2 px-1 rounded-xl border-2 transition-all font-black text-sm ${isActive ? `${colors.active} shadow-md ${colors.shadow}` : colors.inactive}`}
+                    onClick={() => { if (!locked) setActiveBill(bill); }}
+                    disabled={locked}
+                    className={`flex-1 flex flex-col items-center py-2 px-1 rounded-xl border-2 transition-all font-black text-sm ${locked ? "bg-green-50 text-green-700 border-green-300 cursor-not-allowed" : isActive ? `${colors.active} shadow-md ${colors.shadow}` : colors.inactive}`}
                     data-testid={`button-split-bill-${bill}`}
                   >
-                    <span>Bill {bill}</span>
+                    <span>{persisted?.label ?? `Bill ${bill}`}</span>
                     <span className="text-[10px] font-semibold mt-0.5 tabular-nums">{fmt(billTotal)}</span>
+                    {locked && <span className="text-[9px] font-black uppercase mt-0.5">Lunas</span>}
                   </button>
                 );
               })}
@@ -539,7 +614,7 @@ export function PaymentMethodDialog({
           {/* Item instruction label */}
           <div className="px-4 pt-2 pb-1">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              Ketuk item → Bill {activeBill}
+              {isBillLocked(activeBill) ? `Bill ${activeBill} sudah lunas` : `Ketuk item → Bill ${activeBill}`}
             </p>
           </div>
 
@@ -549,21 +624,30 @@ export function PaymentMethodDialog({
             data-testid="split-item-assignment-list"
           >
             {cartItems.map((item) => {
-              const assignedBill = getBillForItem(item.id);
+              const itemId = getOrderItemId(item);
+              const assignedBill = getDisplayBillForItem(itemId);
+              const activeQty = getAssignedQty(itemId, activeBill);
+              const totalAssignedQty = getAssignedQtyForItem(itemId);
+              const lockedQty = getLockedQtyForItem(itemId);
+              const remainingQty = Math.max(0, getItemQuantity(item) - totalAssignedQty);
               const assignedIdx = assignedBill ? splitBills.indexOf(assignedBill) : -1;
               const assignedColors = assignedIdx >= 0 ? BILL_COLORS[assignedIdx % BILL_COLORS.length] : null;
-              const isOnActiveBill = assignedBill === activeBill;
+              const isOnActiveBill = activeQty > 0;
+              const itemLocked = lockedQty >= getItemQuantity(item);
               return (
                 <button
                   key={item.id}
-                  onClick={() => handleItemTap(item.id)}
+                  onClick={() => handleItemTap(item)}
                   className={`w-full flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition-all ${
-                    isOnActiveBill
+                    itemLocked
+                      ? "border-green-200 bg-green-50 opacity-75 cursor-not-allowed"
+                      : isOnActiveBill
                       ? "border-blue-300 bg-blue-50"
                       : assignedBill
                         ? "border-slate-200 bg-white opacity-60"
                         : "border-slate-200 bg-white hover:border-slate-300"
                   }`}
+                  disabled={itemLocked}
                   data-testid={`button-split-item-${item.id}`}
                 >
                   <div
@@ -573,15 +657,22 @@ export function PaymentMethodDialog({
                         : "bg-slate-100 text-slate-300 border-2 border-dashed border-slate-200"
                     }`}
                   >
-                    {assignedBill || "?"}
+                    {activeQty > 0 ? activeQty : assignedBill || "?"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-slate-800 truncate">{getItemLabel(item)}</p>
                     <p className="text-[10px] text-slate-400 mt-0.5">
-                      {item.quantity}× · {fmt(getItemEffectiveTotal(item))}
+                      {getItemQuantity(item)}× · {fmt(getDialogItemTotal(item))}
                     </p>
                   </div>
-                  {isOnActiveBill && <CheckCircle2 size={16} className="text-blue-500 shrink-0" />}
+                  {itemLocked ? <span className="text-[10px] font-black text-green-700">Lunas</span> : (
+                    <div className="flex items-center gap-1 shrink-0" onClick={(event) => event.stopPropagation()}>
+                      {activeQty > 0 && <button type="button" onClick={() => setItemBillQuantity(item, activeBill, activeQty - 1)} className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center"><Minus size={12} /></button>}
+                      <span className="min-w-10 text-center text-[10px] font-black text-slate-600">{activeQty > 0 ? `${activeQty}/${getItemQuantity(item)}` : remainingQty > 0 ? `Sisa ${remainingQty}` : "Penuh"}</span>
+                      {remainingQty > 0 && <button type="button" onClick={() => setItemBillQuantity(item, activeBill, activeQty + 1)} className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center"><Plus size={12} /></button>}
+                      {isOnActiveBill && <CheckCircle2 size={16} className="text-blue-500" />}
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -593,7 +684,7 @@ export function PaymentMethodDialog({
               <div className="flex items-center gap-1.5 bg-slate-50 rounded-lg px-2.5 py-1.5 mb-2">
                 <AlertCircle size={11} className="text-slate-400 shrink-0" />
                 <p className="text-[10px] text-slate-400">
-                  {unassignedCount} item belum di-assign
+                  {unassignedCount} item masih punya qty belum di-assign
                 </p>
               </div>
             )}
@@ -606,7 +697,7 @@ export function PaymentMethodDialog({
               {loading
                 ? "Memproses…"
                 : !canPayActiveBill
-                  ? `Pilih item untuk Bill ${activeBill} dulu`
+                  ? unassignedCount === 0 ? "Semua item sudah dibayar" : `Pilih item untuk Bill ${activeBill} dulu`
                   : `Bayar Bill ${activeBill} · ${fmt(activeBillTotal)}`}
             </button>
           </div>

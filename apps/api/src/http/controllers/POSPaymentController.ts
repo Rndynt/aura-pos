@@ -50,6 +50,7 @@ const orderItemSchema = z.object({
   selected_options: z.array(selectedOptionSchema).optional(),
   selected_option_groups: z.array(z.unknown()).optional(),
   notes: z.string().optional(),
+  client_item_id: z.string().optional(),
 });
 
 const paymentLineSchema = z.object({
@@ -70,6 +71,12 @@ const splitSchema = z.object({
   amountDue: z.number().nonnegative(),
   amountPaid: z.number().nonnegative().optional(),
   status: z.enum(['UNPAID', 'PARTIAL', 'PAID']).optional(),
+  items: z.array(z.object({
+    orderItemId: z.string().uuid().optional(),
+    clientItemId: z.string().optional(),
+    quantity: z.number().positive(),
+    amount: z.number().nonnegative(),
+  })).optional(),
 });
 
 const bodySchema = z.object({
@@ -112,7 +119,10 @@ export function mapToUserSafeError(error: unknown): { message: string; code: str
   if (/order tidak ditemukan/i.test(msg)) return { message: msg, code: 'ORDER_NOT_FOUND', status: 404 };
   if (/order_type|tipe pesanan/i.test(msg)) return { message: 'Tipe pesanan tidak valid atau belum aktif untuk tenant ini. Muat ulang POS lalu coba lagi.', code: 'INVALID_ORDER_TYPE', status: 400 };
   if (/jumlah pembayaran harus sama dengan sisa bill/i.test(msg)) return { message: 'Jumlah pembayaran harus sama dengan sisa bill yang dipilih.', code: 'SPLIT_BILL_AMOUNT_MISMATCH', status: 400 };
-  if (/^bill yang dipilih sudah lunas\.?$/i.test(msg.trim())) return { message: 'Bill yang dipilih sudah lunas.', code: 'SPLIT_BILL_ALREADY_PAID', status: 409 };
+  if (/^bill yang dipilih sudah lunas\.?$/i.test(msg.trim())) return { message: 'Bill ini sudah lunas. Pilih bill lain yang belum dibayar.', code: 'SPLIT_BILL_ALREADY_PAID', status: 409 };
+  if (/item bill belum dipilih/i.test(msg)) return { message: 'Item bill belum dipilih. Pilih item yang ingin dibayar.', code: 'SPLIT_BILL_ITEMS_REQUIRED', status: 400 };
+  if (/jumlah bill tidak sesuai/i.test(msg)) return { message: 'Jumlah bill tidak sesuai dengan item yang dipilih.', code: 'SPLIT_BILL_ITEM_AMOUNT_MISMATCH', status: 400 };
+  if (/item sudah pernah dibayar/i.test(msg)) return { message: 'Item sudah pernah dibayar di bill lain. Muat ulang pesanan.', code: 'SPLIT_BILL_ITEM_ALREADY_PAID', status: 409 };
   if (/order sudah lunas/i.test(msg)) return { message: 'Order sudah lunas. Pembayaran baru tidak dapat dicatat.', code: 'ORDER_ALREADY_PAID', status: 409 };
   if (/total multi payment.*sisa tagihan/i.test(msg)) return { message: 'Total multi payment harus sama dengan sisa tagihan.', code: 'MULTI_PAYMENT_TOTAL_MISMATCH', status: 400 };
   if (/melebihi sisa/i.test(msg)) return { message: 'Jumlah pembayaran melebihi sisa tagihan.', code: 'PAYMENT_AMOUNT_EXCEEDS_REMAINING', status: 400 };

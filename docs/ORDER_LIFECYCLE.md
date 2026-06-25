@@ -296,3 +296,14 @@ POS-facing order reads now include computed lifecycle fields so the terminal doe
 `GET /api/orders/open` is scoped to rows that are actionable in the POS draft/active sheet: editable server drafts and unpaid/partial active orders. Full-paid create-and-pay rows map to `paid_completed` and are excluded from Draft Server/Pesanan Aktif even when their operational status remains `confirmed` for fulfillment tracking.
 
 Active-order payment from the POS sheet pays only the remaining amount (`remaining_amount` when supplied, otherwise `max(total - paidAmount, 0)`) and blocks payment if the remaining amount cannot be computed safely.
+
+## Split Bill persistence and resume flow
+
+Split Bill is persisted at two levels:
+
+1. `order_bill_splits` stores bill identity, label, due amount, paid amount, and lifecycle status.
+2. `order_bill_split_items` stores the order item assignments for each split bill, including item id, client bill id, quantity, and amount.
+
+`clientBillId` remains the UI-stable bill identity such as `A` or `B`. `orderBillSplitId` is only the database UUID for `order_bill_splits`. The POS submit flow must not send `clientBillId` values as database UUIDs.
+
+When a split bill is paid, the submit flow persists/updates the selected bill, persists selected item assignments, inserts idempotent payment rows, updates split paid/status, and updates order paid/status inside the same payment repository transaction. Reopening a partial order must hydrate `billSplits[].items[]`, lock paid bills/items, and default the cashier to the next unpaid bill. Split Bill item assignment supports allocating whole-number quantities from one order item row across multiple bills; quantities already attached to paid bills remain locked.

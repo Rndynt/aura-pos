@@ -28,6 +28,7 @@ export type SubmitPOSPaymentCommandItem = {
   }>;
   selected_option_groups?: unknown[];
   notes?: string;
+  client_item_id?: string;
 };
 
 export type SubmitPOSPaymentCommandLine = {
@@ -46,6 +47,7 @@ export type SubmitPOSPaymentCommandSplit = {
   amountDue: number;
   amountPaid?: number;
   status?: "UNPAID" | "PARTIAL" | "PAID";
+  items?: Array<{ orderItemId?: string; clientItemId?: string; quantity: number; amount: number }>;
 };
 
 export type SubmitPOSPaymentCommand = {

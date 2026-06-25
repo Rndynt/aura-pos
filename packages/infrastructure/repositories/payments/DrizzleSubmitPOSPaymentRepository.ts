@@ -24,6 +24,7 @@ import {
   orderItemModifiers,
   orderPayments,
   orderBillSplits,
+  orderBillSplitItems,
   type InsertOrder,
   type InsertOrderPayment,
   type InsertOrderItemModifier,
@@ -194,6 +195,7 @@ function computeOrderTotals(
     selected_options: SubmitPOSPaymentCommandItem["selected_options"];
     notes?: string;
     item_subtotal: number;
+    client_item_id?: string;
     status: "pending";
   }>;
 } {
@@ -235,6 +237,7 @@ function computeOrderTotals(
       selected_options: flatOptions,
       notes: item.notes,
       item_subtotal: pricing.items[index].item_subtotal,
+      client_item_id: item.client_item_id,
       status: "pending" as const,
     };
   });
@@ -270,6 +273,7 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
       let orderNumber = command.orderNumber ?? "";
       let orderTotal = 0;
       let orderPaidBefore = 0;
+      const orderItemIdByClientId = new Map<string, string>();
 
       if (source === "FRESH_CART" && !orderId) {
         // Check idempotency: existing order by session id
@@ -325,6 +329,7 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
           if (computedItems.length > 0) {
             const itemsToInsert = computedItems.map((item) => toInsertOrderItemDb(toPaymentOrderItem(item), newOrder.id));
             const insertedItems = await tx.insert(orderItems).values(itemsToInsert).returning();
+            computedItems.forEach((item, index) => { if (item.client_item_id) orderItemIdByClientId.set(item.client_item_id, insertedItems[index].id); });
             const modifiersToInsert: InsertOrderItemModifier[] = computedItems.flatMap((item, index) =>
               toOrderItemModifiers(item.selected_options ?? [], insertedItems[index].id, toInsertOrderItemModifierDb)
             );
@@ -485,6 +490,85 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
         }
       }
 
+      // ── 4b. Persist split-bill item assignments ───────────────────────
+      if (flow === "SPLIT_BILL" && newLineTotal > EPSILON && selectedSplitState) {
+        const selectedRequestSplit = splits.find((split) => split.clientBillId === selectedSplitState!.clientBillId || split.splitNo === selectedSplitState!.splitNo);
+        const selectedItems = selectedRequestSplit?.items ?? [];
+        if (selectedItems.length === 0) {
+          throw new Error("Item bill belum dipilih. Pilih item yang ingin dibayar.");
+        }
+
+        const resolvedItems = selectedItems.map((item) => ({
+          ...item,
+          orderItemId: item.orderItemId ?? (item.clientItemId ? orderItemIdByClientId.get(item.clientItemId) : undefined),
+        }));
+        if (resolvedItems.some((item) => !item.orderItemId)) {
+          throw new Error("Item bill belum dipilih. Pilih item yang ingin dibayar.");
+        }
+
+        const selectedItemIds = resolvedItems.map((item) => item.orderItemId!) as string[];
+        const ownedItems = await tx
+          .select({ id: orderItems.id, quantity: orderItems.quantity })
+          .from(orderItems)
+          .where(and(eq(orderItems.orderId, orderId), inArray(orderItems.id, selectedItemIds)))
+          .for("update");
+        if (ownedItems.length !== selectedItemIds.length) {
+          throw new Error("Item bill belum dipilih. Pilih item yang ingin dibayar.");
+        }
+        const orderQtyByItemId = new Map(ownedItems.map((item) => [item.id, Number(item.quantity || 0)]));
+
+        const selectedQtyByItemId = new Map<string, number>();
+        for (const item of resolvedItems) {
+          selectedQtyByItemId.set(item.orderItemId!, roundCurrency((selectedQtyByItemId.get(item.orderItemId!) ?? 0) + Number(item.quantity || 0)));
+        }
+
+        const selectedItemAmount = roundCurrency(resolvedItems.reduce((sum, item) => sum + Number(item.amount || 0), 0));
+        if (Math.abs(selectedItemAmount - selectedSplitState.remaining) > EPSILON) {
+          throw new Error("Jumlah bill tidak sesuai dengan item yang dipilih.");
+        }
+
+        const paidSplitRows = await tx
+          .select({ orderItemId: orderBillSplitItems.orderItemId, quantity: orderBillSplitItems.quantity })
+          .from(orderBillSplitItems)
+          .innerJoin(orderBillSplits, eq(orderBillSplitItems.orderBillSplitId, orderBillSplits.id))
+          .where(and(
+            eq(orderBillSplitItems.orderId, orderId),
+            inArray(orderBillSplitItems.orderItemId, selectedItemIds),
+            eq(orderBillSplits.status, "paid"),
+          ))
+          .for("update");
+        const paidQtyByItemId = new Map<string, number>();
+        for (const item of paidSplitRows) {
+          paidQtyByItemId.set(item.orderItemId, roundCurrency((paidQtyByItemId.get(item.orderItemId) ?? 0) + Number(item.quantity || 0)));
+        }
+        for (const [itemId, selectedQty] of selectedQtyByItemId.entries()) {
+          const maxQty = orderQtyByItemId.get(itemId) ?? 0;
+          const paidQty = paidQtyByItemId.get(itemId) ?? 0;
+          if (selectedQty <= 0 || paidQty + selectedQty > maxQty + EPSILON) {
+            throw new Error("Item sudah pernah dibayar di bill lain. Muat ulang pesanan.");
+          }
+        }
+
+        const selectedSplitDbId = splitIdMap.get(selectedSplitState.clientBillId) ?? selectedSplitState.splitDbId;
+        if (!selectedSplitDbId) throw new Error("Bill yang dipilih tidak valid atau sudah lunas.");
+
+        await tx.insert(orderBillSplitItems).values(resolvedItems.map((item) => ({
+          orderId,
+          orderBillSplitId: selectedSplitDbId,
+          orderItemId: item.orderItemId!,
+          clientBillId: selectedSplitState!.clientBillId,
+          quantity: String(item.quantity || 1),
+          amount: String(roundCurrency(Number(item.amount || 0))),
+        }))).onConflictDoUpdate({
+          target: [orderBillSplitItems.orderId, orderBillSplitItems.orderItemId, orderBillSplitItems.clientBillId],
+          set: {
+            quantity: sql`excluded.quantity`,
+            amount: sql`excluded.amount`,
+            updatedAt: new Date(),
+          },
+        });
+      }
+
       // ── 5. Check existing payment rows for DP/MULTI limits ────────────
       if (flow === "DOWN_PAYMENT" && newLineTotal > 0.001) {
         const dpRows = await tx
@@ -602,6 +686,16 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
           .select()
           .from(orderBillSplits)
           .where(eq(orderBillSplits.orderId, orderId));
+        const dbSplitItems = await tx
+          .select()
+          .from(orderBillSplitItems)
+          .where(eq(orderBillSplitItems.orderId, orderId));
+        const itemsBySplit = new Map<string, typeof dbSplitItems>();
+        for (const item of dbSplitItems) {
+          const current = itemsBySplit.get(item.orderBillSplitId) ?? [];
+          current.push(item);
+          itemsBySplit.set(item.orderBillSplitId, current);
+        }
         splitRows = dbSplits.map((s) => ({
           id: s.id,
           clientBillId: s.clientBillId ?? undefined,
@@ -610,6 +704,11 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
           amountDue: parseFloat(s.amountDue),
           amountPaid: parseFloat(s.amountPaid),
           status: toDbOrderPaymentStatus(s.status),
+          items: (itemsBySplit.get(s.id) ?? []).map((item) => ({
+            orderItemId: item.orderItemId,
+            quantity: parseFloat(item.quantity),
+            amount: parseFloat(item.amount),
+          })),
         }));
       }
 
