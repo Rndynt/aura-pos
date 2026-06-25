@@ -114,3 +114,28 @@ test('create-and-pay golden case matches backend estimate inputs', () => {
   assert.equal(pricing.service_charge_amount, 6_000);
   assert.equal(pricing.total_amount, 139_200);
 });
+
+test('P9.12 split/cart pricing keeps unit deltas separate from line totals', () => {
+  const qtyOne = calculateOrderPricing({
+    items: [{ base_price: 15_000, variant_price_delta: 5_000, quantity: 1 }],
+    tax_rate: 0,
+    service_charge_rate: 0,
+  });
+  const qtyTwo = calculateOrderPricing({
+    items: [{ base_price: 15_000, variant_price_delta: 5_000, quantity: 2 }],
+    tax_rate: 0,
+    service_charge_rate: 0,
+  });
+  const unitTwentyEightQtyTwo = calculateOrderPricing({
+    items: [{ base_price: 28_000, quantity: 2 }],
+    tax_rate: 0,
+    service_charge_rate: 0,
+  });
+
+  assert.equal(qtyOne.items[0].item_price, 20_000);
+  assert.equal(qtyOne.items[0].item_total, 20_000);
+  assert.equal(qtyTwo.items[0].item_price, 20_000);
+  assert.equal(qtyTwo.items[0].item_total, 40_000);
+  assert.notEqual(qtyTwo.items[0].item_total, 80_000);
+  assert.equal(unitTwentyEightQtyTwo.items[0].item_total, 56_000);
+});

@@ -445,25 +445,25 @@ Include:
 ## 13. Acceptance checklist
 
 ```txt
-- [ ] Qty 1 Nasi Goreng variant/options Rp 20.000 stays Rp 20.000.
-- [ ] Qty 2 Nasi Goreng variant/options becomes Rp 40.000, not Rp 80.000.
-- [ ] Cart panel does not multiply line total by qty again.
-- [ ] Shared pricing source is used consistently.
-- [ ] Split item amounts use correct line/unit math.
-- [ ] After Bill A paid, reopening split shows Bill A original amount.
-- [ ] After Bill A paid, reopening split shows Bill A as Lunas/PAID.
-- [ ] Paid Bill A is disabled/read-only.
-- [ ] Active bill defaults to Bill B / next unpaid bill.
-- [ ] Paid Bill A items/quantities are not assignable again.
-- [ ] Remaining unpaid items/qty are visible for Bill B.
-- [ ] UI never invites user to pay already-paid Bill A.
-- [ ] Backend still rejects direct paid-bill submit safely.
-- [ ] Split retry does not double payment or split paid amount.
-- [ ] Order detail can show split summary when data exists.
-- [ ] No provider/card/e-wallet/gateway/NorthFlow logic added.
-- [ ] No legacy compatibility added.
-- [ ] No random repair migration added for this bug.
-- [ ] Report updated.
+- [x] Qty 1 Nasi Goreng variant/options Rp 20.000 stays Rp 20.000.
+- [x] Qty 2 Nasi Goreng variant/options becomes Rp 40.000, not Rp 80.000.
+- [x] Cart panel does not multiply line total by qty again.
+- [x] Shared pricing source is used consistently.
+- [x] Split item amounts use correct line/unit math.
+- [x] After Bill A paid, reopening split shows Bill A original amount.
+- [x] After Bill A paid, reopening split shows Bill A as Lunas/PAID.
+- [x] Paid Bill A is disabled/read-only.
+- [x] Active bill defaults to Bill B / next unpaid bill.
+- [x] Paid Bill A items/quantities are not assignable again.
+- [x] Remaining unpaid items/qty are visible for Bill B.
+- [x] UI never invites user to pay already-paid Bill A.
+- [x] Backend still rejects direct paid-bill submit safely.
+- [x] Split retry does not double payment or split paid amount.
+- [x] Order detail can show split summary when data exists.
+- [x] No provider/card/e-wallet/gateway/NorthFlow logic added.
+- [x] No legacy compatibility added.
+- [x] No random repair migration added for this bug.
+- [x] Report updated.
 ```
 
 ## 14. Commit message

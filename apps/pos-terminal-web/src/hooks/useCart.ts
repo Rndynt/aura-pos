@@ -73,16 +73,35 @@ function calculateItemTotal(
   }).item_subtotal;
 }
 
+export function getItemUnitPrice(item: CartItem): number {
+  return calculateItemPricing({
+    base_price: item.product.base_price,
+    variant_price_delta: item.variant?.price_delta,
+    selected_options: item.selectedOptions,
+    quantity: 1,
+  }).item_subtotal;
+}
+
+export function getItemLineSubtotal(item: CartItem): number {
+  return calculateItemPricing({
+    base_price: item.product.base_price,
+    variant_price_delta: item.variant?.price_delta,
+    selected_options: item.selectedOptions,
+    quantity: Math.max(1, Number(item.quantity || 1)),
+  }).item_subtotal;
+}
+
 export function getItemEffectiveTotal(item: CartItem): number {
-  if (!item.discount || item.discount.value <= 0) return item.itemTotal;
+  const lineSubtotal = getItemLineSubtotal(item);
+  if (!item.discount || item.discount.value <= 0) return lineSubtotal;
   if (item.discount.type === "percent") {
-    return item.itemTotal * (1 - Math.min(item.discount.value, 100) / 100);
+    return lineSubtotal * (1 - Math.min(item.discount.value, 100) / 100);
   }
-  return Math.max(0, item.itemTotal - item.discount.value);
+  return Math.max(0, lineSubtotal - item.discount.value);
 }
 
 export function getItemDiscountAmount(item: CartItem): number {
-  return item.itemTotal - getItemEffectiveTotal(item);
+  return getItemLineSubtotal(item) - getItemEffectiveTotal(item);
 }
 
 // ─── Session storage keys ──────────────────────────────────────────────────────
@@ -323,12 +342,12 @@ export function useCart() {
       } as Product;
       const quantity = Number(item.quantity ?? 1);
       return {
-        id: String(item.id ?? nanoid()),
+        id: String(item.id ?? item.orderItemId ?? item.order_item_id ?? nanoid()),
         product,
         variant: item.variant,
         selectedOptions,
         quantity,
-        itemTotal: Number(item.itemSubtotal ?? item.item_subtotal ?? item.total ?? product.base_price * quantity),
+        itemTotal: Number(item.itemSubtotal ?? item.item_subtotal ?? calculateItemTotal(product, item.variant, selectedOptions, quantity)),
         note: item.notes ?? item.note ?? "",
         discount: item.discount,
       };
@@ -412,6 +431,9 @@ export function useCart() {
     serviceChargeRate,
     serviceCharge,
     total,
-    getItemPrice: getItemEffectiveTotal,
+    getItemPrice: getItemUnitPrice,
+    getItemUnitPrice,
+    getItemLineSubtotal,
+    getItemLineTotal: getItemEffectiveTotal,
   };
 }

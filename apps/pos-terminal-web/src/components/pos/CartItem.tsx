@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { CartItem as CartItemType, ItemDiscount } from "@/hooks/useCart";
-import { getItemDiscountAmount } from "@/hooks/useCart";
+import { getItemDiscountAmount, getItemLineSubtotal, getItemEffectiveTotal } from "@/hooks/useCart";
 import { Minus, Plus, MessageSquare, Tag, X, Check } from "lucide-react";
 import { ProductAvatar } from "@/components/ui/ProductAvatar";
 
@@ -13,7 +13,7 @@ type CartItemProps = {
   onSetDiscount: (id: string, discount: ItemDiscount | null) => void;
 };
 
-export function CartItem({ item, onUpdateQty, onUpdateNote, getItemPrice, onSetDiscount }: CartItemProps) {
+export function CartItem({ item, onUpdateQty, onUpdateNote, onSetDiscount }: CartItemProps) {
   const fmt = (n: number) =>
     new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
 
@@ -23,11 +23,10 @@ export function CartItem({ item, onUpdateQty, onUpdateNote, getItemPrice, onSetD
     item.discount && item.discount.value > 0 ? String(item.discount.value) : ""
   );
 
-  const unitPrice = getItemPrice(item);
-  const totalPrice = unitPrice * item.quantity;
+  const totalPrice = getItemLineSubtotal(item);
   const discountAmount = getItemDiscountAmount(item);
   const hasDiscount = discountAmount > 0;
-  const effectiveTotal = totalPrice - discountAmount;
+  const effectiveTotal = getItemEffectiveTotal(item);
 
   const optionLabel = [item.variant?.name, ...(item.selectedOptions?.map(o => o.option_name) ?? [])]
     .filter(Boolean)

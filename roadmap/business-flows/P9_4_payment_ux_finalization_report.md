@@ -1090,3 +1090,79 @@ This preserves the existing `RecordPaymentInput` contract — no new backend fie
 - Full browser/UI rendering tests are not present (deferred, per project policy).
 - Live DB integration tests for Orders settlement payment rows are not present (deferred).
 - `allowPartial`, `allowMultiPayment`, `allowSplitBill` can be enabled in a future product decision without any additional structural change — just flip the prop.
+
+
+## P9.12 Split Bill Pricing + Paid Bill Resume Final Fix
+
+Date: 2026-06-25
+
+### 1. Screenshot/manual-test problems analyzed
+
+- Manual test showed a cart line whose visible unit should be Rp 20.000 becoming Rp 80.000 at quantity 2. The analyzed root cause was a UI contract mismatch: `useCart.getItemPrice` returned an effective line total while `CartItem` multiplied that value by quantity again.
+- Manual split-bill resume showed Bill A as Rp 0/editable after it had already been paid. The analyzed path confirmed the backend read model already returns `billSplits` with split items, but the dialog needed stricter persisted-state hydration and item-id fallback handling.
+
+### 2. Cart price double-count root cause
+
+`CartItem` treated `getItemPrice(item)` as a unit amount. Before P9.12, `useCart` exposed `getItemPrice: getItemEffectiveTotal`, which is a line total. Quantity changes therefore produced line-total × quantity in the display.
+
+### 3. Unit price vs line total rule
+
+P9.12 makes the UI rule explicit:
+
+- Unit display uses `getItemUnitPrice(item)`.
+- Line subtotal uses `getItemLineSubtotal(item)`.
+- Discounted/effective line total uses `getItemLineTotal` / `getItemEffectiveTotal(item)`.
+- Cart/order totals continue to use shared `@pos/core/pricing` calculation.
+
+Acceptance examples covered by automated pricing test:
+
+- Rp 15.000 + Rp 5.000 qty 1 = Rp 20.000.
+- Rp 15.000 + Rp 5.000 qty 2 = Rp 40.000, not Rp 80.000.
+- Rp 28.000 qty 2 = Rp 56.000.
+
+### 4. Split paid Bill A resume root cause
+
+The backend read model contains persisted split rows and item assignments, but the dialog had edge cases where persisted bills could fall back to default `[A, B]` semantics and active bill selection could land on a paid bill when all persisted bills were paid but the order still had remaining amount.
+
+### 5. Backend/read model fields used to hydrate split state
+
+P9.12 relies on these read-model fields returned by order detail:
+
+- `order.items[].id` as the stable DB order item id.
+- `order.billSplits[].id` as `orderBillSplitId`.
+- `order.billSplits[].clientBillId` for UI bill identity.
+- `order.billSplits[].amountDue`, `amountPaid`, and `status` for paid/locked state.
+- `order.billSplits[].items[].orderItemId`, `clientBillId`, `quantity`, and `amount` for assignment hydration.
+
+### 6. Paid/locked bill behavior
+
+Paid persisted bills stay visible, keep their original amount, show the `Lunas` badge, are disabled, and cannot become the editable payment target. The confirm button now explicitly shows `Bill sudah lunas` if a locked bill is active by stale state.
+
+### 7. Remaining item quantity behavior
+
+Split item assignment uses stable order item ids and subtracts quantities already assigned to paid/locked persisted bills before allowing assignment to the active unpaid bill. Fully paid items appear locked; partially paid items keep only remaining quantity assignable.
+
+### 8. Files changed
+
+- `apps/pos-terminal-web/src/hooks/useCart.ts`
+- `apps/pos-terminal-web/src/components/pos/CartItem.tsx`
+- `apps/pos-terminal-web/src/components/pos/PaymentMethodDialog.tsx`
+- `packages/core/pricing/__tests__/orderPricing.golden.test.ts`
+- `roadmap/business-flows/replit_codex_P9_12_split_bill_item_pricing_and_paid_resume_prompt.md`
+- `PLANS.md`
+
+### 9. Tests/manual verification
+
+Automated validation run in this batch:
+
+- `pnpm --filter @pos/core test` passed and covers P9.12 pricing examples.
+- `pnpm --filter @pos/terminal-web test` passed for existing POS service/flow tests.
+- `pnpm --filter @pos/terminal-web type-check` was run repeatedly; it still fails on pre-existing unrelated type errors in `DraftOrdersSheet.tsx` and `employees.tsx`, not from the P9.12 files.
+
+Manual browser verification was not executed in this non-interactive batch, so the manual checklist remains recommended for a running deployment/device session.
+
+### 10. Remaining limitations
+
+- No new provider/card/e-wallet/gateway/NorthFlow logic was added.
+- No legacy compatibility branch or repair migration was added.
+- Component-level split resume tests are still recommended if the project adds a React test runner; this batch added deterministic pricing tests and kept backend split persistence/read-model behavior aligned with the existing implementation.

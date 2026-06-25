@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Banknote, Landmark, QrCode, Delete, X, Plus, Trash2, CheckCircle2, AlertCircle, Minus } from "lucide-react";
 import type { PaymentMethod, CartItem } from "@/hooks/useCart";
-import { getItemEffectiveTotal } from "@/hooks/useCart";
+import { getItemLineSubtotal } from "@/hooks/useCart";
 import type { POSPaymentFlow, POSPaymentKind } from "@pos/domain/payments";
 
 export type ExistingSplitBillItem = { orderItemId: string; clientBillId: string; quantity: number; amount: number };
@@ -181,26 +181,36 @@ export function PaymentMethodDialog({
     setMultiEntries([]);
     setMultiRaw("");
     setMultiMethod("CASH");
-    const normalizedExisting = existingSplitBills.filter((bill) => bill.clientBillId);
+    const normalizedExisting = existingSplitBills
+      .filter((bill) => bill.clientBillId)
+      .map((bill) => ({ ...bill, status: bill.status ?? (bill.amountPaid >= bill.amountDue ? "PAID" : bill.amountPaid > 0 ? "PARTIAL" : "UNPAID") }))
+      .sort((a: any, b: any) => Number(a.splitNo ?? 99) - Number(b.splitNo ?? 99));
     if (normalizedExisting.length > 0) {
-      const ids = Array.from(new Set([...normalizedExisting.map((bill) => bill.clientBillId), "A", "B"]));
       const persisted = Object.fromEntries(normalizedExisting.map((bill) => [bill.clientBillId, bill]));
+      const baseIds = Array.from(new Set([...normalizedExisting.map((bill) => bill.clientBillId), "A", "B"]));
+      const activePersisted = normalizedExisting.find((bill) => bill.status !== "PAID")?.clientBillId;
+      const firstEditableId = baseIds.find((id) => persisted[id]?.status !== "PAID" || !persisted[id]);
+      const allPersistedPaid = normalizedExisting.every((bill) => bill.status === "PAID");
+      const nextUnpaidId = allPersistedPaid && cartTotal > 0
+        ? String.fromCharCode(65 + Math.min(baseIds.length, 3))
+        : undefined;
+      const ids = Array.from(new Set([...baseIds, ...(nextUnpaidId ? [nextUnpaidId] : [])])).slice(0, 4);
       const persistedQuantityMap: Record<string, Record<string, number>> = {};
       normalizedExisting.forEach((bill) => bill.items?.forEach((item) => {
         if (!persistedQuantityMap[item.orderItemId]) persistedQuantityMap[item.orderItemId] = {};
         persistedQuantityMap[item.orderItemId][bill.clientBillId] = Number(item.quantity || 0);
       }));
-      setSplitBills(ids.slice(0, 4));
+      setSplitBills(ids);
       setPersistedSplitBills(persisted);
       setSplitItemQuantityMap(persistedQuantityMap);
-      setActiveBill(normalizedExisting.find((bill) => bill.status !== "PAID")?.clientBillId ?? ids.find((id) => persisted[id]?.status !== "PAID") ?? "B");
+      setActiveBill(activePersisted ?? nextUnpaidId ?? firstEditableId ?? "B");
     } else {
       setSplitBills(["A", "B"]);
       setActiveBill("A");
       setPersistedSplitBills({});
       setSplitItemQuantityMap({});
     }
-  }, [open, defaultPaymentMethod, initialPartialMode, existingSplitBills]);
+  }, [open, defaultPaymentMethod, initialPartialMode, existingSplitBills, cartTotal]);
 
   const loading = isProcessing || isSubmitting;
   const cashAmount = parseInt(cashRaw, 10) || 0;
@@ -213,10 +223,10 @@ export function PaymentMethodDialog({
   const multiRemaining = Math.max(0, cartTotal - multiPaid);
   const multiCanAdd = multiEntries.length < 2 && multiInputAmount > 0 && multiInputAmount <= multiRemaining;
   const multiComplete = multiRemaining === 0;
-  const getDialogItemTotal = (item: CartItem) => Number((item as any).itemSubtotal ?? (item as any).item_subtotal ?? (item as any).totalPrice ?? (item as any).total_price ?? getItemEffectiveTotal(item));
+  const getDialogItemTotal = (item: CartItem) => Number((item as any).itemSubtotal ?? (item as any).item_subtotal ?? getItemLineSubtotal(item));
   const getPersistedBill = (bill: string) => persistedSplitBills[bill];
   const isBillLocked = (bill: string) => getPersistedBill(bill)?.status === "PAID";
-  const getOrderItemId = (item: CartItem) => item.id;
+  const getOrderItemId = (item: CartItem) => String((item as any).id ?? (item as any).orderItemId ?? (item as any).order_item_id);
   const getItemQuantity = (item: CartItem) => Math.max(1, Number((item as any).quantity ?? 1));
   const getAssignedQty = (itemId: string, bill: string) => Number(splitItemQuantityMap[itemId]?.[bill] ?? 0);
   const getAssignedQtyForItem = (itemId: string) => Object.values(splitItemQuantityMap[itemId] ?? {}).reduce((sum, qty) => sum + Number(qty || 0), 0);
@@ -697,7 +707,9 @@ export function PaymentMethodDialog({
               {loading
                 ? "Memproses…"
                 : !canPayActiveBill
-                  ? unassignedCount === 0 ? "Semua item sudah dibayar" : `Pilih item untuk Bill ${activeBill} dulu`
+                  ? isBillLocked(activeBill)
+                    ? "Bill sudah lunas"
+                    : unassignedCount === 0 ? "Semua item sudah dibayar" : `Pilih item untuk Bill ${activeBill} dulu`
                   : `Bayar Bill ${activeBill} · ${fmt(activeBillTotal)}`}
             </button>
           </div>
