@@ -1266,3 +1266,83 @@ Manual browser/device verification remains recommended for the full cashier flow
 - [x] No random migrations added.
 - [x] No provider/card/e-wallet/NorthFlow logic added.
 - [x] Report updated.
+
+---
+
+## P9.14 Split Bill Resume Across All Entrypoints
+
+### 1. Root cause
+
+P9.13 hydrated `pendingOrderForPayment` for the active-order sheet path, but the retail and restaurant payment dialogs were still deriving `cartTotal`, `cartItems`, and `existingSplitBills` directly in the JSX. When a cashier continued an existing server order into the POS cart (`continueOrderId`) and then opened payment from the right cart, the cart contained only visible order items; persisted split metadata (`billSplits`) stayed on the full order response and was not passed to `PaymentMethodDialog`.
+
+That made the dialog fall back to local fresh-cart split state (`A/B` with zero assignments), so Bill A could appear editable even though the backend correctly rejected duplicate settlement of the already-paid split.
+
+### 2. Changed files
+
+- `apps/pos-terminal-web/src/features/pos-core/services/posPaymentDialogContext.ts`
+- `apps/pos-terminal-web/src/features/pos-core/services/__tests__/posPaymentDialogContext.test.ts`
+- `apps/pos-terminal-web/src/features/pos-core/index.ts`
+- `apps/pos-terminal-web/src/features/pos-flows/retail/useRetailStandardPOSFlow.ts`
+- `apps/pos-terminal-web/src/features/pos-flows/retail/RetailStandardPOSFlow.tsx`
+- `apps/pos-terminal-web/src/features/pos-flows/restaurant/useRestaurantTableServicePOSFlow.ts`
+- `apps/pos-terminal-web/src/features/pos-flows/restaurant/RestaurantTableServicePOSFlow.tsx`
+- `apps/pos-terminal-web/package.json`
+- `roadmap/business-flows/replit_codex_P9_14_split_bill_resume_all_entrypoints_prompt.md`
+- `PLANS.md`
+
+### 3. Data flow implemented
+
+New shared resolver:
+
+```txt
+pendingOrderForPayment.order
+  -> ACTIVE_ORDER context with hydrated items + billSplits
+continuedOrderForPayment from continueOrderId
+  -> SAVED_ORDER context with hydrated items + billSplits + remaining amount
+fresh cart
+  -> FRESH_CART context with empty existingSplitBills
+```
+
+Retail and restaurant hooks now keep `continuedOrderForPayment` separately from cart item state. `cart.loadOrder(fullOrder)` still drives visible cart rows, while `continuedOrderForPayment.billSplits` remains available for the payment dialog.
+
+Retail and restaurant views now render `POSPaymentDialog` from `flow.paymentDialogContext`, so `existingSplitBills` no longer depends only on `pendingOrderForPayment`.
+
+### 4. Refresh behavior after partial split payment
+
+After a split payment returns `PARTIAL`, the POS flows now invalidate open-order/list/detail queries and refetch the referenced order detail when the current screen still references that order. The refreshed order updates either:
+
+- `pendingOrderForPayment.order` for active-order payments, or
+- `continuedOrderForPayment` and the visible cart for continued saved-order payments.
+
+This keeps the next dialog open aligned with the persisted paid/remaining split state.
+
+### 5. Verification
+
+Automated coverage added for the shared context resolver:
+
+- pending active-order context passes persisted `billSplits`.
+- continued-order context passes persisted `billSplits` when pending order is null.
+- fresh-cart context passes empty `existingSplitBills`.
+- continued-order context uses the hydrated remaining amount.
+
+Existing `PaymentMethodDialog` hydration rules still handle rendering/interaction once those persisted split bills are passed in: paid Bill A is labeled `Lunas`, locked read-only, excluded from further quantity assignment, and the next unpaid bill becomes active.
+
+### 6. Remaining limitations / notes
+
+- No database migration was required; this is a frontend hydration/data-flow issue.
+- Full end-to-end browser verification is still recommended with a real order such as `#171931`: pay Bill A, reopen from active sheet and continued POS cart, then confirm Bill A is locked/paid and Bill B is active.
+- Orders detail currently uses its existing settle dialog flow and does not enable split settlement there; this batch did not expand Orders detail split-settlement capabilities beyond passing hydrated POS contexts in the POS flows.
+
+### 7. Acceptance checklist
+
+- [x] PaymentMethodDialog does not receive empty `existingSplitBills` for existing split order in POS active/continued contexts.
+- [x] `pendingOrderForPayment` path works through the shared context resolver.
+- [x] `continueOrderId` / current cart existing-order path works through `continuedOrderForPayment`.
+- [x] Restaurant active order path uses the same shared context resolver.
+- [x] Bill A no longer resets to Rp 0 from POS active/continued entrypoints.
+- [x] Bill A is paid/locked from POS active/continued entrypoints.
+- [x] Bill B or next unpaid bill becomes active via existing dialog hydration rules.
+- [x] Paid quantities are not assignable again via existing locked-bill quantity rules.
+- [x] Remaining quantities remain visible via hydrated order items and split item assignments.
+- [x] No migration added for this UI hydration issue.
+- [x] Report updated.

@@ -33,6 +33,7 @@ import {
   submitPOSPayment,
   toUserSafePaymentError,
   createClientPaymentSessionId,
+  resolvePOSPaymentDialogContext,
 } from "@/features/pos-core";
 import { getSendToKitchenEligibility } from "./restaurantTableServiceFlowPolicy";
 import { RESTAURANT_TABLE_SERVICE_FLOW_POLICY } from "./restaurantTableServiceFlowPolicy";
@@ -59,6 +60,7 @@ export function useRestaurantTableServicePOSFlow() {
   const [isProcessingQuickCharge, setIsProcessingQuickCharge] = useState(false);
   const [paymentMethodDialogOpen, setPaymentMethodDialogOpen] = useState(false);
   const [pendingOrderForPayment, setPendingOrderForPayment] = useState<import("@/features/pos-core/hooks/usePOSActiveOrderPayment").POSPendingOrderPayment>(null);
+  const [continuedOrderForPayment, setContinuedOrderForPayment] = useState<POSLifecycleOrder | null>(null);
 
   const { data: productsData, isLoading: productsLoading, error: productsError } = useProducts();
   const products = productsData?.products || [];
@@ -103,12 +105,19 @@ export function useRestaurantTableServicePOSFlow() {
         }
         cart.clearCart();
         cart.loadOrder(fullOrder);
+        setContinuedOrderForPayment(fullOrder as POSLifecycleOrder);
         hydrateCartItemProductImages(cart.items, products);
         toast({ title: "Draft dimuat", description: `Draft #${fullOrder.orderNumber} siap dibayar.` });
       } catch (error) {
         toast({ title: "Gagal memuat draft", description: error instanceof Error ? error.message : "Draft tidak dapat dimuat", variant: "destructive" });
       }
     })();
+  }, [continueOrderId]);
+
+  useEffect(() => {
+    if (continueOrderId) return;
+    loadedOrderRef.current = null;
+    setContinuedOrderForPayment(null);
   }, [continueOrderId]);
 
   const ensureCartHasItems = () => {
@@ -181,13 +190,17 @@ export function useRestaurantTableServicePOSFlow() {
       toast({ title: continueOrderId ? "Draft diperbarui" : "Draft disimpan", description: `Order #${orderResult.order?.order_number || orderResult.order?.id || "N/A"}` });
       cart.clearCart();
       setMobileCartOpen(false);
-      if (continueOrderId) setLocation("/pos");
+      if (continueOrderId) {
+        setContinuedOrderForPayment(null);
+        setLocation("/pos");
+      }
     } catch (error) {
       const isNetworkError = error instanceof TypeError || (error instanceof Error && /network|fetch/i.test(error.message));
       if (isNetworkError) {
         const draft = await saveLocalDraftOrder({ tenantId, customerName: cart.customerName || undefined, items: cart.items, total: cart.total });
         toast({ title: "Draft lokal disimpan", description: `Draft #${draft.id.slice(0, 8)} disimpan di perangkat ini.` });
         cart.clearCart();
+        setContinuedOrderForPayment(null);
         setMobileCartOpen(false);
       } else {
         toast({ title: "Gagal menyimpan draft", description: error instanceof Error ? error.message : "Gagal membuat pesanan", variant: "destructive" });
@@ -251,6 +264,23 @@ export function useRestaurantTableServicePOSFlow() {
     sendToCFD(buildPaymentCFDPayload({ tenantName, orderNumber: pendingOrderForPayment?.orderNumber || cart.orderNumber || "", total: pendingOrderForPayment?.totalAmount || cart.total, items: cart.items.map(toCFDItem), subtotal: cart.subtotal, tax: cart.tax, serviceCharge: cart.serviceCharge, customerName: cart.customerName || undefined }, method));
   };
 
+  const refreshPaymentOrderState = async (orderId: string, source: "ACTIVE_ORDER" | "SAVED_ORDER") => {
+    const refreshed = await fetchOrderForPOS(orderId) as POSLifecycleOrder;
+    if (source === "ACTIVE_ORDER") {
+      const remaining = Number((refreshed as any).remainingAmount ?? (refreshed as any).remaining_amount ?? (refreshed as any).total ?? (refreshed as any).total_amount ?? 0);
+      setPendingOrderForPayment({
+        orderId: refreshed.id,
+        orderNumber: String(refreshed.orderNumber ?? refreshed.order_number ?? orderId),
+        totalAmount: remaining,
+        order: refreshed,
+      });
+    } else {
+      setContinuedOrderForPayment(refreshed);
+      cart.loadOrder(refreshed);
+    }
+    return refreshed;
+  };
+
   const handlePaymentMethodConfirm = async (paymentMethod: PaymentMethod, cashReceived?: number, partialAmount?: number, paymentDetails?: import("@pos/domain/orders").POSPaymentCommandDto) => {
     if (!pendingOrderForPayment) {
       toast({ title: "Gunakan Kirim ke Dapur", description: "Flow restoran tidak membuat pembayaran fresh retail. Bayar dari pesanan aktif setelah service.", variant: "destructive" });
@@ -276,10 +306,16 @@ export function useRestaurantTableServicePOSFlow() {
       queryClient.invalidateQueries({ queryKey: ["/api/orders/open"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders", pendingOrderForPayment.orderId] });
+      if (result.status === "PARTIAL") {
+        await refreshPaymentOrderState(pendingOrderForPayment.orderId, "ACTIVE_ORDER");
+      }
       toast({ title: result.messageTitle, description: result.messageDescription });
-      if (result.status === "PAID" || result.status === "PARTIAL") {
+      if (result.status === "PAID") {
         paymentSessionIdRef.current = null;
         setPendingOrderForPayment(null);
+        setPaymentMethodDialogOpen(false);
+      } else if (result.status === "PARTIAL") {
+        paymentSessionIdRef.current = null;
         setPaymentMethodDialogOpen(false);
       }
     } catch (error) {
@@ -295,6 +331,14 @@ export function useRestaurantTableServicePOSFlow() {
     getLocalDraftItems(draft).forEach((item) => item.product && cart.addItem(item.product, item.variant, item.selectedOptions || [], item.quantity || 1));
     toast({ title: "Draft lokal dimuat", description: `Draft LOCAL-${String(draft.id).slice(0, 8)} siap dibayar.` });
   };
+
+  const paymentDialogContext = resolvePOSPaymentDialogContext({
+    pendingOrderForPayment,
+    continuedOrderForPayment,
+    continueOrderId,
+    cartTotal: cart.total,
+    cartItems: cart.items,
+  });
 
   const cartPanelProps = {
     items: cart.items,
@@ -337,5 +381,5 @@ export function useRestaurantTableServicePOSFlow() {
 
   const restaurantActiveOrders = openOrdersData?.orders ?? [];
 
-  return { payingActiveOrderId, policy: RESTAURANT_TABLE_SERVICE_FLOW_POLICY, isOnline, tables: tablesData?.tables || [], tablesLoading, tablesError, activeOrders: restaurantActiveOrders, openOrdersLoading, products, productsLoading, productsError, handleAddToCart, selectedProduct, setSelectedProduct, handleVariantAdd, cartPanelProps, isMobile, mobileCartOpen, setMobileCartOpen, combinedDraftOpen, setCombinedDraftOpen, handleResumeLocalDraft, payActiveOrder, paymentMethodDialogOpen, setPaymentMethodDialogOpen, handleCFDMethodChange, handlePaymentMethodConfirm, pendingOrderForPayment, setPendingOrderForPayment, hasPartialPayment, hasMultiPayment, hasSplitBill, isProcessingQuickCharge, cart };
+  return { payingActiveOrderId, policy: RESTAURANT_TABLE_SERVICE_FLOW_POLICY, isOnline, tables: tablesData?.tables || [], tablesLoading, tablesError, activeOrders: restaurantActiveOrders, openOrdersLoading, products, productsLoading, productsError, handleAddToCart, selectedProduct, setSelectedProduct, handleVariantAdd, cartPanelProps, isMobile, mobileCartOpen, setMobileCartOpen, combinedDraftOpen, setCombinedDraftOpen, handleResumeLocalDraft, payActiveOrder, paymentMethodDialogOpen, setPaymentMethodDialogOpen, handleCFDMethodChange, handlePaymentMethodConfirm, pendingOrderForPayment, setPendingOrderForPayment, hasPartialPayment, hasMultiPayment, hasSplitBill, isProcessingQuickCharge, cart, continuedOrderForPayment, setContinuedOrderForPayment, paymentDialogContext };
 }

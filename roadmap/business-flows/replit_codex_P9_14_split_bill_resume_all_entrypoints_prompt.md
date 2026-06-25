@@ -163,17 +163,17 @@ Include root cause, changed files, data flow, verification, and remaining limita
 
 ## Acceptance checklist
 
-- [ ] PaymentMethodDialog does not receive empty `existingSplitBills` for existing split order.
-- [ ] `pendingOrderForPayment` path works.
-- [ ] `continueOrderId` / current cart existing-order path works.
-- [ ] restaurant active order path works if applicable.
-- [ ] Bill A no longer resets to Rp 0 from any entrypoint.
-- [ ] Bill A is paid/locked from any entrypoint.
-- [ ] Bill B or next unpaid bill becomes active.
-- [ ] paid quantities are not assignable again.
-- [ ] remaining quantities remain visible.
-- [ ] no migration added for this UI hydration issue.
-- [ ] report updated.
+- [x] PaymentMethodDialog does not receive empty `existingSplitBills` for existing split order.
+- [x] `pendingOrderForPayment` path works.
+- [x] `continueOrderId` / current cart existing-order path works.
+- [x] restaurant active order path works if applicable.
+- [x] Bill A no longer resets to Rp 0 from any entrypoint.
+- [x] Bill A is paid/locked from any entrypoint.
+- [x] Bill B or next unpaid bill becomes active.
+- [x] paid quantities are not assignable again.
+- [x] remaining quantities remain visible.
+- [x] no migration added for this UI hydration issue.
+- [x] report updated.
 
 ## Commit message
 

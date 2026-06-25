@@ -65,14 +65,14 @@ export function RetailStandardPOSFlowView({ flow }: { flow: RetailStandardPOSFlo
         }}
         onMethodChange={flow.handleCFDMethodChange}
         onConfirm={flow.handlePaymentMethodConfirm}
-        cartTotal={flow.pendingOrderForPayment?.totalAmount || flow.cart.total}
-        cartItems={(flow.cart.items.length ? flow.cart.items : (((flow.pendingOrderForPayment?.order as any)?.items ?? (flow.pendingOrderForPayment?.order as any)?.orderItems ?? []) as any))}
+        cartTotal={flow.paymentDialogContext.totalAmount}
+        cartItems={flow.paymentDialogContext.cartItems}
         isSubmitting={flow.isProcessingQuickCharge}
         defaultPaymentMethod={flow.cart.paymentMethod}
         allowPartial={flow.hasPartialPayment}
         allowMultiPayment={flow.hasMultiPayment}
         allowSplitBill={flow.hasSplitBill}
-        existingSplitBills={(((flow.pendingOrderForPayment?.order as any)?.billSplits ?? (flow.pendingOrderForPayment?.order as any)?.splits ?? []) as any)}
+        existingSplitBills={flow.paymentDialogContext.existingSplitBills}
       />
 
       {flow.isProcessingQuickCharge && (

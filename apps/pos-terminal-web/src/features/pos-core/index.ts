@@ -20,3 +20,4 @@ export * from "./services/posPaymentAmountService";
 export * from "./services/posPrinterService";
 export * from "./services/posPaymentSubmissionService";
 export * from "./payment/paymentCommandMapper";
+export * from "./services/posPaymentDialogContext";
