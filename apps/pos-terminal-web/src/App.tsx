@@ -192,15 +192,15 @@ const NotFoundWithLayout = () => (
 );
 
 function ProtectedKitchenRoute() {
-  const { can, isLoading, planTier } = useTenant();
+  const { can, isLoading } = useTenant();
   if (isLoading) return null;
-  return can("restaurant_kitchen_ops") || planTier === "growth" || planTier === "pro" ? <KitchenDisplayPageWithLayout /> : <NotFoundWithLayout />;
+  return can("restaurant_kitchen_ops") ? <KitchenDisplayPageWithLayout /> : <NotFoundWithLayout />;
 }
 
 function ProtectedTablesRoute() {
-  const { can, isLoading, planTier } = useTenant();
+  const { can, isLoading } = useTenant();
   if (isLoading) return null;
-  return can("restaurant_table_service") || planTier === "growth" || planTier === "pro" ? <TablesManagementPageWithLayout /> : <NotFoundWithLayout />;
+  return can("restaurant_table_service") ? <TablesManagementPageWithLayout /> : <NotFoundWithLayout />;
 }
 
 const OFFLINE_SESSION_KEY = "aurapos_session_cached";

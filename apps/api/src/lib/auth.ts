@@ -28,39 +28,75 @@ const BASE_URL = (
   `https://${BASE_DOMAIN}`
 );
 
-// Build trusted origins — strings only (Better Auth does not support RegExp here)
-const buildTrustedOrigins = (): string[] => {
-  const origins: string[] = [
+/**
+ * Build trusted origins for Better Auth.
+ *
+ * Better Auth does not support wildcard strings like "*.aurapos.my.id".
+ * It does accept a function `(origin: string) => boolean` which we use
+ * so every tenant subdomain (e.g. tokobudi.aurapos.my.id) is trusted
+ * without enumerating all slugs upfront.
+ *
+ * This is the fix for the production multi-tenant subdomain login failure.
+ */
+const buildTrustedOrigins = (): ((origin: string) => boolean) => {
+  // Statically-known safe origins
+  const staticOrigins = new Set<string>([
     `https://${BASE_DOMAIN}`,
     `http://${BASE_DOMAIN}`,
     'http://localhost:5000',
     'http://localhost:3000',
-  ];
+  ]);
 
   // Replit runtime domains
   if (REPLIT_DEV_DOMAIN) {
-    origins.push(`https://${REPLIT_DEV_DOMAIN}`);
+    staticOrigins.add(`https://${REPLIT_DEV_DOMAIN}`);
   }
   if (process.env.REPLIT_DOMAINS) {
     process.env.REPLIT_DOMAINS.split(',').forEach((d) => {
-      origins.push(`https://${d.trim()}`);
+      staticOrigins.add(`https://${d.trim()}`);
     });
   }
 
   if (process.env.BETTER_AUTH_URL) {
-    origins.push(process.env.BETTER_AUTH_URL);
+    staticOrigins.add(process.env.BETTER_AUTH_URL.trim());
   }
 
-  // Additional LAN origins (e.g. http://192.168.x.y:5000) injected by the
-  // run-aurapos.sh launcher. Comma-separated.
-  if (process.env.EXTRA_TRUSTED_ORIGINS) {
-    process.env.EXTRA_TRUSTED_ORIGINS.split(',').forEach((o) => {
+  // Additional LAN / staging / extra origins. Support both env var names.
+  const extraRaw =
+    process.env.EXTRA_TRUSTED_ORIGINS ||
+    process.env.CORS_ALLOWED_ORIGINS ||
+    '';
+  if (extraRaw) {
+    extraRaw.split(',').forEach((o) => {
       const trimmed = o.trim();
-      if (trimmed) origins.push(trimmed);
+      if (trimmed) staticOrigins.add(trimmed);
     });
   }
 
-  return origins;
+  // In production, accept HTTPS tenant subdomains only.
+  // In development, also accept HTTP LAN IPs and Replit dev URLs.
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  return (origin: string): boolean => {
+    if (!origin) return false;
+    if (staticOrigins.has(origin)) return true;
+
+    // All tenant subdomains: https://<slug>.aurapos.my.id
+    const httpsSubdomain = `https://${BASE_DOMAIN}`;
+    if (origin !== httpsSubdomain && origin.endsWith(`.${BASE_DOMAIN}`)) {
+      if (isProduction) return origin.startsWith('https://');
+      return true; // dev: allow http subdomains too
+    }
+
+    if (!isProduction) {
+      // Replit preview URLs
+      if (origin.endsWith('.replit.dev') || origin.endsWith('.repl.co')) return true;
+      // LAN IPs: http://192.168.x.y:PORT
+      if (/^http:\/\/(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?$/.test(origin)) return true;
+    }
+
+    return false;
+  };
 };
 
 // Cookie config: three modes

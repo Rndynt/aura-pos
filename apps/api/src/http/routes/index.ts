@@ -58,6 +58,7 @@ router.use('/tenants', createTenantsRouter({
   registerTenant: TenantsController.registerTenant,
   getTenantProfile: TenantsController.getTenantProfile,
   getTenantEntitlements: TenantsController.getTenantEntitlements,
+  updateTenantProfile: TenantsController.updateTenantProfile,
 }));
 router.get('/me/entitlements', TenantsController.getMyEntitlements);
 router.use('/tables', createTablesRouter({
@@ -72,7 +73,7 @@ router.use('/kds', asExpress4Handler(kdsLimiter), await createKdsRouter());
 router.use('/outlets', createOutletsRouter());
 router.use('/inventory', createInventoryRouter());
 router.use('/inventory', inventoryAdvancedRoutes);
-router.use('/pos', posRoutes);
+router.use('/pos', asExpress4Handler(orderLimiter), posRoutes);
 
 router.get('/health', (_req, res) => {
   res.json({ success: true, timestamp: new Date().toISOString() });
