@@ -1,9 +1,29 @@
 import { buildApiHeaders } from "@/lib/outlet";
 
+async function fetchOrderFromOpenOrders(orderId: string) {
+  const headers = buildApiHeaders();
+  const response = await fetch(`/api/orders/open`, { headers, credentials: "include" });
+  if (!response.ok) throw new Error("Failed to fetch order");
+  const json = await response.json();
+  const orders = json?.data?.orders ?? json?.orders ?? [];
+  const order = orders.find((candidate: any) => candidate?.id === orderId);
+  if (!order) throw new Error("Failed to fetch order");
+  return {
+    ...order,
+    billSplits: Array.isArray(order.billSplits) ? order.billSplits : [],
+    payments: Array.isArray(order.payments) ? order.payments : [],
+  };
+}
+
 export async function fetchOrderForPOS(orderId: string) {
   const headers = buildApiHeaders();
   const response = await fetch(`/api/orders/${orderId}`, { headers, credentials: "include" });
-  if (!response.ok) throw new Error("Failed to fetch order");
+  if (!response.ok) {
+    if (response.status >= 500) {
+      return fetchOrderFromOpenOrders(orderId);
+    }
+    throw new Error("Failed to fetch order");
+  }
   const json = await response.json();
   return json.data;
 }
