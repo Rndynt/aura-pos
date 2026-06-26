@@ -83,11 +83,51 @@ function hasSplitPaymentEvidence(order?: POSLifecycleOrder | null): boolean {
   if (!order) return false;
   const raw = order as any;
   const payments = (raw.payments ?? raw.orderPayments ?? raw.order_payments ?? []) as any[];
-  if (payments.some((payment) => String(payment?.paymentFlow ?? payment?.payment_flow ?? "").toUpperCase() === "SPLIT_BILL")) {
-    return true;
-  }
+  if (payments.some((payment) => String(payment?.paymentFlow ?? payment?.payment_flow ?? "").toUpperCase() === "SPLIT_BILL")) return true;
   const status = String(raw.paymentStatus ?? raw.payment_status ?? "").toLowerCase();
   return status === "partial" && getOrderPaidAmount(order) > 0;
+}
+
+function getOrderItemId(item: any): string {
+  return String(item?.id ?? item?.orderItemId ?? item?.order_item_id ?? item?.clientItemId ?? item?.client_item_id ?? "");
+}
+
+function getOrderItemQuantity(item: any): number {
+  return Math.max(1, numberFrom(item?.quantity, 1));
+}
+
+function getOrderItemAmount(item: any): number {
+  const explicit = numberFrom(
+    item?.itemSubtotal ?? item?.item_subtotal ?? item?.totalPrice ?? item?.total_price ?? item?.lineTotal ?? item?.line_total,
+    NaN,
+  );
+  if (Number.isFinite(explicit)) return explicit;
+  const unit = numberFrom(item?.unitPrice ?? item?.unit_price ?? item?.price ?? item?.basePrice ?? item?.base_price, 0);
+  return unit * getOrderItemQuantity(item);
+}
+
+function synthesizePaidItemsFromOrder(order: POSLifecycleOrder | null | undefined, clientBillId: string, paidAmount: number): ExistingSplitBillItem[] {
+  const items = getOrderItems(order);
+  const result: ExistingSplitBillItem[] = [];
+  let remaining = Math.max(0, paidAmount);
+
+  for (const item of items as any[]) {
+    const orderItemId = getOrderItemId(item);
+    const quantity = getOrderItemQuantity(item);
+    const lineAmount = getOrderItemAmount(item);
+    const unitAmount = quantity > 0 ? lineAmount / quantity : lineAmount;
+    if (!orderItemId || quantity <= 0 || unitAmount <= 0 || remaining <= 0) continue;
+
+    const fullQty = lineAmount <= remaining + 1 ? quantity : Math.floor((remaining + 1) / unitAmount);
+    const assignedQty = Math.max(0, Math.min(quantity, fullQty));
+    if (assignedQty <= 0) continue;
+
+    const amount = Math.round(unitAmount * assignedQty * 100) / 100;
+    result.push({ orderItemId, clientBillId, quantity: assignedQty, amount });
+    remaining -= amount;
+  }
+
+  return result;
 }
 
 function synthesizePaidSplitFromOrder(order?: POSLifecycleOrder | null): ExistingSplitBill[] {
@@ -100,7 +140,7 @@ function synthesizePaidSplitFromOrder(order?: POSLifecycleOrder | null): Existin
     amountDue: paidAmount,
     amountPaid: paidAmount,
     status: "PAID",
-    items: [],
+    items: synthesizePaidItemsFromOrder(order, "A", paidAmount),
   }];
 }
 
@@ -110,7 +150,17 @@ function getOrderSplitBills(order?: POSLifecycleOrder | null): ExistingSplitBill
   const normalized = rawSplits
     .map((split, index) => normalizeSplitBill(split, index))
     .filter((split): split is ExistingSplitBill => Boolean(split?.clientBillId));
-  return normalized.length > 0 ? normalized : synthesizePaidSplitFromOrder(order);
+
+  if (normalized.length === 0) return synthesizePaidSplitFromOrder(order);
+
+  return normalized.map((bill, index) => {
+    if (bill.status !== "PAID" || (bill.items?.length ?? 0) > 0) return bill;
+    const paidAmount = bill.amountPaid || bill.amountDue || getOrderPaidAmount(order);
+    return {
+      ...bill,
+      items: synthesizePaidItemsFromOrder(order, bill.clientBillId || billIdFromSplitNo(index + 1, index), paidAmount),
+    };
+  });
 }
 
 function getOrderNumber(order?: POSLifecycleOrder | null): string | undefined {
