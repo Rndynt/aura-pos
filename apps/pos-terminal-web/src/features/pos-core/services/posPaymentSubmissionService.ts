@@ -35,7 +35,15 @@ export type POSPaymentSubmissionInput = {
     paymentKind?: POSPaymentKind;
     targetBillId?: string;
     lines?: POSPaymentLineInput[];
-    splits?: Array<{ id?: string; label?: string; amountDue: number; amountPaid?: number; orderBillSplitId?: string; status?: "UNPAID" | "PARTIAL" | "PAID"; items?: Array<{ orderItemId?: string; clientItemId?: string; quantity: number; amount: number }> }>;
+    splits?: Array<{
+      id?: string;
+      label?: string;
+      amountDue: number;
+      amountPaid?: number;
+      orderBillSplitId?: string;
+      status?: "UNPAID" | "PARTIAL" | "PAID";
+      items?: Array<{ orderItemId?: string; clientItemId?: string; quantity: number; amount: number }>;
+    }>;
   };
 };
 
@@ -92,6 +100,12 @@ export type SubmitPOSPaymentApiResult = POSPaymentSubmissionResult & {
   splits?: unknown[];
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_RE.test(value);
+}
+
 export function toUserSafePaymentError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error ?? "");
   const technicalValidationPattern = new RegExp(["invalid_enum_value", "Invalid enum", "Expected.*FULL.*DOWN_PAYMENT", "\\[\\{.*code.*path"].join("|"), "i");
@@ -143,6 +157,21 @@ function buildBackendOrderPayload(cartPayload?: Record<string, unknown>): Record
   };
 }
 
+function sanitizeSplitItems(items?: Array<{ orderItemId?: string; clientItemId?: string; quantity: number; amount: number }>) {
+  return items?.map((item) => {
+    const rawOrderItemId = item.orderItemId;
+    return {
+      // Backend schema only accepts UUID orderItemId. Fresh-cart split lines often
+      // carry local/nanoid ids, so send those as clientItemId only and let the
+      // backend map client_item_id after creating order items.
+      orderItemId: isUuid(rawOrderItemId) ? rawOrderItemId : undefined,
+      clientItemId: item.clientItemId ?? rawOrderItemId,
+      quantity: item.quantity,
+      amount: item.amount,
+    };
+  });
+}
+
 function buildSplitPayload(input: POSPaymentSubmissionInput): SubmitPOSPaymentRequest["payment"]["splits"] | undefined {
   return input.paymentDetails?.splits?.map((split, index) => ({
     clientBillId: split.id ?? `bill-${index + 1}`,
@@ -151,7 +180,7 @@ function buildSplitPayload(input: POSPaymentSubmissionInput): SubmitPOSPaymentRe
     amountDue: roundCurrency(split.amountDue),
     amountPaid: roundCurrency(split.amountPaid ?? 0),
     status: split.status ?? ((split.amountPaid ?? 0) >= split.amountDue - 0.001 ? "PAID" : (split.amountPaid ?? 0) > 0 ? "PARTIAL" : "UNPAID"),
-    items: split.items,
+    items: sanitizeSplitItems(split.items),
   }));
 }
 
@@ -172,10 +201,8 @@ export function buildSubmitPOSPaymentRequest(input: POSPaymentSubmissionInput): 
         amount: line.amount,
         receivedAmount: line.receivedAmount,
         referenceNote: line.referenceNote,
-        // clientBillId takes priority; splitId is a legacy alias.
-        // orderBillSplitId is only set when continuing an existing DB split row.
         clientBillId: line.clientBillId ?? line.splitId,
-        orderBillSplitId: line.orderBillSplitId,
+        orderBillSplitId: isUuid(line.orderBillSplitId) ? line.orderBillSplitId : undefined,
       })),
       splits: buildSplitPayload(input),
     },
