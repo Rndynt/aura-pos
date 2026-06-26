@@ -58,9 +58,6 @@ function normalizeSplitItems(items: unknown, clientBillId: string): ExistingSpli
 function normalizeSplitBill(rawSplit: any, index: number): ExistingSplitBill | null {
   if (!rawSplit) return null;
   const splitNo = rawSplit.splitNo ?? rawSplit.split_no ?? index + 1;
-  // Older rows may have NULL client_bill_id. Do not drop those rows: the UI
-  // needs a stable A/B/C id to show paid/locked bills. split_no is the durable
-  // fallback for existing data.
   const clientBillId = String(rawSplit.clientBillId ?? rawSplit.client_bill_id ?? billIdFromSplitNo(splitNo, index));
   const amountDue = numberFrom(rawSplit.amountDue ?? rawSplit.amount_due, 0);
   const amountPaid = numberFrom(rawSplit.amountPaid ?? rawSplit.amount_paid, 0);
@@ -76,12 +73,44 @@ function normalizeSplitBill(rawSplit: any, index: number): ExistingSplitBill | n
   };
 }
 
+function getOrderPaidAmount(order?: POSLifecycleOrder | null): number {
+  if (!order) return 0;
+  const raw = order as any;
+  return numberFrom(raw.paidAmount ?? raw.paid_amount, 0);
+}
+
+function hasSplitPaymentEvidence(order?: POSLifecycleOrder | null): boolean {
+  if (!order) return false;
+  const raw = order as any;
+  const payments = (raw.payments ?? raw.orderPayments ?? raw.order_payments ?? []) as any[];
+  if (payments.some((payment) => String(payment?.paymentFlow ?? payment?.payment_flow ?? "").toUpperCase() === "SPLIT_BILL")) {
+    return true;
+  }
+  const status = String(raw.paymentStatus ?? raw.payment_status ?? "").toLowerCase();
+  return status === "partial" && getOrderPaidAmount(order) > 0;
+}
+
+function synthesizePaidSplitFromOrder(order?: POSLifecycleOrder | null): ExistingSplitBill[] {
+  const paidAmount = getOrderPaidAmount(order);
+  if (!hasSplitPaymentEvidence(order) || paidAmount <= 0) return [];
+  return [{
+    id: "synthetic-paid-bill-a",
+    clientBillId: "A",
+    label: "Bill A",
+    amountDue: paidAmount,
+    amountPaid: paidAmount,
+    status: "PAID",
+    items: [],
+  }];
+}
+
 function getOrderSplitBills(order?: POSLifecycleOrder | null): ExistingSplitBill[] {
   if (!order) return [];
   const rawSplits = ((order as any).billSplits ?? (order as any).bill_splits ?? (order as any).splits ?? []) as unknown[];
-  return rawSplits
+  const normalized = rawSplits
     .map((split, index) => normalizeSplitBill(split, index))
     .filter((split): split is ExistingSplitBill => Boolean(split?.clientBillId));
+  return normalized.length > 0 ? normalized : synthesizePaidSplitFromOrder(order);
 }
 
 function getOrderNumber(order?: POSLifecycleOrder | null): string | undefined {
