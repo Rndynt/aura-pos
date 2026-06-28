@@ -112,55 +112,41 @@ async function resolveSelectedSplitState({
   lineSplitDbId?: string;
   splits: SubmitPOSPaymentCommand["payment"]["splits"];
 }): Promise<{ selectedSplit: SelectedSplitState; existingSplits: OrderBillSplit[] }> {
+  // Determine which bill is being paid (prefer targetBillId from frontend)
   const selectedBillId = targetBillId ?? lineBillId ?? lineSplitDbId;
   if (!selectedBillId) {
     throw new Error("Bill yang dipilih tidak valid atau sudah lunas.");
   }
 
+  // Lock existing splits for this order to prevent concurrent payments
   const existingSplits = await tx
     .select()
     .from(orderBillSplits)
     .where(eq(orderBillSplits.orderId, orderId))
     .for("update");
 
-  const matchingDbSplit = existingSplits.find(
+  // Try to find the target bill in the DB (for resuming a partially-paid split)
+  const dbSplit = existingSplits.find(
     (split) =>
       split.clientBillId === selectedBillId ||
-      split.id === selectedBillId ||
       (lineSplitDbId != null && split.id === lineSplitDbId),
   );
 
-  const requestSplit =
+  // Try to find the target bill in the request payload (for first-time split)
+  const requestSplit = findRequestSplit(splits, selectedBillId) ??
     findRequestSplit(splits, targetBillId) ??
-    findRequestSplit(splits, lineBillId) ??
-    (matchingDbSplit ? splits?.find((split) => split.splitNo === matchingDbSplit.splitNo) : undefined);
+    findRequestSplit(splits, lineBillId);
 
-  if (splits?.length && targetBillId && !findRequestSplit(splits, targetBillId) && targetBillId !== matchingDbSplit?.id) {
-    throw new Error("Bill yang dipilih tidak valid atau sudah lunas.");
-  }
-
-  if (!requestSplit && !matchingDbSplit) {
-    throw new Error("Bill yang dipilih tidak valid atau sudah lunas.");
-  }
-
-  const selectedSplitNo = matchingDbSplit?.splitNo ?? requestSplit?.splitNo;
-  const splitByNo = selectedSplitNo
-    ? existingSplits.find((split) => split.splitNo === selectedSplitNo)
-    : undefined;
-  const dbSplit = matchingDbSplit ?? splitByNo;
-
+  // Must have at least one source of truth
   if (!dbSplit && !requestSplit) {
     throw new Error("Bill yang dipilih tidak valid atau sudah lunas.");
   }
 
+  // DB takes priority for amounts (source of truth after first payment)
   const amountDue = roundCurrency(parseFloat(dbSplit?.amountDue ?? String(requestSplit?.amountDue ?? 0)));
   const amountPaid = roundCurrency(parseFloat(dbSplit?.amountPaid ?? String(requestSplit?.amountPaid ?? 0)));
-  const clientBillId = requestSplit?.clientBillId ?? dbSplit?.clientBillId ?? selectedBillId;
-  const splitNo = dbSplit?.splitNo ?? requestSplit?.splitNo;
-
-  if (!clientBillId || !splitNo) {
-    throw new Error("Bill yang dipilih tidak valid atau sudah lunas.");
-  }
+  const clientBillId = dbSplit?.clientBillId ?? requestSplit?.clientBillId ?? selectedBillId;
+  const splitNo = dbSplit?.splitNo ?? requestSplit?.splitNo ?? 1;
 
   return {
     existingSplits,

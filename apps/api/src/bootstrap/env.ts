@@ -56,7 +56,7 @@ export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     isProduction: env.NODE_ENV === 'production',
     corsAllowedOrigins,
     extraTrustedOrigins: corsAllowedOrigins,
-    autoMigrateOnBoot: env.API_AUTO_MIGRATE_ON_BOOT === 'true',
+    autoMigrateOnBoot: env.API_AUTO_MIGRATE_ON_BOOT !== 'false',
     trustProxy,
   };
 }

@@ -126,7 +126,7 @@ export function mapToUserSafeError(error: unknown): { message: string; code: str
   if (/order sudah lunas/i.test(msg)) return { message: 'Order sudah lunas. Pembayaran baru tidak dapat dicatat.', code: 'ORDER_ALREADY_PAID', status: 409 };
   if (/total multi payment.*sisa tagihan/i.test(msg)) return { message: 'Total multi payment harus sama dengan sisa tagihan.', code: 'MULTI_PAYMENT_TOTAL_MISMATCH', status: 400 };
   if (/melebihi sisa/i.test(msg)) return { message: 'Jumlah pembayaran melebihi sisa tagihan.', code: 'PAYMENT_AMOUNT_EXCEEDS_REMAINING', status: 400 };
-  if (/split|bill yang dipilih/i.test(msg)) return { message: 'Bill yang dipilih tidak valid atau sudah lunas.', code: 'INVALID_SPLIT_BILL', status: 400 };
+  if (/bill yang dipilih tidak valid/i.test(msg)) return { message: 'Bill yang dipilih tidak valid atau sudah lunas.', code: 'INVALID_SPLIT_BILL', status: 400 };
   if (/metode pembayaran/i.test(msg)) return { message: 'Metode pembayaran tidak valid.', code: 'PAYMENT_METHOD_INVALID', status: 400 };
   if (/tipe pembayaran/i.test(msg)) return { message: 'Tipe pembayaran tidak valid.', code: 'PAYMENT_FLOW_INVALID', status: 400 };
   if (/cancelled|dibatalkan/i.test(msg)) return { message: 'Tidak dapat mencatat pembayaran untuk order yang dibatalkan.', code: 'ORDER_CANCELLED', status: 409 };

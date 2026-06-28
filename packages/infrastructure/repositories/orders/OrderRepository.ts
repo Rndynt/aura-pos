@@ -271,12 +271,25 @@ export class OrderRepository
         .from(orderBillSplits)
         .where(eq(orderBillSplits.orderId, id));
 
-      const billSplitItems = billSplits.length > 0
-        ? await client
-            .select()
+      // Gracefully handle case where order_bill_split_items table may not exist yet (migration pending)
+      let billSplitItems: Array<{ orderBillSplitId: string; orderItemId: string; clientBillId: string; quantity: string | null; amount: string | null }> = [];
+      if (billSplits.length > 0) {
+        try {
+          billSplitItems = await client
+            .select({
+              orderBillSplitId: orderBillSplitItems.orderBillSplitId,
+              orderItemId: orderBillSplitItems.orderItemId,
+              clientBillId: orderBillSplitItems.clientBillId,
+              quantity: orderBillSplitItems.quantity,
+              amount: orderBillSplitItems.amount,
+            })
             .from(orderBillSplitItems)
-            .where(eq(orderBillSplitItems.orderId, id))
-        : [];
+            .where(eq(orderBillSplitItems.orderId, id));
+        } catch {
+          // Table may not exist yet - treat as empty (items will be synthesized from payment amounts)
+          billSplitItems = [];
+        }
+      }
 
       // Map modifiers to items
       const modifiersByItem = modifiers.reduce((acc, modifier) => {

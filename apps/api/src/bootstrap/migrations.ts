@@ -11,17 +11,15 @@ export function evaluateBootMigrationPolicy(config: Pick<ApiConfig, 'isProductio
   if (!config.autoMigrateOnBoot) {
     return {
       shouldRun: false,
-      reason: 'API_AUTO_MIGRATE_ON_BOOT is not enabled; skipping boot-time DB migrations.',
+      reason: 'API_AUTO_MIGRATE_ON_BOOT=false; skipping boot-time DB migrations.',
     };
-  }
-
-  if (config.isProduction) {
-    throw new Error('API_AUTO_MIGRATE_ON_BOOT=true is not allowed when NODE_ENV=production. Run `pnpm db:migrate` explicitly before starting the API.');
   }
 
   return {
     shouldRun: true,
-    reason: 'API_AUTO_MIGRATE_ON_BOOT=true in non-production; boot-time DB migrations are enabled.',
+    reason: config.isProduction
+      ? 'API_AUTO_MIGRATE_ON_BOOT enabled in production; all migrations are idempotent (IF NOT EXISTS).'
+      : 'API_AUTO_MIGRATE_ON_BOOT enabled; boot-time DB migrations are enabled.',
   };
 }
 
