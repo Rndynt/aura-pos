@@ -4,6 +4,7 @@ AuraPoS adalah monorepo aplikasi Point of Sale (POS) untuk UMKM yang mencakup fr
 
 ## Struktur Proyek
 - **apps/pos-terminal-web**: Frontend terminal kasir berbasis Vite + React dengan wouter sebagai router dan React Query untuk data fetching. Fokus pada operasi order, keranjang, pembayaran, dan ticket dapur.
+- **apps/landing**: Aplikasi Vite + React terpisah untuk public marketing landing page dan route mockup preview iframe. Jalankan di port `5174` dengan `pnpm --filter @pos/landing dev`; gunakan `VITE_POS_APP_URL` bila CTA harus mengarah ke domain POS terpisah.
 - **apps/web**: Frontend tambahan berbasis Next.js (marketing/opsional) yang memanfaatkan komponen bersama.
 - **apps/api**: Backend Express/TypeScript dengan Drizzle untuk akses database serta hooks React Query sebagai klien API.
 - **packages/domain**: Definisi tipe domain (catalog, orders, pricing, tenants) yang dipakai lintas aplikasi.

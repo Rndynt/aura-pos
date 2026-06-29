@@ -2,8 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Hide Replit dev badge everywhere (dev-only artifact) */
-replit-badge { display: none !important; }
 
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar { display: none; }

@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+replit-badge,
+#replit-dev-banner,
+[data-replit-badge] {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

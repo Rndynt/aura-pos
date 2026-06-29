@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
-import { DeviceMockup } from "@/components/landing/DeviceMockup";
+import { DeviceMockup } from "@/components/DeviceMockup";
+
+const POS_APP_URL = import.meta.env.VITE_POS_APP_URL ?? "";
+const appHref = (path: string) => `${POS_APP_URL}${path}`;
 
 const FEATURES = [
   {
@@ -125,8 +128,8 @@ export default function LandingPage() {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <a href="/login" className={`hidden sm:block text-sm font-medium transition-colors ${scrolled ? "text-slate-600 hover:text-slate-900" : "text-white/80 hover:text-white"}`}>Masuk</a>
-            <a href="/register" className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors">Mulai Gratis</a>
+            <a href={appHref("/login")} className={`hidden sm:block text-sm font-medium transition-colors ${scrolled ? "text-slate-600 hover:text-slate-900" : "text-white/80 hover:text-white"}`}>Masuk</a>
+            <a href={appHref("/register")} className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors">Mulai Gratis</a>
           </div>
         </div>
       </nav>
@@ -152,7 +155,7 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2.5 mb-10 max-w-xs sm:max-w-none mx-auto">
-            <a href="/register" className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm text-center transition-colors shadow-lg shadow-blue-900/40">
+            <a href={appHref("/register")} className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm text-center transition-colors shadow-lg shadow-blue-900/40">
               Mulai Gratis Sekarang →
             </a>
             <a href="#fitur" className="px-6 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white font-semibold text-sm text-center transition-colors">
@@ -265,7 +268,7 @@ export default function LandingPage() {
                   </li>
                 ))}
               </ul>
-              <a href="/register" className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors">
+              <a href={appHref("/register")} className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors">
                 Coba Gratis →
               </a>
             </div>
@@ -349,7 +352,7 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <a href="/register" className={`block text-center py-2.5 rounded-xl font-semibold text-sm transition-colors ${plan.popular
+                <a href={appHref("/register")} className={`block text-center py-2.5 rounded-xl font-semibold text-sm transition-colors ${plan.popular
                   ? "bg-white text-blue-700 hover:bg-blue-50"
                   : "bg-blue-600 text-white hover:bg-blue-700"
                 }`}>
@@ -367,10 +370,10 @@ export default function LandingPage() {
           <h2 className="text-3xl sm:text-4xl font-black text-white mb-3">Siap mulai sekarang?</h2>
           <p className="text-slate-400 mb-8 text-sm sm:text-base">Bergabung dengan ratusan outlet yang sudah menggunakan AuraPoS.</p>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 max-w-xs sm:max-w-none mx-auto">
-            <a href="/register" className="px-7 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm text-center transition-colors">
+            <a href={appHref("/register")} className="px-7 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm text-center transition-colors">
               Daftar Gratis →
             </a>
-            <a href="/login" className="px-7 py-3 rounded-xl border border-white/10 text-white/80 hover:text-white font-semibold text-sm text-center transition-colors">
+            <a href={appHref("/login")} className="px-7 py-3 rounded-xl border border-white/10 text-white/80 hover:text-white font-semibold text-sm text-center transition-colors">
               Sudah punya akun
             </a>
           </div>

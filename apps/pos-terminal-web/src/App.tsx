@@ -19,15 +19,6 @@ import CustomerDisplayPage from "@/pages/customer-display";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
-import LandingPage from "@/pages/landing";
-import MockupPOSDesktopPage from "@/mockup-assets/pages/MockupPOSDesktopPage";
-import MockupActiveOrdersPage from "@/mockup-assets/pages/MockupActiveOrdersPage";
-import MockupReportsMobilePage from "@/mockup-assets/pages/MockupReportsMobilePage";
-import MockupPaymentDialogPage from "@/mockup-assets/pages/MockupPaymentDialogPage";
-import MockupInventoryPage from "@/mockup-assets/pages/MockupInventoryPage";
-import MockupProductsPage from "@/mockup-assets/pages/MockupProductsPage";
-import MockupRestaurantTablesPage from "@/mockup-assets/pages/MockupRestaurantTablesPage";
-import MockupDashboardPage from "@/mockup-assets/pages/MockupDashboardPage";
 import { TenantProvider, useTenant } from "@/context/TenantContext";
 import { OutletProvider } from "@/context/OutletContext";
 import { clearActiveTenantCache } from "@/lib/tenant";
@@ -286,16 +277,6 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 function Router() {
   return (
     <Switch>
-      {/* Public: landing + mockup iframes (no auth required) */}
-      <Route path="/landing" component={LandingPage} />
-      <Route path="/mockup-assets/pos-desktop" component={MockupPOSDesktopPage} />
-      <Route path="/mockup-assets/active-orders" component={MockupActiveOrdersPage} />
-      <Route path="/mockup-assets/reports-mobile" component={MockupReportsMobilePage} />
-      <Route path="/mockup-assets/payment-dialog" component={MockupPaymentDialogPage} />
-      <Route path="/mockup-assets/inventory" component={MockupInventoryPage} />
-      <Route path="/mockup-assets/products" component={MockupProductsPage} />
-      <Route path="/mockup-assets/restaurant-tables" component={MockupRestaurantTablesPage} />
-      <Route path="/mockup-assets/dashboard" component={MockupDashboardPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/register" component={RegisterPage} />
       <Route path="/">

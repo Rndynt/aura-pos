@@ -2783,9 +2783,9 @@ Close cross-outlet data access gaps for authenticated non-owner POS roles and ou
   - Reason: These failures are unrelated to outlet-isolation changes and pre-existed the batch scope.
 
 #### Blocked
-- [ ] Task: None.
-  - Blocker:
-  - Required next step:
+- [ ] Task: POS terminal targeted validation acceptance.
+  - Blocker: Existing TypeScript errors outside the allowed landing-separation scope in `DraftOrdersSheet.tsx`, `posPaymentDialogContext.ts`, `employees.tsx`, and `store-profile.tsx`.
+  - Required next step: Fix those unrelated POS typing issues in a separate focused batch, then rerun POS/full repo validation.
 
 #### Not Attempted
 - [ ] Task: Full monorepo validation (`pnpm type-check`, `pnpm build`, `pnpm lint`).
@@ -13611,7 +13611,7 @@ Next safest continuation is to remove `// @ts-nocheck` from remaining POS compon
 - Tasklist: `roadmap/architecture-production-hardening/type-safety-inventory.md`
 - User request: inventory/update type escapes by risk group, add boundary/lint guard if possible, clean first POS core and order/payment application batch, run `pnpm type-check` after each batch, keep P5 incomplete until POS core `@ts-nocheck` is gone and critical runtime flow no longer uses unnecessary type escape.
 - Date started: 2026-06-24
-- Current status: In progress
+- Current status: Implemented; landing validation passed, POS/repo validation blocked by pre-existing POS TypeScript errors
 
 ### Goal
 Reduce unnecessary TypeScript escape hatches in critical order/payment runtime code while documenting remaining escapes honestly and adding an automated guard against type-safety regression.
@@ -14471,3 +14471,120 @@ Ensure split bill resume state is hydrated consistently when payment is opened f
 
 ### Continuation Notes
 Next safest batch is an E2E/manual browser validation using a real partially paid split order, followed by optional Orders detail split-settlement support if the product wants split settlement outside POS flow views.
+
+## Plan: Migrate Landing Page to Separate apps/landing
+
+### Source
+- Tasklist: `roadmap/landing/replit-codex-migrate-landing-to-app-prompt.md`
+- User request: Analisa mendalam, pahami/pelajari, report ketidaksesuaian, lalu eksekusi roadmap landing migration.
+- Date started: 2026-06-29
+- Current status: Implemented; landing validation passed, POS/repo validation blocked by pre-existing POS TypeScript errors
+
+### Goal
+Memisahkan landing page dan mockup-preview dari runtime POS terminal ke workspace Vite React independen `apps/landing` tanpa mengubah flow POS/order/payment/backend.
+
+### Context Read
+- [x] AGENTS.md
+- [x] PLANS.md
+- [x] README.md
+- [x] Active tasklist/checklist (`roadmap/landing/replit-codex-migrate-landing-to-app-prompt.md`)
+- [x] Relevant docs (`README.md`; no behavior docs changed by this refactor)
+- [x] Relevant source files (`apps/pos-terminal-web/src/App.tsx`, landing page, mockup assets, POS CSS/index)
+
+### Workstreams
+
+#### Frontend/UI Workstream
+- Scope: Move public landing UI and iframe mockups to `apps/landing`.
+- Files inspected: `apps/pos-terminal-web/src/pages/landing.tsx`, `apps/pos-terminal-web/src/components/landing/DeviceMockup.tsx`, `apps/pos-terminal-web/src/mockup-assets/**`.
+- Findings: Landing UI is self-contained aside from `@` alias and CTA links; mockups are static React/Tailwind pages.
+- Tasks: Create Vite app, move files, update imports/CTA helper/routes.
+- Risks: TypeScript JSX setting must be inherited from base config; landing build must not depend on POS-only packages.
+- Validation: `pnpm --filter @pos/landing type-check`, `pnpm --filter @pos/landing build`.
+
+#### Documentation Workstream
+- Scope: Landing README plus plan/checklist tracking.
+- Files inspected: roadmap prompt, README.
+- Findings: Root README already describes apps structure; add landing app mention and dedicated app README.
+- Tasks: Create `apps/landing/README.md`, update root README apps list if needed.
+- Risks: Do not overstate production deployment readiness.
+- Validation: Markdown review.
+
+#### Security/Tenant Isolation Workstream
+- Scope: Ensure no POS tenant/order/payment/backend files touched.
+- Files inspected: scoped POS router and landing-only files.
+- Findings: Roadmap is separation-only; no tenant-owned data access involved.
+- Tasks: Verify diff excludes forbidden payment/order/backend files.
+- Risks: Accidental root build/script changes; avoid.
+- Validation: `git diff --stat`, `git diff -- apps/pos-terminal-web/src/App.tsx`.
+
+### Execution Order
+1. Create isolated `apps/landing` workspace and move landing/mockup files.
+2. Remove POS landing/mockup imports and routes only.
+3. Move Replit badge hiding CSS to landing and remove landing-only POS injections.
+4. Add landing README and synchronize root README/PLANS.
+5. Run targeted validations and inspect diff.
+6. Commit focused migration.
+
+### Progress
+
+#### Completed
+- [x] Task: Migrate landing page and mockup assets to `apps/landing`.
+  - Files changed: `apps/landing/**`, `apps/pos-terminal-web/src/App.tsx`, removed old POS landing/mockup files.
+  - Validation: `pnpm --filter @pos/landing type-check` and `pnpm --filter @pos/landing build` passed.
+  - Docs updated: `apps/landing/README.md`, `README.md`.
+- [x] Task: Remove landing/mockup routes from POS terminal router.
+  - Files changed: `apps/pos-terminal-web/src/App.tsx`.
+  - Validation: Diff inspected; POS no longer references landing/mockup route components.
+  - Docs updated: `PLANS.md`.
+- [x] Task: Move landing-only Replit badge CSS out of POS.
+  - Files changed: `apps/landing/src/index.css`, `apps/pos-terminal-web/index.html`, `apps/pos-terminal-web/src/index.css`.
+  - Validation: CSS scoped to landing app.
+  - Docs updated: `PLANS.md`.
+
+#### Partially Completed
+- [ ] Task: None yet.
+  - Completed:
+  - Remaining:
+  - Reason:
+
+#### Blocked
+- [ ] Task: POS terminal targeted validation acceptance.
+  - Blocker: Existing TypeScript errors outside the allowed landing-separation scope in `DraftOrdersSheet.tsx`, `posPaymentDialogContext.ts`, `employees.tsx`, and `store-profile.tsx`.
+  - Required next step: Fix those unrelated POS typing issues in a separate focused batch, then rerun POS/full repo validation.
+
+#### Not Attempted
+- [ ] Task: Manual route checks in browser.
+  - Reason: Not run because this non-interactive batch used automated type/build validation only.
+
+### Validation Log
+- Command: `pnpm --filter @pos/landing type-check`
+- Result: Pass
+- Notes: Landing app TypeScript passes after adding Vite env types.
+- Command: `pnpm --filter @pos/landing build`
+- Result: Pass
+- Notes: Landing app builds to `apps/landing/dist`.
+- Command: `pnpm --filter @pos/terminal-web type-check`
+- Result: Fail (unrelated pre-existing POS TypeScript errors outside allowed scope)
+- Notes: Errors are in POS order/payment/employees/store-profile files not touched by this migration.
+- Command: `pnpm --filter @pos/terminal-web build`
+- Result: Fail (same TypeScript blockers before Vite build)
+- Notes: Same unrelated POS errors.
+- Command: `pnpm type-check`
+- Result: Fail because `@pos/terminal-web` fails; 9 packages succeeded.
+- Notes: Landing type-check passed within full repo run.
+- Command: `pnpm build`
+- Result: Fail because `@pos/terminal-web` fails during TypeScript compilation; landing and API builds succeeded before the stop.
+- Notes: Same unrelated POS TypeScript blockers as targeted POS build.
+
+### Documentation Updates
+- File: `apps/landing/README.md`
+- Change: Added purpose, commands, `VITE_POS_APP_URL`, and internal mockup route notes.
+- File: `README.md`
+- Change: Added `apps/landing` to monorepo app structure and local dev note.
+
+### Checklist Updates
+- File: `roadmap/landing/replit-codex-migrate-landing-to-app-prompt.md`
+- Change: Roadmap is prompt/criteria, not checkbox source; no status boxes to update.
+
+### Continuation Notes
+Next continuation: optional manual route smoke checks on port 5174, then fix unrelated POS TypeScript blockers in a separate non-landing batch if POS/full repo validation must be green.
