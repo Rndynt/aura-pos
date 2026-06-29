@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/design";
 import { useLocation } from "wouter";
 import { useTables, useOpenOrders } from "@/lib/api/tableHooks";
 import { useCart } from "@/hooks/useCart";
+import { useTenant } from "@/context/TenantContext";
 import { getActiveTenantId } from "@/lib/tenant";
 import { buildApiHeaders } from "@/lib/outlet";
 import { queryClient } from "@/lib/queryClient";
@@ -70,7 +71,8 @@ type FilterType = typeof STATUS_FILTERS[number];
 
 export default function TablesManagementPage() {
   const [, setLocation] = useLocation();
-  const cart = useCart();
+  const { taxRate, serviceChargeRate } = useTenant();
+  const cart = useCart(taxRate, serviceChargeRate);
   const { toast } = useToast();
   const { data: tablesData, isLoading } = useTables();
   const { data: ordersData } = useOpenOrders();
