@@ -37,6 +37,7 @@ import { calculateOrderPricing } from "@pos/core/pricing";
 import { flattenSelectedOptions } from "@pos/application/catalog";
 import { nextOrderNumberForTenant } from "../orders/orderNumberSequence";
 import { firstRawRow, mapRawLockedOrderRow, toDbOrderPaymentStatus, toDbOrderStatus, toDbPaymentFlow, toDbPaymentKind, toDbPaymentMethod, toDbPaymentStatus, toOrderItemModifiers, toPaymentOrderItem } from "../orders/paymentPersistenceMappers";
+import { DrizzleStockMovementRepository, DrizzleInventorySyncErrorRepository } from "../inventory";
 import type { SubmitPOSPaymentRepositoryPort } from "@pos/application/payments";
 import type { SubmitPOSPaymentCommand, SubmitPOSPaymentCommandItem } from "@pos/application/payments";
 import type { SubmitPOSPaymentResult, SubmitPOSPaymentResultSplit } from "@pos/application/payments";
@@ -236,12 +237,16 @@ function computeOrderTotals(
 
 export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentRepositoryPort {
   private readonly unitOfWork: DrizzleUnitOfWork;
+  private readonly stockMovementRepository: DrizzleStockMovementRepository;
+  private readonly inventorySyncErrorRepository: DrizzleInventorySyncErrorRepository;
 
   constructor(
     private readonly db: Database,
     unitOfWork?: DrizzleUnitOfWork,
   ) {
     this.unitOfWork = unitOfWork ?? new DrizzleUnitOfWork(db);
+    this.stockMovementRepository = new DrizzleStockMovementRepository(db);
+    this.inventorySyncErrorRepository = new DrizzleInventorySyncErrorRepository(db);
   }
 
   async submit(command: SubmitPOSPaymentCommand): Promise<SubmitPOSPaymentResult> {
@@ -699,6 +704,25 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
         }));
       }
 
+      // ── 10. Capture order items for stock deduction ────────────────────
+      // Stock is deducted exactly once per order: on its first-ever successful
+      // payment (whether FULL, first DOWN_PAYMENT, first MULTI_PAYMENT line,
+      // or first SPLIT_BILL line). A draft order with no payment yet never
+      // touches stock — only money changing hands commits the items. We read
+      // the order's full item list fresh here (works uniformly for a
+      // brand-new FRESH_CART order, an idempotent replay, and a pre-existing
+      // SAVED_ORDER/ACTIVE_ORDER) rather than relying on values captured
+      // earlier in this function, which aren't set on every code path.
+      const isFirstPaymentForOrder = orderPaidBefore <= 0.001 && newLineTotal > 0.001;
+      let stockDeductionItems: Array<{ productId: string; quantity: number }> = [];
+      if (isFirstPaymentForOrder) {
+        const itemRows = await tx
+          .select({ productId: orderItems.productId, quantity: orderItems.quantity })
+          .from(orderItems)
+          .where(eq(orderItems.orderId, orderId));
+        stockDeductionItems = itemRows.map((row) => ({ productId: row.productId, quantity: Number(row.quantity) }));
+      }
+
       return {
         updatedOrder,
         insertedPayments,
@@ -707,8 +731,58 @@ export class DrizzleSubmitPOSPaymentRepository implements SubmitPOSPaymentReposi
         newPaymentStatus,
         splitRows,
         orderNumber,
+        stockDeductionItems,
       };
     });
+
+    // ── Stock deduction (basic stock — always-on, never blocks payment) ────
+    // Deliberately runs AFTER the payment transaction has committed, in its
+    // own connection: if deduction throws for any reason (e.g. no outlet
+    // context, a transient DB error), the payment that already succeeded
+    // must never be rolled back or reported as failed to the cashier. Any
+    // failure here is captured for later retry/audit instead.
+    if (result.stockDeductionItems.length > 0) {
+      try {
+        await this.stockMovementRepository.deductStockForItems(
+          tenantId,
+          result.stockDeductionItems,
+          {
+            orderId: result.updatedOrder.id,
+            orderNumber: result.orderNumber || result.updatedOrder.orderNumber,
+            outletId: outletId ?? null,
+            paymentId: result.insertedPayments[result.insertedPayments.length - 1]?.id ?? null,
+            referenceType: "sale_payment",
+            referenceId: clientPaymentSessionId,
+            metadata: { source: "pos_submit_payment", paymentFlow: flow },
+          },
+          { allowNegativeStock: true },
+        );
+      } catch (error) {
+        try {
+          await this.inventorySyncErrorRepository.recordInventorySyncError({
+            tenantId,
+            outletId: outletId ?? null,
+            orderId: result.updatedOrder.id,
+            productId: result.stockDeductionItems.length === 1 ? result.stockDeductionItems[0]?.productId ?? null : null,
+            operation: "deduct_sale",
+            payload: {
+              operation: "deduct_sale",
+              items: result.stockDeductionItems,
+              policy: "allow_negative",
+              source: "pos_submit_payment",
+            },
+            error,
+          });
+        } catch {
+          // Recording the sync error itself failed (e.g. DB unreachable) —
+          // nothing more we can safely do without risking the payment result.
+        }
+        console.warn(
+          "[inventory_sync_errors] Stock deduction failed for POS payment (payment still recorded as successful)",
+          { tenantId, orderId: result.updatedOrder.id, error: error instanceof Error ? error.message : String(error) },
+        );
+      }
+    }
 
     const status: "PAID" | "PARTIAL" =
       result.newPaymentStatus === "paid" ? "PAID" : "PARTIAL";
