@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Lock zoom (PWA / standalone) ──────────────────────────────────────────
+   `user-scalable=no` in the viewport meta tag is ignored by some Android
+   WebViews and by iOS Safari (accessibility setting). touch-action is the
+   reliable CSS-level fallback that disables pinch-zoom and double-tap-zoom
+   gestures regardless of viewport meta support. */
+html, body {
+  touch-action: pan-x pan-y;
+  -ms-touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar { display: none; }
